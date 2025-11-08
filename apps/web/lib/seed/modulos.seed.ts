@@ -1,6 +1,7 @@
 export type SeedNode = {
   nombre: string;
   slug: string;
+  route?: string;
   tipo: "carpeta" | "tabla" | "subtabla" | "vista";
   orden?: number;
   activo?: boolean;
@@ -19,6 +20,7 @@ export const MODULOS_SEED: SeedNode[] = [
       {
         nombre: "Módulos",
         slug: "modulos",
+        route: "/system/modulos",
         tipo: "tabla",
         orden: 1,
         props: {
@@ -34,6 +36,7 @@ export const MODULOS_SEED: SeedNode[] = [
       {
         nombre: "Estados de Obra",
         slug: "estados_obra_config",
+        route:"/system/estados_obra_config",
         tipo: "tabla",
         orden: 2,
         props: {
@@ -50,6 +53,7 @@ export const MODULOS_SEED: SeedNode[] = [
       {
         nombre: "Servicios Config",
         slug: "servicios_config",
+        route:"/system/servicios_config",
         tipo: "tabla",
         orden: 3,
         props: {
@@ -67,6 +71,7 @@ export const MODULOS_SEED: SeedNode[] = [
   {
     nombre: "Clientes",
     slug: "clientes",
+    route:"/customers",
     tipo: "tabla",
     orden: 2,
     props: {
@@ -81,6 +86,7 @@ export const MODULOS_SEED: SeedNode[] = [
   {
     nombre: "Obras",
     slug: "obras",
+    route:"/obras",
     tipo: "tabla",
     orden: 3,
     props: {
@@ -104,6 +110,7 @@ export const MODULOS_SEED: SeedNode[] = [
       {
         nombre: "Tareas",
         slug: "tareas",
+        route:"/tareas",
         tipo: "tabla",
         orden: 1,
         props: {
@@ -122,6 +129,7 @@ export const MODULOS_SEED: SeedNode[] = [
       {
         nombre: "Presupuestos",
         slug: "presupuestos",
+        route:"/obras/presupuestos",
         tipo: "tabla",
         orden: 2,
         props: {
@@ -178,6 +186,7 @@ export const MODULOS_SEED: SeedNode[] = [
       {
         nombre: "Materiales",
         slug: "materiales",
+        route:"/obras/materiales",
         tipo: "tabla",
         orden: 3,
         props: {

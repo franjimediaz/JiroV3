@@ -48,11 +48,12 @@ export async function upsertModuloAction(formData: FormData): Promise<{ ok: bool
     // 2) Payload
     const idRaw = (formData.get("id") || "") as string;
     const id = idRaw && isUUID(idRaw) ? idRaw : ""; 
-    const rawParent = (formData.get("parent_id") ?? "") as string;
-    const parent_id = rawParent === "" ? null : rawParent;
-    const nombre = String(formData.get("nombre") || "");
-    const slug = String(formData.get("slug") || "");
-    const tipo = String(formData.get("tipo") || "tabla");
+  const rawParent = (formData.get("parent_id") ?? "") as string;
+  const parent_id = rawParent === "" ? null : rawParent;
+  const nombre = String(formData.get("nombre") || "");
+  const slug = String(formData.get("slug") || "");
+  const route = String(formData.get("route") || "");
+  const tipo = String(formData.get("tipo") || "tabla");
     const orden = Number(formData.get("orden") || 0);
     const activo = String(formData.get("activo") ?? "true") === "true";
 
@@ -87,7 +88,7 @@ export async function upsertModuloAction(formData: FormData): Promise<{ ok: bool
 
       const { data, error } = await supabaseAdmin
         .from(TABLE)
-        .insert({ parent_id, nombre, slug, tipo, orden, activo, props })
+        .insert({ parent_id, nombre, slug, route, tipo, orden, activo, props })
         .select("id")
         .single();
       if (error) return { ok: false, detail: `DB insert: ${error.message}` };
@@ -96,7 +97,7 @@ export async function upsertModuloAction(formData: FormData): Promise<{ ok: bool
       // actualizar
       const { data, error } = await supabaseAdmin
         .from(TABLE)
-        .update({ parent_id, nombre, slug, tipo, orden, activo, props })
+        .update({ parent_id, nombre, slug, route, tipo, orden, activo, props })
         .eq("id", id)
         .select("id")
         .single();

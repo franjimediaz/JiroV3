@@ -27,6 +27,7 @@ async function upsertModulo(node: SeedNode, parentId: string | null) {
     parent_id: parentId,
     nombre: node.nombre,
     slug: node.slug,
+    route: node.route ?? null,
     tipo: node.tipo,
     orden: node.orden ?? 0,
     activo: node.activo ?? true,

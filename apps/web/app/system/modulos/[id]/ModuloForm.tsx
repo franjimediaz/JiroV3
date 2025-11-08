@@ -26,6 +26,7 @@ export default function ModuloForm({
   const readOnly = mode === "view";
 
   const [nombre, setNombre] = useState(initialData?.nombre ?? "");
+  const [route, setRoute] = useState(initialData?.route ?? "");
   const [slug, setSlug] = useState(initialData?.slug ?? "");
   const [tipo, setTipo] = useState(initialData?.tipo ?? "tabla");
   const [orden, setOrden] = useState<number>(initialData?.orden ?? 0);
@@ -86,6 +87,7 @@ export default function ModuloForm({
       if (parentId !== undefined) fd.set("parent_id", parentId ?? "");
       fd.set("nombre", nombre);
       fd.set("slug", slug);
+      fd.set("route", route);
       fd.set("tipo", tipo);
       fd.set("orden", String(orden));
       fd.set("activo", String(activo));
@@ -126,6 +128,10 @@ export default function ModuloForm({
         <div>
           <label className={styles.label}>Orden</label>
           <input type="number" className={styles.input} value={orden} onChange={e=>setOrden(Number(e.target.value))} disabled={readOnly}/>
+        </div>
+        <div>
+          <label className={styles.label}>Ruta (route)</label>
+          <input className={styles.input} value={route} onChange={e=>setRoute(e.target.value)} disabled={readOnly}/>
         </div>
         <div className={styles.switchRow}>
           <label className={styles.label}>Activo</label>

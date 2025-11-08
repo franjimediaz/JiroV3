@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 async function getModuloById(id: string) {
   const { data, error } = await supabaseAdmin
     .from("modulos")
-    .select("id,parent_id,nombre,slug,tipo,orden,activo,props")
+    .select("id,parent_id,nombre,slug,route,tipo,orden,activo,props")
     .eq("id", id)
     .maybeSingle();
   return { data, error: error?.message ?? null };
