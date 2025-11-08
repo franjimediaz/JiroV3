@@ -35,4 +35,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-SUPABASE_SERVICE_ROLE=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhmbGhsamxmZ3pxY3p5ZHJmd3dzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjU0OTU1MCwiZXhwIjoyMDc4MTI1NTUwfQ.E4XRdQ6Jr5velXxgrv64fBa9YlWQ7rY23Zh4vMgG_kM
+
