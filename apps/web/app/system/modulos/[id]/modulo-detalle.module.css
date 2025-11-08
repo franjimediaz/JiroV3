@@ -1,0 +1,184 @@
+/* --- Contenedor general --- */
+.wrap {
+  padding: 24px;
+  max-width: 1000px;
+  margin: 0 auto;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #111827;
+}
+
+/* --- Cabecera --- */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 16px;
+}
+
+.title {
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.subtitle {
+  font-size: 0.9rem;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+/* --- Botones --- */
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn,
+.btnSecondary,
+.btnLight {
+  display: inline-block;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.btn {
+  background-color: #111827;
+  color: #fff;
+}
+.btn:hover {
+  opacity: 0.9;
+}
+
+.btnSecondary {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+.btnSecondary:hover {
+  background-color: #e5e7eb;
+}
+
+.btnLight {
+  background-color: #fff;
+  color: #111827;
+}
+.btnLight:hover {
+  background-color: #f9fafb;
+}
+
+/* --- Tarjeta principal (formulario / vista) --- */
+.card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* --- Grid de campos --- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+/* --- Campos e inputs --- */
+.label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #6b7280;
+  margin-bottom: 6px;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  background-color: #fff;
+  transition: border-color 0.2s ease;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: #2563eb;
+  outline: none;
+}
+
+.textarea {
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* --- Sección Props --- */
+.propsBox {
+  margin-top: 16px;
+}
+
+.code {
+  background: #0b1020;
+  color: #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  overflow-x: auto;
+}
+
+.hint {
+  color: #6b7280;
+  font-size: 0.8rem;
+  margin-top: 6px;
+}
+
+/* --- Toggle y switches --- */
+.switchRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --- Acciones inferior --- */
+.actionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+/* --- Mensajes --- */
+.msgOk {
+  color: #16a34a;
+  font-weight: 500;
+}
+
+.msgErr {
+  color: #b91c1c;
+  font-weight: 500;
+}
+
+/* --- Responsive --- */
+@media (max-width: 600px) {
+  .wrap {
+    padding: 16px;
+  }
+  .card {
+    padding: 16px;
+  }
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

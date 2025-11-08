@@ -1,0 +1,132 @@
+.container {
+  padding: 24px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  color: #6b7280;
+}
+
+.seedBtn {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #111827;
+  color: white;
+  cursor: pointer;
+}
+.seedBtn:hover { opacity: 0.95; }
+
+.treeSection {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.empty {
+  padding: 24px;
+  text-align: center;
+  color: #6b7280;
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding: 8px 6px;
+}
+
+.node {
+  margin: 2px 0;
+}
+
+.nodeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+.nodeRow:hover {
+  background: #f9fafb;
+}
+
+.toggle {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+}
+.toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.nodeMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.nodeName {
+  font-weight: 600;
+}
+
+.nodeSlug {
+  color: #6b7280;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #f3f4f6;
+}
+
+.badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+.badge_carpeta { background: #eef2ff; border-color: #c7d2fe; }
+.badge_tabla { background: #ecfeff; border-color: #a5f3fc; }
+.badge_subtabla { background: #fef3c7; border-color: #fde68a; }
+.badge_vista { background: #dcfce7; border-color: #bbf7d0; }
+
+.inactive {
+  color: #b91c1c;
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+.nodeMeta {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.children {
+  list-style: none;
+  margin: 4px 0 4px 32px;
+  padding-left: 12px;
+  border-left: 1px dashed #e5e7eb;
+}

@@ -1,6 +1,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --bs-primary: #0066cc;
+  --bs-success: #28a745;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,6 +21,7 @@ body {
 body {
   color: var(--foreground);
   background: var(--background);
+  font-family: "Inter", sans-serif;
 }
 
 * {
