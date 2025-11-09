@@ -1,8 +1,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  --bs-primary: #0066cc;
-  --bs-success: #28a745;
+  --bg-primary: #0066cc;
+  --bg-success: #28a745;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -11,7 +11,8 @@
     --foreground: #ededed;
   }
 }
-
+.layout-min-vh { min-height: calc(100vh - 56px); }
+.sidebar-sticky { position: sticky; top: 12px; }
 html,
 body {
   max-width: 100vw;
@@ -50,4 +51,34 @@ a {
   .imgDark {
     display: unset;
   }
+}
+
+/* Login background helper -------------------------------------------------- */
+.login-bg {
+  position: relative;
+  min-height: 100vh;
+  background-image: url('/login_background.png'); 
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35); /* dark overlay to improve contrast */
+  pointer-events: none;
+}
+
+.login-card {
+  position: relative;
+  z-index: 1; /* bring the card above overlay */
+}
+
+@media (max-width: 576px) {
+  .login-bg { padding: 1rem; }
 }

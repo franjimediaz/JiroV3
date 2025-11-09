@@ -26,8 +26,8 @@ export default function LoginPage() {
 
   return (
     
-    <main className="container d-flex align-items-center justify-content-center min-vh-100">
-      <div className="card shadow-sm" style={{ maxWidth: '400px', width: '100%' }}>
+    <main className="login-bg container d-flex align-items-center justify-content-center min-vh-100">
+      <div className="card shadow-sm login-card" style={{ maxWidth: '400px', width: '100%' }}>
         <div className="card-body p-4">
           <form onSubmit={onSubmit} className="form-signin">
             <div className="text-center mb-4">

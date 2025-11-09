@@ -11,6 +11,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
+    "@types/react": "19",
+    "@types/react-dom": "19",
     "prettier": "^3.6.2",
     "turbo": "^2.6.0",
     "typescript": "5.9.2"

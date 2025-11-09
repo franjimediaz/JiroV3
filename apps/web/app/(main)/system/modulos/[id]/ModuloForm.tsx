@@ -155,7 +155,7 @@ export default function ModuloForm({
 
       <div className={styles.actionsRow}>
         {readOnly ? (
-          <a className={styles.btn} href="?edit=true">Editar</a>
+          <a></a>
         ) : (
           <button type="submit" disabled={pending} className={styles.btn}>
             {pending ? (mode === "create" ? "Creando..." : "Guardando...") : (mode === "create" ? "Crear módulo" : "Guardar cambios")}

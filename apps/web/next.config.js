@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {output: 'standalone',
+const nextConfig = {
   images: {
     unoptimized: true
   },
@@ -8,7 +8,8 @@ const nextConfig = {output: 'standalone',
   },
   async rewrites() {
     return [];
-  }
+  },
+  transpilePackages: ['@repo/ui'],
 };
 
 

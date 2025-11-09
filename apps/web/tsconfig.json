@@ -3,10 +3,16 @@
     "target": "ES2022",
     "lib": [
       "ES2022",
-      "DOM"
+      "DOM",
+      "DOM.Iterable"
     ],
     "jsx": "react-jsx",
     "module": "ESNext",
+    "types": [
+      "react",
+      "react-dom",
+      "node"
+    ],
     "moduleResolution": "bundler",
     "allowJs": false,
     "resolveJsonModule": true,
@@ -16,6 +22,9 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
+      "@repo/ui": [
+        "../../packages/ui/index.ts"
+      ],
       "@/*": [
         "./*"
       ]
@@ -34,7 +43,8 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next\\dev/types/**/*.ts",
-    ".next\\dev/types/**/*.ts"
+    ".next\\dev/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

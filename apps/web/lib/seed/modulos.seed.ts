@@ -33,8 +33,58 @@ export const MODULOS_SEED: SeedNode[] = [
           permissions: { systemadmin: { read: true, create: true, update: true, delete: true } }
         }
       },
+            {
+        nombre: "Usuarios",
+        slug: "usuarios",
+        route: "/system/usuarios",
+        tipo: "tabla",
+        orden: 1,
+        props: {
+          db: { table: "usuarios", primaryKey: "id", softDelete: false },
+          fields: [
+            { name: "nombre", label: "Nombre", type: "text", required: true, list: true, filter: true },
+            { name: "slug", label: "Slug", type: "text", required: true, list: true, filter: true }
+          ],
+          ui: { icon: "⚙️", color: "#0ea5e9", view: "tree", defaultSort: { field: "orden", dir: "asc" } },
+          permissions: { systemadmin: { read: true, create: true, update: true, delete: true } }
+        },
+        children: [
+          {
+        nombre: "Directorio",
+        slug: "directorio",
+        route: "/system/directorio",
+        tipo: "subtabla",
+        orden: 1,
+        props: {
+          db: { table: "directorio", primaryKey: "id", softDelete: false },
+          fields: [
+            { name: "nombre", label: "Nombre", type: "text", required: true, list: true, filter: true },
+            { name: "slug", label: "Slug", type: "text", required: true, list: true, filter: true }
+          ],
+          ui: { icon: "⚙️", color: "#0ea5e9", view: "tree", defaultSort: { field: "orden", dir: "asc" } },
+          permissions: { systemadmin: { read: true, create: true, update: true, delete: true } }
+        }
+      },
+        ]
+      },
       {
-        nombre: "Estados de Obra",
+        nombre: "Roles",
+        slug: "Rol",
+        route: "/system/rol",
+        tipo: "tabla",
+        orden: 1,
+        props: {
+          db: { table: "roles", primaryKey: "id", softDelete: false },
+          fields: [
+            { name: "nombre", label: "Nombre", type: "text", required: true, list: true, filter: true },
+            { name: "slug", label: "Slug", type: "text", required: true, list: true, filter: true }
+          ],
+          ui: { icon: "⚙️", color: "#0ea5e9", view: "tree", defaultSort: { field: "orden", dir: "asc" } },
+          permissions: { systemadmin: { read: true, create: true, update: true, delete: true } }
+        }
+      },
+      {
+        nombre: "Estados",
         slug: "estados_obra_config",
         route:"/system/estados_obra_config",
         tipo: "tabla",
@@ -51,7 +101,7 @@ export const MODULOS_SEED: SeedNode[] = [
         }
       },
       {
-        nombre: "Servicios Config",
+        nombre: "Servicios",
         slug: "servicios_config",
         route:"/system/servicios_config",
         tipo: "tabla",
@@ -69,7 +119,7 @@ export const MODULOS_SEED: SeedNode[] = [
     ]
   },
   {
-    nombre: "Clientes",
+    nombre: "Clientes / Pacientes",
     slug: "clientes",
     route:"/customers",
     tipo: "tabla",
@@ -84,13 +134,13 @@ export const MODULOS_SEED: SeedNode[] = [
     }
   },
   {
-    nombre: "Obras",
-    slug: "obras",
-    route:"/obras",
+    nombre: "Proyectos",
+    slug: "proyectos",
+    route:"/py",
     tipo: "tabla",
     orden: 3,
     props: {
-      db: { table: "obras", softDelete: true },
+      db: { table: "proyectos", softDelete: true },
       fields: [
         { name: "nombre", label: "Nombre", type: "text", required: true, list: true, filter: true },
         {

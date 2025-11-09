@@ -15,6 +15,12 @@ importers:
       '@types/node':
         specifier: ^22.15.3
         version: 22.15.3
+      '@types/react':
+        specifier: '19'
+        version: 19.2.2
+      '@types/react-dom':
+        specifier: '19'
+        version: 19.2.2(@types/react@19.2.2)
       prettier:
         specifier: ^3.6.2
         version: 3.6.2
@@ -156,34 +162,12 @@ importers:
 
   packages/ui:
     dependencies:
+      next:
+        specifier: '>=13.4.0'
+        version: 16.0.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       react:
-        specifier: ^19.2.0
+        specifier: '>=18.0.0'
         version: 19.2.0
-      react-dom:
-        specifier: ^19.2.0
-        version: 19.2.0(react@19.2.0)
-    devDependencies:
-      '@repo/eslint-config':
-        specifier: workspace:*
-        version: link:../eslint-config
-      '@repo/typescript-config':
-        specifier: workspace:*
-        version: link:../typescript-config
-      '@types/node':
-        specifier: ^22.15.3
-        version: 22.15.3
-      '@types/react':
-        specifier: 19.2.2
-        version: 19.2.2
-      '@types/react-dom':
-        specifier: 19.2.2
-        version: 19.2.2(@types/react@19.2.2)
-      eslint:
-        specifier: ^9.39.1
-        version: 9.39.1
-      typescript:
-        specifier: 5.9.2
-        version: 5.9.2
 
 packages:
 
