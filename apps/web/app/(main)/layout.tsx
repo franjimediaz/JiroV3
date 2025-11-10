@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "bootstrap/dist/css/bootstrap.min.css";
+import "bootstrap-icons/font/bootstrap-icons.css";
 import "../globals.css";
 import Providers from "../providers";
 import { createClient } from "@/lib/supabase/server";
@@ -22,12 +23,13 @@ type ModuloRow = {
   activo: boolean;
   orden: number | null;
   parent_id: string | null;
+  props?: { ui?: { icon?: string } };
 };
 
 function buildTree(rows: ModuloRow[]): SidebarItem[] {
   const byId = new Map<string, SidebarItem>();
   const roots: SidebarItem[] = [];
-  for (const r of rows) byId.set(r.id, { id: r.id, nombre: r.nombre, route: r.route ?? undefined, hijos: [] });
+  for (const r of rows) byId.set(r.id, { id: r.id, nombre: r.nombre, route: r.route ?? undefined, hijos: [], icon: r.props?.ui?.icon ?? undefined  });
   for (const r of rows) {
     const node = byId.get(r.id)!;
     if (r.parent_id && byId.has(r.parent_id)) byId.get(r.parent_id)!.hijos!.push(node);
@@ -43,7 +45,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("modulos")
-    .select("id,nombre,route,activo,orden,parent_id")
+    .select("id,nombre,route,activo,orden,parent_id,props")
     .eq("activo", true)
     .order("orden", { ascending: true })
     .order("nombre", { ascending: true });

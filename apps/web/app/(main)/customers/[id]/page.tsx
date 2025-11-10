@@ -1,142 +1,110 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { createCustomer, updateCustomer, deleteCustomer } from "../actions";
+import { notFound } from "next/navigation";
+import type { ModuleSchema } from "@repo/types";
+import CustomerFormClient from "./CustomerFormClient";
 
-const inputStyle: React.CSSProperties = { width: "100%", padding: 10, border: "1px solid #ddd", borderRadius: 8 };
-const btnPrimary: React.CSSProperties = { padding: "10px 14px", borderRadius: 8, border: "1px solid #ddd" };
-const btnGhost: React.CSSProperties = { padding: "10px 14px", borderRadius: 8, border: "1px solid #eee" };
+export const dynamic = "force-dynamic";
 
-function Field({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div style={{ display: "grid", gap: 4 }}>
-      <div style={{ color: "#666", fontSize: 12 }}>{label}</div>
-      <div>{value || "—"}</div>
-    </div>
-  );
+// ── STUBS: reemplaza por tus llamadas reales ─────────────────────────────
+async function fetchModuloSchema(): Promise<ModuleSchema> {
+  // Ejemplo: busca el módulo por slug "customers" en tu tabla modulos y parsea props
+  // const modulo = await db.modulos.findUnique({ where: { slug: "customers" }});
+  // return JSON.parse(modulo.props) as ModuleSchema;
+
+  // Mínimo para probar:
+  return {
+    db: { table: "customer" },
+    ui: { icon: "bi-person", color: "#2b2b2b" },
+    fields: [
+      { name: "id", label: "ID", type: "text", readOnly: true },
+      { name: "name", label: "Nombre", type: "text", required: true, ui: { width: "1/2" } },
+      { name: "email", label: "Email", type: "text", ui: { width: "1/2" } },
+      { name: "phone", label: "Teléfono", type: "text", ui: { width: "1/3" } },
+      { name: "createdAt", label: "Creado", type: "datetime", readOnly: true, ui: { width: "1/3" } },
+      { name: "updatedAt", label: "Actualizado", type: "datetime", readOnly: true, ui: { width: "1/3" } },
+      // ejemplo con formula (editable sólo si allowOverride)
+      {
+        name: "score",
+        label: "Score",
+        type: "formula",
+        allowOverride: true,
+        compute: { type: "formula", expr: "(pedidos || 0) * 10", deps: ["pedidos"], persist: "none" },
+      },
+      { name: "pedidos", label: "Nº Pedidos", type: "number", defaultValue: 0, ui: { width: "1/3" } },
+    ],
+  };
 }
 
-export default async function CustomerRoute({
+async function fetchCustomer(id: string): Promise<any | null> {
+  // Reemplaza por tu acceso (Supabase/Prisma/REST). Debe devolver un objeto plano.
+  // const row = await prisma.customer.findUnique({ where: { id }});
+  // return row ?? null;
+
+  // Mock para probar UI:
+  if (id === "demo") {
+    return {
+      id: "demo",
+      name: "Cliente Demo",
+      email: "demo@ejemplo.com",
+      phone: "666 111 222",
+      pedidos: 3,
+      createdAt: "2025-10-01T09:15:00Z",
+      updatedAt: "2025-11-01T18:22:00Z",
+      meta: { overrides: {} },
+    };
+  }
+  return null;
+}
+// ─────────────────────────────────────────────────────────────────────────
+
+export default async function CustomerPage({
   params,
   searchParams,
 }: {
-  params: { id: string };
-  searchParams: { edit?: string };
+  params: Promise<{ id: string }>;                  // 🔴 Importante: en tu setup vienen como Promise
+  searchParams: Promise<Record<string, string>>;
 }) {
-  const isNew = params.id === "new";
-  const editMode = isNew || searchParams?.edit === "1";
+  const { id } = await params;
+  const sp = await searchParams;
+  const isEdit = sp?.edit === "true";
 
-  const supabase = await createClient();
+  const [schema, customer] = await Promise.all([
+    fetchModuloSchema(),
+    fetchCustomer(id),
+  ]);
 
-  const customer = isNew
-    ? null
-    : (await supabase
-        .from("customers")
-        .select("id,name,email,phone,created_at")
-        .eq("id", params.id)
-        .single()
-      ).data;
-
-  if (!isNew && !customer) {
-    return (
-      <main style={{ padding: 24 }}>
-        <h1>Cliente</h1>
-        <p style={{ color: "crimson" }}>No encontrado</p>
-        <Link href="/customers" style={{ textDecoration: "underline" }}>Volver</Link>
-      </main>
-    );
+  if (!customer) {
+    notFound();
   }
 
+  // Utilidad para togglear ?edit=true/false
+  const editToggleHref = (next: boolean) => {
+    const q = new URLSearchParams(sp || {});
+    if (next) q.set("edit", "true");
+    else q.delete("edit");
+    return `/customers/${id}?${q.toString()}`;
+  };
+
   return (
-    <main style={{ padding: 24, maxWidth: 720, margin: "0 auto" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1>{isNew ? "Crear cliente" : "Cliente"}</h1>
+    <main style={{ padding: 24 }}>
+      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <h1 style={{ margin: 0 }}>Customer: {customer.name || id}</h1>
         <div style={{ display: "flex", gap: 8 }}>
-          {!isNew && !editMode && (
-            <Link href={`/customers/${params.id}?edit=1`} style={{ padding: "8px 12px", border: "1px solid #ddd", borderRadius: 8 }}>
-              Editar
-            </Link>
+          <Link href="/customers">← Volver</Link>
+          {isEdit ? (
+            <Link href={editToggleHref(false)}>Ver</Link>
+          ) : (
+            <Link href={editToggleHref(true)}>Editar</Link>
           )}
-          <Link href="/customers" style={{ padding: "8px 12px", border: "1px solid #eee", borderRadius: 8 }}>
-            Volver
-          </Link>
         </div>
-      </div>
+      </header>
 
-      {/* VIEW */}
-      {!editMode && customer && (
-        <section style={{ marginTop: 16, display: "grid", gap: 12 }}>
-          <Field label="Nombre" value={customer.name} />
-          <Field label="Email" value={customer.email} />
-          <Field label="Teléfono" value={customer.phone} />
-
-          <form
-            action={async () => {
-              "use server";
-              await deleteCustomer(customer.id);
-            }}
-          >
-            <button
-              style={{ marginTop: 12, padding: "8px 12px", border: "1px solid #f2c4c4", borderRadius: 8, background: "#fdecec" }}
-            >
-              Eliminar
-            </button>
-          </form>
-        </section>
-      )}
-
-      {/* EDIT / CREATE (mismo formulario) */}
-      {editMode && (
-        <form
-          action={
-            isNew
-              ? (createCustomer as any) // submit directo al create
-              : (async (formData: FormData) => {
-                  "use server";
-                  const res = await updateCustomer(params.id, formData);
-                  if (!res.ok) throw new Error(res.error);
-                }) as any
-          }
-          style={{ marginTop: 16, display: "grid", gap: 12 }}
-        >
-          <label>
-            <div>Nombre *</div>
-            <input
-              name="name"
-              defaultValue={customer?.name || ""}
-              required
-              placeholder="Nombre completo"
-              style={inputStyle}
-            />
-          </label>
-          <label>
-            <div>Email</div>
-            <input
-              name="email"
-              type="email"
-              defaultValue={customer?.email || ""}
-              placeholder="correo@dominio.com"
-              style={inputStyle}
-            />
-          </label>
-          <label>
-            <div>Teléfono</div>
-            <input
-              name="phone"
-              defaultValue={customer?.phone || ""}
-              placeholder="+34 ..."
-              style={inputStyle}
-            />
-          </label>
-
-          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <button style={btnPrimary}>{isNew ? "Crear" : "Guardar"}</button>
-            <Link href={isNew ? "/customers" : `/customers/${params.id}`} style={btnGhost}>
-              Cancelar
-            </Link>
-          </div>
-        </form>
-      )}
+      <CustomerFormClient
+        schema={schema}
+        initialData={customer}
+        readOnly={!isEdit}
+        id={id}
+      />
     </main>
   );
 }

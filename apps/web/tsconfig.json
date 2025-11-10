@@ -25,6 +25,9 @@
       "@repo/ui": [
         "../../packages/ui/index.ts"
       ],
+      "@repo/types": [
+        "../../packages/types"
+      ],
       "@/*": [
         "./*"
       ]

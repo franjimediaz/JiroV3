@@ -16,6 +16,7 @@
     "@supabase/auth-helpers-react": "^0.5.0",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.80.0",
+    "bootstrap-icons": "^1.13.1",
     "next": "^16.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

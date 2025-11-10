@@ -3,4 +3,5 @@ export type SidebarItem = {
   nombre: string;
   route?: string;   
   hijos?: SidebarItem[];   
+  icon?: string;
 };

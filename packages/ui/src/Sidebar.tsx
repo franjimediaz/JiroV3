@@ -17,6 +17,7 @@ export function Sidebar({
   title?: string;
   variant?: SidebarVariant;
   offcanvasId?: string;
+  icon?: string;
 }) {
   const pathname = usePathname();
 
@@ -61,9 +62,9 @@ export function Sidebar({
 
   // fixed
   return (
-    <aside className="bg-body-tertiary border-end h-100">
-      <div className="p-3 sidebar-sticky">
-        <h6 className="text-uppercase text-muted mb-3">{title}</h6>
+    <aside className="bg-body-primary border-end h-100">
+      <div className="p-4 sidebar-sticky">
+        <h6 className="text-uppercase text-dark mb-3">{title}</h6>
         <NavTree nodes={items} activeSet={activeSet} />
       </div>
     </aside>
@@ -80,7 +81,7 @@ function NavTree({
   offcanvasDismiss?: boolean;
 }) {
   return (
-    <ul className="nav nav-pills flex-column gap-1">
+    <ul className="nav nav-pills flex-column gap-2">
       {nodes.map((n) => (
         <NavItem
           key={n.id}
@@ -118,7 +119,7 @@ function NavItem({
       {hasChildren ? (
         <div>
           <button
-            className="btn btn-sm btn-link text-start w-100 text-decoration-none"
+            className="btn btn-sm btn-secondary text-start w-100 text-decoration-none"
             style={indent}
             type="button"
             data-bs-toggle="collapse"
@@ -126,7 +127,8 @@ function NavItem({
             aria-expanded={expanded ? "true" : "false"}
             aria-controls={collapseId}
           >
-            {node.nombre}
+            <i className={"bi " + node.icon}>   {node.nombre}</i>
+            
           </button>
 
           <div className={`collapse ${expanded ? "show" : ""}`} id={collapseId}>
@@ -138,7 +140,9 @@ function NavItem({
                     className={itemClass}
                     style={{ paddingLeft: `${(level + 1) * 12}px` }}
                     {...(offcanvasDismiss ? { "data-bs-dismiss": "offcanvas" } : {})}
+                    
                   >
+                    
                     {node.nombre}
                   </a>
                 </li>
@@ -162,7 +166,8 @@ function NavItem({
           style={indent}
           {...(offcanvasDismiss ? { "data-bs-dismiss": "offcanvas" } : {})}
         >
-          {node.nombre}
+          <i className={"bi " + node.icon}></i>{node.nombre}
+          
         </a>
       )}
     </li>

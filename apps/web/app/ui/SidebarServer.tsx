@@ -9,6 +9,7 @@ type ModuloRow = {
   activo: boolean;
   orden: number | null;
   parent_id: string | null;
+  icon?: string;
 };
 
 function buildTree(rows: ModuloRow[]): SidebarItem[] {
@@ -48,7 +49,7 @@ export default async function SidebarServer({
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("modulos")
-    .select("id,nombre,route,activo,orden,parent_id")
+    .select("id,nombre,route,activo,orden,parent_id,props")
     //.eq("activo", true)
     .order("orden", { ascending: true });
     

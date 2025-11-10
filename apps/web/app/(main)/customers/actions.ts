@@ -53,3 +53,26 @@ export async function deleteCustomer(id: string): Promise<Result> {
   revalidatePath("/customers");
   redirect("/customers");
 }
+
+// Server action wrapper usable directly as a form action from client components
+export async function upsertCustomerAction(formData: FormData): Promise<Result> {
+  const idRaw = String(formData.get("id") || "");
+  const id = idRaw === "" ? null : idRaw;
+
+  if (!id) {
+    // create
+    return await createCustomer(formData);
+  }
+
+  // update
+  const res = await updateCustomer(id, formData);
+  if (!res.ok) return res;
+  // redirect back to view
+  redirect(`/customers/${id}`);
+}
+
+export async function deleteCustomerAction(formData: FormData): Promise<Result> {
+  const id = String(formData.get("id") || "");
+  if (!id) return { ok: false, error: "id requerido" };
+  return await deleteCustomer(id);
+}

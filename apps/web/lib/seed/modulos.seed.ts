@@ -15,7 +15,9 @@ export const MODULOS_SEED: SeedNode[] = [
     slug: "system",
     tipo: "carpeta",
     orden: 1,
-    props: {},
+    props: {
+       ui: { icon: "bi bi-gear", color: "#0ea5e9", view: "tree", defaultSort: { field: "orden", dir: "asc" } }
+    },
     children: [
       {
         nombre: "Módulos",
@@ -29,7 +31,7 @@ export const MODULOS_SEED: SeedNode[] = [
             { name: "nombre", label: "Nombre", type: "text", required: true, list: true, filter: true },
             { name: "slug", label: "Slug", type: "text", required: true, list: true, filter: true }
           ],
-          ui: { icon: "⚙️", color: "#0ea5e9", view: "tree", defaultSort: { field: "orden", dir: "asc" } },
+          ui: { icon: "bi bi-gear", color: "#0ea5e9", view: "tree", defaultSort: { field: "orden", dir: "asc" } },
           permissions: { systemadmin: { read: true, create: true, update: true, delete: true } }
         }
       },
@@ -45,7 +47,7 @@ export const MODULOS_SEED: SeedNode[] = [
             { name: "nombre", label: "Nombre", type: "text", required: true, list: true, filter: true },
             { name: "slug", label: "Slug", type: "text", required: true, list: true, filter: true }
           ],
-          ui: { icon: "⚙️", color: "#0ea5e9", view: "tree", defaultSort: { field: "orden", dir: "asc" } },
+          ui: { icon: "bi bi-gear", color: "#0ea5e9", view: "tree", defaultSort: { field: "orden", dir: "asc" } },
           permissions: { systemadmin: { read: true, create: true, update: true, delete: true } }
         },
         children: [
@@ -61,7 +63,7 @@ export const MODULOS_SEED: SeedNode[] = [
             { name: "nombre", label: "Nombre", type: "text", required: true, list: true, filter: true },
             { name: "slug", label: "Slug", type: "text", required: true, list: true, filter: true }
           ],
-          ui: { icon: "⚙️", color: "#0ea5e9", view: "tree", defaultSort: { field: "orden", dir: "asc" } },
+          ui: { icon: "bi bi-gear", color: "#0ea5e9", view: "tree", defaultSort: { field: "orden", dir: "asc" } },
           permissions: { systemadmin: { read: true, create: true, update: true, delete: true } }
         }
       },
@@ -79,7 +81,7 @@ export const MODULOS_SEED: SeedNode[] = [
             { name: "nombre", label: "Nombre", type: "text", required: true, list: true, filter: true },
             { name: "slug", label: "Slug", type: "text", required: true, list: true, filter: true }
           ],
-          ui: { icon: "⚙️", color: "#0ea5e9", view: "tree", defaultSort: { field: "orden", dir: "asc" } },
+          ui: { icon: "bi bi-gear", color: "#0ea5e9", view: "tree", defaultSort: { field: "orden", dir: "asc" } },
           permissions: { systemadmin: { read: true, create: true, update: true, delete: true } }
         }
       },
@@ -97,7 +99,7 @@ export const MODULOS_SEED: SeedNode[] = [
             { name: "icono", label: "Icono", type: "text", list: true },
             { name: "orden", label: "Orden", type: "number", list: true }
           ],
-          ui: { icon: "🏷️", color: "#6b7280", view: "list" }
+          ui: { icon: "bi-tag", color: "#6b7280", view: "list" }
         }
       },
       {
@@ -113,7 +115,7 @@ export const MODULOS_SEED: SeedNode[] = [
             { name: "color", label: "Color", type: "color", list: true },
             { name: "icono", label: "Icono", type: "text", list: true }
           ],
-          ui: { icon: "🧩", color: "#10b981", view: "list" }
+          ui: { icon: "bi-puzzle", color: "#10b981", view: "list" }
         }
       }
     ]
@@ -130,7 +132,7 @@ export const MODULOS_SEED: SeedNode[] = [
         { name: "nombre", label: "Nombre", type: "text", required: true, list: true, filter: true },
         { name: "email", label: "Email", type: "text", list: true, filter: true }
       ],
-      ui: { icon: "👤", color: "#3b82f6", view: "list" }
+      ui: { icon: "bi-person", color: "#3b82f6", view: "list" }
     }
   },
   {
@@ -154,7 +156,7 @@ export const MODULOS_SEED: SeedNode[] = [
           list: true, filter: true
         }
       ],
-      ui: { icon: "🏗️", color: "#2563eb", view: "list" }
+      ui: { icon: "bi-file", color: "#2563eb", view: "list" }
     },
     children: [
       {
@@ -173,7 +175,7 @@ export const MODULOS_SEED: SeedNode[] = [
               required: true, list: true, filter: true
             }
           ],
-          ui: { icon: "🗂️", color: "#8b5cf6", view: "list" }
+          ui: { icon: "bi-file", color: "#8b5cf6", view: "list" }
         }
       },
       {
@@ -192,7 +194,7 @@ export const MODULOS_SEED: SeedNode[] = [
               required: true, list: true
             }
           ],
-          ui: { icon: "📄", color: "#0ea5e9", view: "list" }
+          ui: { icon: "bi-file", color: "#0ea5e9", view: "list" }
         },
         children: [
           {
@@ -209,7 +211,7 @@ export const MODULOS_SEED: SeedNode[] = [
                   ref: { moduleSlug: "presupuestos", displayField: "descripcion" }, required: true
                 }
               ],
-              ui: { icon: "📦", color: "#10b981", view: "list" }
+              ui: { icon: "bi-file", color: "#10b981", view: "list" }
             },
             children: [
               {
@@ -226,7 +228,7 @@ export const MODULOS_SEED: SeedNode[] = [
                       ref: { moduleSlug: "presupuesto_servicios", displayField: "nombre" }, required: true
                     }
                   ],
-                  ui: { icon: "🧾", color: "#f59e0b", view: "list" }
+                  ui: { icon: "bi-file", color: "#f59e0b", view: "list" }
                 }
               }
             ]
@@ -245,7 +247,7 @@ export const MODULOS_SEED: SeedNode[] = [
             { name: "nombre", label: "Nombre", type: "text", required: true, list: true, filter: true },
             { name: "precioUnidad", label: "€/ud", type: "money", list: true }
           ],
-          ui: { icon: "🧱", color: "#ef4444", view: "list" }
+          ui: { icon: "bi-file", color: "#ef4444", view: "list" }
         }
       }
     ]
