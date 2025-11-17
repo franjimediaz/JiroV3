@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./modulo-detalle.module.css";
 import { upsertModuloAction } from "@/actions/modulos";
-import type { Field as FieldSchema, FieldType, ModuleSchema, Appareance, Compute} from "@repo/types";
+import type { Field as FieldSchema, FieldType, ModuleSchema, Appareance, Compute, FormSection} from "@repo/types";
 import {VALID_FIELD_TYPES,Appareance_Valid_Types} from "@repo/types";
 
 
@@ -785,7 +785,17 @@ export default function ModuloForm({
     return base;
   }
 });
+  const getFormSections = (): FormSection[] => {
+    const uiAny = (propsObj.ui || {}) as any;
+    return Array.isArray(uiAny.formSections) ? uiAny.formSections : [];
+  };
 
+  const setFormSections = (sections: FormSection[]) => {
+    const ui = { ...(propsObj.ui || {}), formSections: sections as any };
+    const next = { ...propsObj, ui };
+    setPropsObj(next);
+    setRawText(JSON.stringify(next, null, 2));
+  };
   // Toggle para mostrar el JSON crudo si quieres
   const [showRaw, setShowRaw] = useState(false);
   const [rawText, setRawText] = useState(() => JSON.stringify(propsObj, null, 2));
@@ -870,6 +880,32 @@ export default function ModuloForm({
     setPropsObj({ ...propsObj, fields: next });
     setRawText(JSON.stringify({ ...propsObj, fields: next }, null, 2));
   };
+    const addSection = () => {
+    const sections = getFormSections();
+    const index = sections.length + 1;
+    const newSection: FormSection = {
+      id: `section_${index}`,
+      label: `Sección ${index}`,
+      description: "",
+      fields: [],
+    };
+    setFormSections([...sections, newSection]);
+  };
+
+  const updateSection = (idx: number, patch: Partial<FormSection>) => {
+    const sections = getFormSections();
+    if (!sections[idx]) return;
+    const updated = [...sections];
+    updated[idx] = { ...updated[idx], ...patch };
+    setFormSections(updated);
+  };
+
+  const removeSection = (idx: number) => {
+    const sections = getFormSections();
+    const updated = sections.filter((_, i) => i !== idx);
+    setFormSections(updated);
+  };
+
 
   const readOnlyAttr = { disabled: readOnly } as const;
 
@@ -989,7 +1025,107 @@ export default function ModuloForm({
           </div>
         </div>
       </Section>
+ <Section title="Secciones de formulario (layout opcional)">
+        <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            className={styles.btn}
+            onClick={addSection}
+            disabled={readOnly}
+          >
+            + Añadir sección
+          </button>
+        </div>
 
+        {getFormSections().length === 0 && (
+          <div className={styles.hint}>
+            Aún no hay secciones. Puedes seguir usando el formulario plano, o crear secciones como
+            “Identificación”, “Contacto”, etc.
+          </div>
+        )}
+
+        {getFormSections().map((section, idx) => {
+          const allFieldNames = propsObj.fields.map((f) => f.name);
+          return (
+            <div key={section.id} className={styles.card} style={{ marginTop: 12 }}>
+              <div className={styles.grid}>
+                <div>
+                  <label className={styles.label}>Label sección</label>
+                  <input
+                    className={styles.input}
+                    value={section.label}
+                    onChange={(e) =>
+                      updateSection(idx, { label: e.target.value })
+                    }
+                    disabled={readOnly}
+                  />
+                </div>
+                <div>
+                  <label className={styles.label}>ID (opcional, para referencia)</label>
+                  <input
+                    className={styles.input}
+                    value={section.id}
+                    onChange={(e) =>
+                      updateSection(idx, { id: e.target.value || `section_${idx + 1}` })
+                    }
+                    disabled={readOnly}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className={styles.label}>Descripción</label>
+                <input
+                  className={styles.input}
+                  value={section.description || ""}
+                  onChange={(e) =>
+                    updateSection(idx, { description: e.target.value })
+                  }
+                  disabled={readOnly}
+                />
+              </div>
+
+              <div>
+                <label className={styles.label}>Campos dentro de esta sección</label>
+                <select
+                  multiple
+                  className={styles.input}
+                  value={section.fields}
+                  onChange={(e) => {
+                    const selected = Array.from(
+                      e.currentTarget.selectedOptions
+                    ).map((opt) => opt.value);
+                    updateSection(idx, { fields: selected });
+                  }}
+                  disabled={readOnly}
+                  style={{ height: 120 }}
+                >
+                  {allFieldNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <div className={styles.hint}>
+                  Mantén Ctrl (o Cmd en Mac) para seleccionar varios campos.
+                </div>
+              </div>
+
+              <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className={styles.btn}
+                  onClick={() => removeSection(idx)}
+                  disabled={readOnly}
+                  style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}
+                >
+                  Eliminar sección
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </Section>
       {/* Sección Fields */}
       <Section title="Formulario">
         <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>

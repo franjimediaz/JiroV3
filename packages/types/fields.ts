@@ -39,6 +39,12 @@ export type FieldType =
  export type Appareance = "List" | "Always" | "Zoom";
 
 export type SelectorRef = { moduleSlug: string; displayField: string };
+export type FormSection = {
+  id: string;
+  label: string;
+  description?: string;
+  fields: string[]; // names de campos
+};
 
 export type Field = {
   name: string;

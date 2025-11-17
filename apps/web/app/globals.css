@@ -82,3 +82,201 @@ a {
 @media (max-width: 576px) {
   .login-bg { padding: 1rem; }
 }
+/* ============================
+   MODERN DARK CARD
+============================ */
+
+.card {
+  background: linear-gradient(145deg, #0a0f1e, #0e1529 40%, #0b1120 100%);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 20px 50px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 25px 55px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(59, 130, 246, 0.25) inset;
+}
+
+/* ---------- Header ---------- */
+
+.card-header {
+  background: linear-gradient(135deg, #0a0f1e 0%, #111827 100%);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  padding: 14px 20px;
+}
+
+.card-header .fw-semibold {
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #dbeafe;
+  opacity: 0.9;
+}
+
+.card-header .small {
+  margin-top: 3px;
+  color: #9ca3af !important;
+  font-size: 11px;
+}
+
+/* Tarjeta "Otros campos" */
+.card.border-dashed {
+  border-style: dashed !important;
+  border-color: rgba(148, 163, 184, 0.4) !important;
+}
+/* ============================
+   FORM LABELS
+============================ */
+
+.form-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.form-text {
+  font-size: 11px;
+  color: #64748b !important;
+}
+/* ============================
+   INPUTS: Modern Dark Controls
+============================ */
+
+.form-control,
+.form-select {
+  background: linear-gradient(180deg, #0b1120, #0e162c);
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #e2e8f0;
+  font-size: 13px;
+  padding: 8px 10px;
+  transition:
+    border-color 0.20s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.form-control::placeholder {
+  color: #475569;
+  font-size: 12px;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: #3b82f6;
+  background: linear-gradient(180deg, #0d1937, #101d40);
+  box-shadow:
+    0 0 0 1px rgba(59, 130, 246, 0.55),
+    0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+/* Disabled */
+.form-control:disabled,
+.form-select:disabled {
+  background: #0a0f1e;
+  border-color: #1e293b;
+  color: #475569;
+  opacity: 0.8;
+}
+/* ============================
+   CHECKBOX
+============================ */
+
+.form-check-input {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid #475569;
+  background-color: #0a0f1e;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.25s ease,
+    transform 0.12s ease;
+}
+
+.form-check-input:hover {
+  border-color: #3b82f6;
+}
+
+.form-check-input:checked {
+  background-color: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.45);
+  transform: scale(1.05);
+}
+
+.form-check-input:focus {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
+}
+
+.form-check-label {
+  font-size: 13px;
+  color: #cbd5e1;
+}
+/* ============================
+   COLOR INPUT
+============================ */
+
+.form-control-color {
+  padding: 0;
+  width: 50px;
+  height: 34px;
+  border-radius: 8px;
+  background: #0a0f1e;
+  border: 1px solid #334155;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-control-color:hover {
+  border-color: #3b82f6;
+}
+
+.form-control-color:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
+}
+/* ============================
+   FIELD BOX
+============================ */
+
+.field-box {
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.85), rgba(15, 23, 42, 0.95));
+  padding: 12px 14px;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.25s ease,
+    background 0.2s ease,
+    transform 0.12s ease;
+}
+
+.field-box:hover {
+  border-color: rgba(59, 130, 246, 0.55);
+  box-shadow:
+    0 12px 30px rgba(15, 23, 42, 0.75),
+    0 0 0 1px rgba(59, 130, 246, 0.35) inset;
+  transform: translateY(-2px);
+}
+/* Espaciado más uniforme */
+.row.g-3 {
+  --bs-gutter-y: 1rem;
+  --bs-gutter-x: 1rem;
+}
+
+/* Eliminar margen extra entre tarjetas */
+.d-flex.flex-column.gap-3 > .card {
+  margin-bottom: 0 !important;
+}

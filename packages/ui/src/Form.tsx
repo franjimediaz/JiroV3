@@ -24,8 +24,6 @@ export default function Form({ schema, initialData = {}, onChange, readOnly }: P
   useEffect(() => {
     if (!schema?.fields?.length) return;
 
-    // Recalcular: fórmula inmediata; aggregate lo dejamos al provider (igual devuelve 0 si es stub)
-    // Para UX: hacemos un debounce corto (p.ej. 200ms) para evitar spam de aggregates
     if (aggTimer.current) clearTimeout(aggTimer.current);
     setComputing(true);
     aggTimer.current = setTimeout(async () => {
@@ -33,17 +31,17 @@ export default function Form({ schema, initialData = {}, onChange, readOnly }: P
         const computed = await applyCompute({
           schema,
           record: values,
-          dataProvider, // si quieres usar otro, cámbialo desde props
+          dataProvider,
         });
-        setValues(computed);
-        onChange?.(computed);
+          setValues(computed);
+          onChange?.(computed);
       } finally {
         setComputing(false);
       }
     }, 200);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schema, JSON.stringify(lightDeps(values))]); // deps ligeras para evitar recálculo infinito
+  }, [schema, JSON.stringify(lightDeps(values))]);
 
   const handleChange = (name: string, value: any) => {
     setValues((prev: any) => ({ ...prev, [name]: normalizeValue(value) }));
@@ -80,62 +78,154 @@ export default function Form({ schema, initialData = {}, onChange, readOnly }: P
           },
         },
       },
-      // mostramos también el valor forzado en el campo visible
       [f.name]: normalizeValue(value),
     }));
   };
 
-  // Render de cada campo
-  return (
-    <div style={{ display: "grid", gap: 12 }}>
-      {schema.fields.map((f) => {
-        if (f.visible === false) return null;
+  // --------- SECCIONES DE FORMULARIO (layout) ---------
 
-        const v = values[f.name] ?? "";
-        const isOverride = !!values?.meta?.overrides?.[f.name]?.enabled;
+  const formSections =
+    ((schema.ui as any)?.formSections as {
+      id: string;
+      label: string;
+      description?: string;
+      fields: string[];
+    }[]) || [];
 
-        // Si allowOverride: mostramos el switch y, si está activo, input editable aunque compute exista
-        const effectiveReadOnly =
-          !!readOnly ||
-          (!!f.readOnly && !isOverride) ||
-          (!!f.compute && !f.allowOverride && f.type !== "selectorTabla"); // los calculados no editables salvo override
+  // mapa rápido para buscar campos por name
+  const fieldsByName = useMemo(() => {
+    const map: Record<string, Field> = {};
+    (schema.fields || []).forEach((f) => {
+      map[f.name] = f;
+    });
+    return map;
+  }, [schema.fields]);
 
-        return (
-          <div key={f.name} style={cellStyle(f)}>
-            <label style={labelStyle(f)}>{f.label}</label>
+  // Campos que no están en ninguna sección
+  const fieldsInSections = new Set(formSections.flatMap((s) => s.fields));
+  const unsectionedFields = (schema.fields || []).filter((f) => !fieldsInSections.has(f.name));
 
-            {/* override toggle */}
-            {f.allowOverride && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <small style={{ opacity: 0.8 }}>Forzar valor</small>
-                <input
-                  type="checkbox"
-                  checked={isOverride}
-                  onChange={(e) => toggleOverride(f, e.target.checked)}
-                  disabled={!!readOnly}
-                />
+  // Helper: clases de columna Bootstrap según ui.width
+  const colClass = (f: Field): string => {
+    const col = f.ui?.width || "1/1";
+    switch (col) {
+      case "1/2":
+        return "col-12 col-md-6";
+      case "1/3":
+        return "col-12 col-md-4";
+      case "2/3":
+        return "col-12 col-md-8";
+      case "1/1":
+      default:
+        return "col-12";
+    }
+  };
+
+  const fieldBoxStyle = (): React.CSSProperties => ({
+    border: "1px solid rgba(255,255,255,.08)",
+    borderRadius: 10,
+    padding: 12,
+  });
+
+  // Render de un campo individual (reutilizado en secciones y modo plano)
+  const renderField = (f: Field) => {
+    if (f.visible === false) return null;
+
+    const v = values[f.name] ?? "";
+    const isOverride = !!values?.meta?.overrides?.[f.name]?.enabled;
+
+    const effectiveReadOnly =
+      !!readOnly ||
+      (!!f.readOnly && !isOverride) ||
+      (!!f.compute && !f.allowOverride && f.type !== "selectorTabla");
+
+    return (
+      <div key={f.name} className={colClass(f)}>
+        <div style={fieldBoxStyle()}>
+          <label style={labelStyle()} className="form-label">
+            {f.label}
+          </label>
+
+          {f.allowOverride && (
+            <div className="d-flex align-items-center gap-2 mb-2">
+              <small className="text-muted">Forzar valor</small>
+              <input
+                type="checkbox"
+                className="form-check-input"
+                checked={isOverride}
+                onChange={(e) => toggleOverride(f, e.target.checked)}
+                disabled={!!readOnly}
+              />
+            </div>
+          )}
+
+          <FieldInput
+            field={f}
+            value={v}
+            onChange={(val) => (isOverride ? setOverrideValue(f, val) : handleChange(f.name, val))}
+            readOnly={effectiveReadOnly}
+          />
+
+          {f.ui?.help && (
+            <div className="form-text mt-1">{f.ui.help}</div>
+          )}
+
+          {computing && f.compute && !isOverride && (
+            <div className="small text-muted mt-1">recalculando…</div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // --------- RENDER PRINCIPAL ---------
+
+  // Si hay secciones definidas, las usamos
+  if (formSections.length > 0) {
+    return (
+      <div className="d-flex flex-column gap-3">
+        {formSections.map((section) => (
+          <div key={section.id} className="card">
+            <div className="card-header">
+              <div className="fw-semibold">{section.label}</div>
+              {section.description && (
+                <div className="small text-muted">{section.description}</div>
+              )}
+            </div>
+            <div className="card-body">
+              <div className="row g-3">
+                {section.fields.map((fieldName) => {
+                  const f = fieldsByName[fieldName];
+                  if (!f) return null;
+                  return renderField(f);
+                })}
               </div>
-            )}
-
-            <FieldInput
-              field={f}
-              value={v}
-              onChange={(val) => (isOverride ? setOverrideValue(f, val) : handleChange(f.name, val))}
-              readOnly={effectiveReadOnly}
-            />
-
-            {f.ui?.help && <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>{f.ui.help}</div>}
-
-            {/* estado de cálculo */}
-            {computing && f.compute && !isOverride && (
-              <div style={{ fontSize: 11, opacity: 0.6, marginTop: 6 }}>recalculando…</div>
-            )}
+            </div>
           </div>
-        );
-      })}
+        ))}
 
-      {/* Puedes mostrar el JSON para debug */}
-      {/* <pre>{JSON.stringify(values, null, 2)}</pre> */}
+        {/* Campos que no están en ninguna sección */}
+        {unsectionedFields.length > 0 && (
+          <div className="card border border-dashed">
+            <div className="card-header">
+              <div className="fw-semibold">Otros campos</div>
+              <div className="small text-muted">Campos sin sección asignada</div>
+            </div>
+            <div className="card-body">
+              <div className="row g-3">
+                {unsectionedFields.map((f) => renderField(f))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Si NO hay secciones, se comporta como antes (todos los campos en una única grid)
+  return (
+    <div className="row g-3">
+      {schema.fields.map((f) => renderField(f))}
     </div>
   );
 }
@@ -157,12 +247,15 @@ function FieldInput({
 
   if (type === "boolean") {
     return (
-      <input
-        type="checkbox"
-        checked={!!value}
-        onChange={(e) => onChange(e.target.checked)}
-        disabled={readOnly}
-      />
+      <div className="form-check">
+        <input
+          type="checkbox"
+          className="form-check-input"
+          checked={!!value}
+          onChange={(e) => onChange(e.target.checked)}
+          disabled={readOnly}
+        />
+      </div>
     );
   }
 
@@ -170,6 +263,7 @@ function FieldInput({
     return (
       <input
         type="number"
+        className="form-control"
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))}
         disabled={readOnly}
@@ -181,6 +275,7 @@ function FieldInput({
     return (
       <input
         type={type === "datetime" ? "datetime-local" : "date"}
+        className="form-control"
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         disabled={readOnly}
@@ -192,10 +287,10 @@ function FieldInput({
     return (
       <input
         type="color"
+        className="form-control form-control-color"
         value={value || "#000000"}
         onChange={(e) => onChange(e.target.value)}
         disabled={readOnly}
-        style={{ padding: 0, height: 42, width: 64 }}
       />
     );
   }
@@ -203,7 +298,12 @@ function FieldInput({
   if (type === "select") {
     const opts = field.options || [];
     return (
-      <select value={value ?? ""} onChange={(e) => onChange(e.target.value)} disabled={readOnly}>
+      <select
+        className="form-select"
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={readOnly}
+      >
         <option value="">—</option>
         {opts.map((o) => (
           <option key={o} value={o}>
@@ -218,12 +318,13 @@ function FieldInput({
     const opts = field.options || [];
     const arr = Array.isArray(value) ? value : [];
     return (
-      <div style={{ display: "grid", gap: 6 }}>
+      <div className="d-flex flex-column gap-1">
         {opts.map((o) => {
           const checked = arr.includes(o);
           return (
-            <label key={o} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div className="form-check" key={o}>
               <input
+                className="form-check-input"
                 type="checkbox"
                 checked={checked}
                 onChange={(e) => {
@@ -232,8 +333,8 @@ function FieldInput({
                 }}
                 disabled={readOnly}
               />
-              <span>{o}</span>
-            </label>
+              <label className="form-check-label">{o}</label>
+            </div>
           );
         })}
       </div>
@@ -245,6 +346,7 @@ function FieldInput({
     return (
       <input
         type="text"
+        className="form-control"
         value={value ?? ""}
         placeholder={field.placeholder || "URL de archivo (pendiente uploader)"}
         onChange={(e) => onChange(e.target.value)}
@@ -258,6 +360,7 @@ function FieldInput({
     return (
       <input
         type="text"
+        className="form-control"
         value={value ?? ""}
         placeholder={field.placeholder || `ID de ${field.ref?.moduleSlug || "registro"}`}
         onChange={(e) => onChange(e.target.value)}
@@ -271,6 +374,7 @@ function FieldInput({
     return (
       <textarea
         rows={4}
+        className="form-control"
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
         disabled={readOnly}
@@ -281,6 +385,7 @@ function FieldInput({
   return (
     <input
       type="text"
+      className="form-control"
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value)}
       disabled={readOnly}
@@ -295,7 +400,7 @@ function withDefaultValues(fields: Field[], base: any) {
   const out = { ...(base || {}) };
   for (const f of fields) {
     if (out[f.name] === undefined) {
-      out[f.name] = f.defaultValue ?? defaultForType(f.type);
+      out[f.name] = f.defaultValue ?? defaultForType(f.type as FieldType);
     }
   }
   return out;
@@ -321,19 +426,8 @@ function normalizeValue(v: any) {
   return v;
 }
 
-function labelStyle(_f: Field): React.CSSProperties {
-  return { display: "block", marginBottom: 6, fontSize: 12, opacity: 0.8 };
-}
-
-function cellStyle(f: Field): React.CSSProperties {
-  const col = f.ui?.width || "1/1";
-  const span = col === "1/1" ? "1 / -1" : col === "1/2" ? "span 6" : col === "1/3" ? "span 4" : "span 8";
-  return {
-    border: "1px solid rgba(255,255,255,.08)",
-    borderRadius: 10,
-    padding: 12,
-    gridColumn: span,
-  };
+function labelStyle(): React.CSSProperties {
+  return { display: "block", marginBottom: 4, fontSize: 12 };
 }
 
 // minimiza deps para el efecto: ignora meta.snapshots, arrays grandes, etc.
