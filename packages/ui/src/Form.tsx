@@ -5,16 +5,41 @@ import type { Field, ModuleSchema, FieldType } from "@repo/types";
 import { applyCompute } from "./engines/computeEngine";
 import { dataProvider } from "./providers/DataProvider";
 
+type Mode = "view" | "edit" | "create";
+
 type Props = {
   schema: ModuleSchema;
   initialData?: any;            // { ...valores, meta?: { overrides?: { [k]: {enabled,value} } } }
   onChange?: (values: any) => void;
   readOnly?: boolean;
+
+  // NUEVO: modo lógico del formulario
+  mode?: Mode;
+
+  // NUEVO: callbacks opcionales para acciones
+  onSubmit?: (values: any) => void;
+  onBack?: () => void;
+  onEdit?: () => void;
 };
 
-export default function Form({ schema, initialData = {}, onChange, readOnly }: Props) {
+export default function Form({
+  schema,
+  initialData = {},
+  onChange,
+  readOnly,
+  mode,
+  onSubmit,
+  onBack,
+  onEdit,
+}: Props) {
+  // Derivar modo por defecto si no viene
+  const effectiveMode: Mode =
+    mode || (readOnly ? "view" : "edit");
+
   // Valores editables + meta para overrides
-  const [values, setValues] = useState<any>(() => withDefaultValues(schema.fields, initialData));
+  const [values, setValues] = useState<any>(() =>
+    withDefaultValues(schema.fields, initialData)
+  );
   const [computing, setComputing] = useState(false);
 
   // Para evitar llamadas excesivas a aggregate
@@ -33,8 +58,8 @@ export default function Form({ schema, initialData = {}, onChange, readOnly }: P
           record: values,
           dataProvider,
         });
-          setValues(computed);
-          onChange?.(computed);
+        setValues(computed);
+        onChange?.(computed);
       } finally {
         setComputing(false);
       }
@@ -57,7 +82,9 @@ export default function Form({ schema, initialData = {}, onChange, readOnly }: P
           ...(prev.meta?.overrides || {}),
           [f.name]: {
             enabled,
-            value: enabled ? prev[f.name] ?? null : (prev.meta?.overrides?.[f.name]?.value ?? null),
+            value: enabled
+              ? prev[f.name] ?? null
+              : prev.meta?.overrides?.[f.name]?.value ?? null,
           },
         },
       },
@@ -103,7 +130,9 @@ export default function Form({ schema, initialData = {}, onChange, readOnly }: P
 
   // Campos que no están en ninguna sección
   const fieldsInSections = new Set(formSections.flatMap((s) => s.fields));
-  const unsectionedFields = (schema.fields || []).filter((f) => !fieldsInSections.has(f.name));
+  const unsectionedFields = (schema.fields || []).filter(
+    (f) => !fieldsInSections.has(f.name)
+  );
 
   // Helper: clases de columna Bootstrap según ui.width
   const colClass = (f: Field): string => {
@@ -121,27 +150,22 @@ export default function Form({ schema, initialData = {}, onChange, readOnly }: P
     }
   };
 
-  const fieldBoxStyle = (): React.CSSProperties => ({
-    border: "1px solid rgba(255,255,255,.08)",
-    borderRadius: 10,
-    padding: 12,
-  });
-
-  // Render de un campo individual (reutilizado en secciones y modo plano)
+  // Render de un campo individual
   const renderField = (f: Field) => {
     if (f.visible === false) return null;
 
     const v = values[f.name] ?? "";
     const isOverride = !!values?.meta?.overrides?.[f.name]?.enabled;
 
-    const effectiveReadOnly =
+    const effectiveReadOnlyField =
       !!readOnly ||
+      effectiveMode === "view" ||
       (!!f.readOnly && !isOverride) ||
       (!!f.compute && !f.allowOverride && f.type !== "selectorTabla");
 
     return (
       <div key={f.name} className={colClass(f)}>
-        <div style={fieldBoxStyle()}>
+        <div className="field-box">
           <label style={labelStyle()} className="form-label">
             {f.label}
           </label>
@@ -154,7 +178,7 @@ export default function Form({ schema, initialData = {}, onChange, readOnly }: P
                 className="form-check-input"
                 checked={isOverride}
                 onChange={(e) => toggleOverride(f, e.target.checked)}
-                disabled={!!readOnly}
+                disabled={effectiveMode === "view"}
               />
             </div>
           )}
@@ -162,8 +186,12 @@ export default function Form({ schema, initialData = {}, onChange, readOnly }: P
           <FieldInput
             field={f}
             value={v}
-            onChange={(val) => (isOverride ? setOverrideValue(f, val) : handleChange(f.name, val))}
-            readOnly={effectiveReadOnly}
+            onChange={(val) =>
+              isOverride
+                ? setOverrideValue(f, val)
+                : handleChange(f.name, val)
+            }
+            readOnly={effectiveReadOnlyField}
           />
 
           {f.ui?.help && (
@@ -178,55 +206,132 @@ export default function Form({ schema, initialData = {}, onChange, readOnly }: P
     );
   };
 
+  // --------- ACCIONES (Guardar / Editar / Volver) ---------
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (effectiveMode === "view") return;
+    onSubmit?.(values);
+  };
+
+  const handleBack = () => {
+    if (onBack) return onBack();
+    if (typeof window !== "undefined") {
+      window.history.back();
+    }
+  };
+
+  const handleEdit = () => {
+    if (onEdit) return onEdit();
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("edit", "true");
+      window.location.href = url.toString();
+    }
+  };
+
+  const renderActions = () => {
+    return (
+      <>
+        {/* Volver siempre visible */}
+        <button
+          type="button"
+          className="btn btn-secondary px-4"
+          onClick={handleBack}
+        >
+          ← Volver
+        </button>
+
+        {/* Editar SOLO en view */}
+        {effectiveMode === "view" && (
+          <button
+            type="button"
+            className="btn btn-warning px-4"
+            onClick={handleEdit}
+          >
+            Editar
+          </button>
+        )}
+
+        {/* Guardar SOLO en edit o create */}
+        {(effectiveMode === "edit" || effectiveMode === "create") && (
+          <button
+            type="submit"
+            className="btn btn-primary px-5"
+            style={{
+              background: "linear-gradient(90deg, #2563eb, #3b82f6)",
+              border: "none",
+              borderRadius: 10,
+              boxShadow: "0 4px 12px rgba(37, 99, 235, 0.35)",
+            }}
+          >
+            Guardar
+          </button>
+        )}
+      </>
+    );
+  };
+
   // --------- RENDER PRINCIPAL ---------
 
-  // Si hay secciones definidas, las usamos
-  if (formSections.length > 0) {
-    return (
-      <div className="d-flex flex-column gap-3">
-        {formSections.map((section) => (
-          <div key={section.id} className="card">
-            <div className="card-header">
-              <div className="fw-semibold">{section.label}</div>
-              {section.description && (
-                <div className="small text-muted">{section.description}</div>
-              )}
-            </div>
-            <div className="card-body">
-              <div className="row g-3">
-                {section.fields.map((fieldName) => {
-                  const f = fieldsByName[fieldName];
-                  if (!f) return null;
-                  return renderField(f);
-                })}
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {/* Campos que no están en ninguna sección */}
-        {unsectionedFields.length > 0 && (
-          <div className="card border border-dashed">
-            <div className="card-header">
-              <div className="fw-semibold">Otros campos</div>
-              <div className="small text-muted">Campos sin sección asignada</div>
-            </div>
-            <div className="card-body">
-              <div className="row g-3">
-                {unsectionedFields.map((f) => renderField(f))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Si NO hay secciones, se comporta como antes (todos los campos en una única grid)
   return (
-    <div className="row g-3">
-      {schema.fields.map((f) => renderField(f))}
-    </div>
+    <form
+      className="d-flex flex-column gap-4"
+      onSubmit={handleSubmit}
+    >
+      {/* Formulario principal (secciones o plano) */}
+      {formSections.length > 0 ? (
+        <div className="d-flex flex-column gap-3">
+          {formSections.map((section) => (
+            <div key={section.id} className="card">
+              <div className="card-header">
+                <div className="fw-semibold">{section.label}</div>
+                {section.description && (
+                  <div className="small text-muted">
+                    {section.description}
+                  </div>
+                )}
+              </div>
+              <div className="card-body">
+                <div className="row g-3">
+                  {section.fields.map((fieldName) => {
+                    const f = fieldsByName[fieldName];
+                    if (!f) return null;
+                    return renderField(f);
+                  })}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* Campos sin sección */}
+          {unsectionedFields.length > 0 && (
+            <div className="card border border-dashed">
+              <div className="card-header">
+                <div className="fw-semibold">Otros campos</div>
+                <div className="small text-muted">
+                  Campos sin sección asignada
+                </div>
+              </div>
+              <div className="card-body">
+                <div className="row g-3">
+                  {unsectionedFields.map((f) => renderField(f))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="row g-3">
+          {schema.fields.map((f) => renderField(f))}
+        </div>
+      )}
+
+      {/* Acciones */}
+      <div className="d-flex justify-content-end gap-2 mt-3">
+        {renderActions()}
+      </div>
+    </form>
   );
 }
 
@@ -265,7 +370,9 @@ function FieldInput({
         type="number"
         className="form-control"
         value={value ?? ""}
-        onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))}
+        onChange={(e) =>
+          onChange(e.target.value === "" ? "" : Number(e.target.value))
+        }
         disabled={readOnly}
       />
     );
@@ -328,7 +435,9 @@ function FieldInput({
                 type="checkbox"
                 checked={checked}
                 onChange={(e) => {
-                  const next = e.target.checked ? [...arr, o] : arr.filter((x) => x !== o);
+                  const next = e.target.checked
+                    ? [...arr, o]
+                    : arr.filter((x) => x !== o);
                   onChange(next);
                 }}
                 disabled={readOnly}
@@ -342,13 +451,15 @@ function FieldInput({
   }
 
   if (type === "file" || type === "image") {
-    // Placeholder: integra tu uploader real
+    // Placeholder: integra tu uploader real cuando quieras
     return (
       <input
         type="text"
         className="form-control"
         value={value ?? ""}
-        placeholder={field.placeholder || "URL de archivo (pendiente uploader)"}
+        placeholder={
+          field.placeholder || "URL de archivo (pendiente uploader)"
+        }
         onChange={(e) => onChange(e.target.value)}
         disabled={readOnly}
       />
@@ -362,7 +473,10 @@ function FieldInput({
         type="text"
         className="form-control"
         value={value ?? ""}
-        placeholder={field.placeholder || `ID de ${field.ref?.moduleSlug || "registro"}`}
+        placeholder={
+          field.placeholder ||
+          `ID de ${field.ref?.moduleSlug || "registro"}`
+        }
         onChange={(e) => onChange(e.target.value)}
         disabled={readOnly}
       />

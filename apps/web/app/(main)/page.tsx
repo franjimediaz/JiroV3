@@ -24,7 +24,7 @@ export default async function Home() {
   return (
     <main style={{ padding: 24 }}>
       <h1>Dashboard</h1>
-      <canvas className="my-4 w-100" id="myChart" width="637" height="269" ></canvas>
+      
       <p>Hola {user.email}</p>
       <p>{user.role}</p>
       <p>{JSON.stringify(user.user_metadata)}</p>
@@ -41,6 +41,8 @@ export default async function Home() {
       <form action="/auth/signout" method="post">
         <button>Salir</button>
       </form>
+      <canvas className="my-4 w-100" id="myChart" width="637" height="269" ></canvas>
     </main>
+    
   );
 }

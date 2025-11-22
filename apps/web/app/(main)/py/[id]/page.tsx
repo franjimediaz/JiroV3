@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { ModuleSchema } from "@repo/types";
-import {Form} from "@repo/ui"; // ⬅️ tu componente Form.tsx
+import {Form} from "@repo/ui"; 
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ async function fetchCustomerSchema(): Promise<ModuleSchema> {
   const { data, error } = await supabase
     .from("modulos")
     .select("props")
-    .eq("slug", "customers") // 👈 aquí usas el slug que hayas definido para el módulo
+    .eq("slug", "py") // 👈 aquí usas el slug que hayas definido para el módulo
     .maybeSingle();
 
   if (error) {
@@ -24,7 +24,7 @@ async function fetchCustomerSchema(): Promise<ModuleSchema> {
   }
 
   if (!data) {
-    throw new Error("Módulo 'clientes' no encontrado en modulos");
+    throw new Error("Módulo 'py' no encontrado en modulos");
   }
 
   // props puede venir ya como objeto (jsonb) o como string
@@ -42,7 +42,7 @@ async function fetchCustomer(id: string) {
   const supabase = await createClient();
 
   const { data, error } = await supabase
-    .from("customers")          // 👈 nombre real de tu tabla
+    .from("py")          // 👈 nombre real de tu tabla
     .select("*")
     .eq("id", id)
     .maybeSingle();

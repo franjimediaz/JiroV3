@@ -69,6 +69,8 @@ export type Field = {
   defaultValue?: any;
   visible?: boolean;
   readOnly?: boolean;
+  list?: boolean;
+  filter?: boolean;
   appareance?:Appareance;
 
   ui?: {

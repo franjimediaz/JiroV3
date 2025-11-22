@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { SidebarItem } from "./types";
 import { isActive } from "./utils";
@@ -21,7 +21,7 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
 
-  // Expandir grupos que contienen la ruta activa
+  // 1) Calculamos qué nodos deben estar abiertos por contener la ruta activa
   const activeSet = useMemo(() => {
     const set = new Set<string>();
     const visit = (n: SidebarItem): boolean => {
@@ -33,6 +33,32 @@ export function Sidebar({
     items.forEach(visit);
     return set;
   }, [items, pathname]);
+
+  // 2) Estado real de expansión (lo usamos para el dropdown)
+  const [openSet, setOpenSet] = useState<Set<string>>(new Set());
+
+  // Inicializamos/actualizamos openSet cuando cambia la ruta o los items
+  useEffect(() => {
+    setOpenSet(new Set(activeSet));
+  }, [activeSet]);
+
+  const toggleNode = (id: string) => {
+    setOpenSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const tree = (
+    <NavTree
+      nodes={items}
+      openSet={openSet}
+      toggleNode={toggleNode}
+      activeSet={activeSet}
+    />
+  );
 
   if (variant === "offcanvas") {
     return (
@@ -54,7 +80,13 @@ export function Sidebar({
           />
         </div>
         <div className="offcanvas-body">
-          <NavTree nodes={items} activeSet={activeSet} offcanvasDismiss />
+          <NavTree
+            nodes={items}
+            openSet={openSet}
+            toggleNode={toggleNode}
+            activeSet={activeSet}
+            offcanvasDismiss
+          />
         </div>
       </div>
     );
@@ -62,10 +94,10 @@ export function Sidebar({
 
   // fixed
   return (
-    <aside className="bg-body-primary border-end h-100">
-      <div className="p-4 sidebar-sticky">
+    <aside className="bg-body-primary border-end h-100 ">
+      <div className="p-4 sidebar-sticky ">
         <h6 className="text-uppercase text-dark mb-3">{title}</h6>
-        <NavTree nodes={items} activeSet={activeSet} />
+        {tree}
       </div>
     </aside>
   );
@@ -73,10 +105,14 @@ export function Sidebar({
 
 function NavTree({
   nodes,
+  openSet,
+  toggleNode,
   activeSet,
   offcanvasDismiss = false,
 }: {
   nodes: SidebarItem[];
+  openSet: Set<string>;
+  toggleNode: (id: string) => void;
   activeSet: Set<string>;
   offcanvasDismiss?: boolean;
 }) {
@@ -86,6 +122,8 @@ function NavTree({
         <NavItem
           key={n.id}
           node={n}
+          openSet={openSet}
+          toggleNode={toggleNode}
           activeSet={activeSet}
           offcanvasDismiss={offcanvasDismiss}
           level={0}
@@ -97,11 +135,15 @@ function NavTree({
 
 function NavItem({
   node,
+  openSet,
+  toggleNode,
   activeSet,
   offcanvasDismiss,
   level,
 }: {
   node: SidebarItem;
+  openSet: Set<string>;
+  toggleNode: (id: string) => void;
   activeSet: Set<string>;
   offcanvasDismiss: boolean;
   level: number;
@@ -109,29 +151,31 @@ function NavItem({
   const pathname = usePathname();
   const hasChildren = (node.hijos?.length ?? 0) > 0;
   const isNodeActive = isActive(pathname, node.route);
-  const expanded = activeSet.has(node.id);
-  const collapseId = `collapse-${node.id}`;
-  const itemClass = ["nav-link", isNodeActive ? "active" : "text-body-secondary"].join(" ");
+  const expanded = openSet.has(node.id);
+  const itemClass = [
+    "nav-link",
+    isNodeActive ? "active bg-secondary" : "text-body-secondary",
+  ].join(" ");
   const indent = { paddingLeft: `${level * 12}px` };
 
-  return (
-    <li className="nav-item">
-      {hasChildren ? (
+  if (hasChildren) {
+    return (
+      <li className="nav-item">
         <div>
           <button
-            className="btn btn-sm btn-secondary text-start w-100 text-decoration-none"
+            className="btn btn-sm  text-start w-100 text-decoration-none d-flex align-items-center justify-content-between"
             style={indent}
             type="button"
-            data-bs-toggle="collapse"
-            data-bs-target={`#${collapseId}`}
-            aria-expanded={expanded ? "true" : "false"}
-            aria-controls={collapseId}
+            onClick={() => toggleNode(node.id)}
           >
-            <i className={"bi " + node.icon}>   {node.nombre}</i>
-            
+            <span>
+              {node.icon && <i className={"bi " + node.icon + " me-2"} />}
+              {node.nombre}
+            </span>
+            <i className={`bi ${expanded ? "bi-chevron-down" : "bi-chevron-right"}`} />
           </button>
 
-          <div className={`collapse ${expanded ? "show" : ""}`} id={collapseId}>
+          <div className={`collapse ${expanded ? "show" : ""}`}>
             <ul className="nav flex-column ms-1">
               {node.route && (
                 <li className="nav-item">
@@ -139,10 +183,10 @@ function NavItem({
                     href={node.route}
                     className={itemClass}
                     style={{ paddingLeft: `${(level + 1) * 12}px` }}
-                    {...(offcanvasDismiss ? { "data-bs-dismiss": "offcanvas" } : {})}
-                    
+                    {...(offcanvasDismiss ? {
+                      "data-bs-dismiss": "offcanvas",
+                    } : {})}
                   >
-                    
                     {node.nombre}
                   </a>
                 </li>
@@ -151,6 +195,8 @@ function NavItem({
                 <NavItem
                   key={h.id}
                   node={h}
+                  openSet={openSet}
+                  toggleNode={toggleNode}
                   activeSet={activeSet}
                   offcanvasDismiss={offcanvasDismiss}
                   level={level + 1}
@@ -159,17 +205,22 @@ function NavItem({
             </ul>
           </div>
         </div>
-      ) : (
-        <a
-          href={node.route ?? "#"}
-          className={itemClass}
-          style={indent}
-          {...(offcanvasDismiss ? { "data-bs-dismiss": "offcanvas" } : {})}
-        >
-          <i className={"bi " + node.icon}></i>{node.nombre}
-          
-        </a>
-      )}
+      </li>
+    );
+  }
+
+  // hoja
+  return (
+    <li className="nav-item">
+      <a
+        href={node.route ?? "#"}
+        className={itemClass}
+        style={indent}
+        {...(offcanvasDismiss ? { "data-bs-dismiss": "offcanvas" } : {})}
+      >
+        {node.icon && <i className={"bi " + node.icon + " me-2"} />}
+        {node.nombre}
+      </a>
     </li>
   );
 }
