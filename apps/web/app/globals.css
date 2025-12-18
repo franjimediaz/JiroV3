@@ -3,6 +3,10 @@
   --foreground: #171717;
   --bg-primary: #0066cc;
   --bg-success: #28a745;
+  --text: #ffffff;
+  --card:#363655b2;
+  --border: #797676;
+  --text-dim: #b0b0b0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -283,4 +287,52 @@ a {
 /* Eliminar margen extra entre tarjetas */
 .d-flex.flex-column.gap-3 > .card {
   margin-bottom: 0 !important;
+}
+.am-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 10px;
+  line-height: 1;
+  box-shadow: var(--shadow-sm);
+}
+.am-btn-sm { padding: 5px 9px; }
+.am-btn-md { padding: 7px 12px; }
+.am-btn:hover { color: var(--text); }
+.am-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.am-dots { font-size: 18px; }
+
+.am-menu {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.am-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  text-align: left;
+}
+.am-item:hover { background: rgba(255,255,255,0.06); }
+.am-item:disabled { opacity: .5; cursor: not-allowed; }
+
+.am-icon { width: 18px; display: inline-flex; justify-content: center; }
+.am-label { flex: 1; }
+
+.am-danger { color: #ffb3b3; }
+.am-danger:hover { background: rgba(217,72,72,0.18); }
+
+.am-empty {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text-dim);
 }

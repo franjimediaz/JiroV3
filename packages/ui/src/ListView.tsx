@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import type { ModuleSchema, Field, FieldType } from "@repo/types";
+import { ActionMenu } from "./ActionMenu";
 
 type ListViewProps = {
   schema: ModuleSchema;
@@ -30,7 +31,7 @@ export default function ListView({
     const fields = schema.fields || [];
 
     // 1) prioridad: appareance === "List"
-    const byAppareance = fields.filter((f) => f.appareance === "List");
+    const byAppareance = fields.filter((f) => f.appareance === "List" || f.appareance === "Always");
     if (byAppareance.length > 0) return byAppareance;
 
     // 2) si no hay appareance List, usar list === true
@@ -177,37 +178,28 @@ export default function ListView({
 
                   {(onViewRow || onEditRow || onDeleteRow) && (
                     <td className="text-end text-nowrap">
-                      {onViewRow && (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-secondary me-1"
-                          onClick={() => onViewRow(row)}
-                          title="Ver"
-                        >
-                          <i className="bi bi-eye" />
-                        </button>
-                      )}
-                      {onEditRow && (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-warning me-1"
-                          onClick={() => onEditRow(row)}
-                          title="Editar"
-                        >
-                          <i className="bi bi-pencil" />
-                        </button>
-                      )}
-                      {onDeleteRow && (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() => onDeleteRow(row)}
-                          title="Eliminar"
-                        >
-                          <i className="bi bi-trash" />
-                        </button>
-                      )}
+                      <ActionMenu
+                        items={[
+                          onViewRow && {
+                            label: "Ver",
+                            icon: <i className="bi bi-eye" />,
+                            onClick: () => onViewRow(row),
+                          },
+                          onEditRow && {
+                            label: "Editar",
+                            icon: <i className="bi bi-pencil" />,
+                            onClick: () => onEditRow(row),
+                          },
+                          onDeleteRow && {
+                            label: "Eliminar",
+                            icon: <i className="bi bi-trash" />,
+                            variant: "danger",
+                            onClick: () => onDeleteRow(row),
+                          },
+                        ]}
+                      />
                     </td>
+
                   )}
                 </tr>
               ))
