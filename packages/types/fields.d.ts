@@ -78,3 +78,4 @@ export type ModuleSchema = {
         color?: string;
     };
 };
+

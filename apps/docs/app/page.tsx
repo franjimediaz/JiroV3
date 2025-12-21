@@ -772,20 +772,366 @@ compute: {
           </li>
         </ul>
       </Section>
+            {/* 13.1) ModuloForm: tipos especiales de campo */}
+<Section title="13.1) ModuloForm · Campos especiales (selectorTabla, formula y multiselect)">
+  <p>
+    <code>ModuloForm</code> es el editor visual del <code>ModuleSchema</code> (props JSON) que define:
+    la tabla origen, los campos y la UI del formulario dinámico. En esta sección se documentan
+    tres tipos de campo que requieren configuración extra: <b>selectorTabla</b>, <b>formula</b> y <b>multiselect</b>.
+  </p>
+
+  <h4>1) Campo tipo <code>selectorTabla</code></h4>
+  <p>
+    Un <code>selectorTabla</code> representa una referencia a otro módulo/tabla (por ejemplo, un campo clienteId
+    que apunta a la tabla de clientes). Permite definir:
+  </p>
+  <ul>
+    <li><b>moduleSlug</b>: a qué módulo/tabla apunta (por slug).</li>
+    <li><b>displayField</b>: campo a mostrar en la UI (ej. nombre).</li>
+    <li><b>valueField</b>: campo que se guarda (por defecto <code>"id"</code>).</li>
+    <li><b>filters</b>: filtros opcionales (JSON) para limitar resultados.</li>
+    <li><b>sort</b>: ordenación opcional (JSON).</li>
+  </ul>
+
+  <Code>{`// Ejemplo de campo selectorTabla
+{
+  name: "clienteId",
+  label: "Cliente",
+  type: "selectorTabla",
+  ref: {
+    moduleSlug: "clientes",
+    displayField: "nombre",
+    valueField: "id",
+    filters: [
+      { "field": "activo", "op": "=", "value": true }
+    ],
+    sort: [
+      { "field": "nombre", "direction": "asc" }
+    ]
+  }
+}`}</Code>
+
+  <p>
+    <b>Validación en ModuloForm:</b> si el tipo es <code>selectorTabla</code>, el editor exige que
+    <code>ref.moduleSlug</code> y <code>ref.displayField</code> sean strings válidos, para evitar props corruptos.
+  </p>
+  <p>
+    <b>Nota:</b> en el <code>Form</code> dinámico actual, el renderer del <code>selectorTabla</code> es un placeholder
+    (input de texto). El comportamiento final (desplegable con búsqueda, carga remota, etc.) depende de implementar
+    un <code>dataProvider</code> real.
+  </p>
+
+  <hr style={{ margin: "18px 0" }} />
+
+  <h4>2) Campo con cálculo tipo <code>formula</code> (compute)</h4>
+  <p>
+    En JiRo v2, el tipo “formula” no es un tipo de input, sino un modo de cálculo en la propiedad
+    <code>compute</code>. Se configura desde ModuloForm seleccionando <code>compute = formula</code>.
+  </p>
+
+  <p>Una fórmula requiere:</p>
+  <ul>
+    <li><b>expr</b>: expresión a evaluar.</li>
+    <li><b>deps</b>: lista de dependencias (campos que disparan el recálculo).</li>
+    <li><b>persist</b>: cuándo se persiste el resultado (<code>none</code>, <code>onSave</code>, <code>always</code>).</li>
+  </ul>
+
+  <Code>{`// Ejemplo compute formula
+{
+  name: "total",
+  label: "Total",
+  type: "money",
+  readOnly: true,
+  allowOverride: true,
+  compute: {
+    type: "formula",
+    expr: "cantidad * precioUnidad",
+    deps: ["cantidad", "precioUnidad"],
+    persist: "onSave"
+  }
+}`}</Code>
+
+  <p>
+    <b>Validación en ModuloForm:</b> cuando <code>compute.type === "formula"</code>, se valida que:
+    <code>expr</code> sea string y <code>deps</code> sea un array.
+  </p>
+
+  <p>
+    <b>Comportamiento en Form:</b> el valor se recalcula automáticamente. Si el campo tiene
+    <code>allowOverride: true</code>, el usuario puede marcar “Forzar valor” y escribir manualmente,
+    incluso si el campo es calculado.
+  </p>
+
+  <hr style={{ margin: "18px 0" }} />
+
+  <h4>3) Campo tipo <code>multiselect</code></h4>
+  <p>
+    Un <code>multiselect</code> es un campo cuyo valor es un <b>array de strings</b>. En ModuloForm,
+    este tipo requiere definir <code>options</code> (lista de valores permitidos).
+  </p>
+
+  <Code>{`// Ejemplo multiselect
+{
+  name: "servicios",
+  label: "Servicios",
+  type: "multiselect",
+  options: ["Albañilería", "Fontanería", "Electricidad"],
+  defaultValue: []
+}`}</Code>
+
+  <p>
+    <b>Validación en ModuloForm:</b> si el tipo es <code>multiselect</code>, se espera que
+    <code>options</code> exista y sea array. El editor incluye un input tipo “chips” para añadir opciones.
+  </p>
+
+  <p>
+    <b>Comportamiento en Form:</b> se renderiza como lista de checkboxes. Al seleccionar o deseleccionar,
+    el valor se guarda como array.
+  </p>
+</Section>
+{/* 13.2) ModuloForm · Validaciones y responsabilidades */}
+<Section title="13.2) ModuloForm · Validaciones y responsabilidades">
+  <p>
+    <code>ModuloForm</code> no es solo un editor visual: actúa como <b>primera línea de validación</b>
+    del <code>ModuleSchema</code> antes de que el formulario dinámico lo consuma en runtime.
+  </p>
+
+  <h4>Responsabilidades de ModuloForm</h4>
+  <ul>
+    <li>Garantizar que la estructura del <code>props</code> sea coherente.</li>
+    <li>Prevenir configuraciones inválidas desde la UI.</li>
+    <li>Reducir errores en tiempo de ejecución del <code>Form</code>.</li>
+  </ul>
+
+  <h4>Validaciones clave</h4>
+  <ul>
+    <li>
+      <b>Campos básicos:</b> <code>name</code>, <code>label</code> y <code>type</code> son obligatorios.
+    </li>
+    <li>
+      <b>selectorTabla:</b> se valida la existencia de <code>ref.moduleSlug</code> y
+      <code>ref.displayField</code>.
+    </li>
+    <li>
+      <b>compute.formula:</b> se valida que <code>expr</code> sea string y <code>deps</code> un array.
+    </li>
+    <li>
+      <b>compute.aggregate:</b> se valida <code>sourceTable</code>, <code>field</code> y <code>op</code>.
+    </li>
+    <li>
+      <b>multiselect:</b> se valida que <code>options</code> sea un array de strings.
+    </li>
+  </ul>
+
+  <h4>Límite de responsabilidad</h4>
+  <p>
+    ModuloForm <b>no ejecuta lógica de negocio</b> ni consultas reales. Su función termina al generar
+    un <code>ModuleSchema</code> válido. El comportamiento final depende de:
+  </p>
+  <ul>
+    <li>El componente <code>Form</code> (renderizado y UX).</li>
+    <li>El <code>computeEngine</code> (cálculo).</li>
+    <li>El <code>dataProvider</code> (acceso a datos externos).</li>
+  </ul>
+
+  <p>
+    Esta separación permite evolucionar cada capa de forma independiente sin romper el sistema.
+  </p>
+</Section>
+
+
+      {/* 15) Sistema de permisos y control de acceso */}
+        <Section title="15) Sistema de permisos y control de acceso (frontend)">
+          <p>
+            JiRo v2 implementa un sistema de control de acceso centralizado en frontend,
+            basado en <b>roles</b> y <b>permisos por módulo y acción</b>. El objetivo es:
+          </p>
+          <ul>
+            <li>Evitar lógica de permisos dispersa por la UI.</li>
+            <li>Unificar nombres de módulos y acciones.</li>
+            <li>Proteger rutas, vistas y acciones de forma declarativa.</li>
+          </ul>
+
+          <h4>15.1. Modelo de permiso</h4>
+          <p>Un permiso se define por:</p>
+          <Code>{`type Accion = "ver" | "crear" | "actualizar" | "eliminar" | "*";
+
+        type Permiso = {
+          modulo: string;
+          accion: Accion;
+        };`}</Code>
+
+          <p>
+            Los permisos se obtienen del backend (Supabase) y se normalizan en el
+            <code>PermisosProvider</code>.
+          </p>
+
+          <h4>15.2. PermisosProvider</h4>
+          <p>
+            El provider vive en <code>app/lib/permisos.tsx</code> y expone:
+          </p>
+          <Code>{`{
+          permisos: Permiso[];
+          hasPermiso(modulo: string, accion?: Accion): boolean;
+          loading: boolean;
+        }`}</Code>
+
+          <p>
+            El provider se monta en el layout principal (<code>ClientLayout</code>) y:
+          </p>
+          <ul>
+            <li>Normaliza nombres de módulos (aliases).</li>
+            <li>Normaliza acciones (read/view → ver, edit/update → actualizar).</li>
+            <li>Soporta comodín <code>*</code> para acciones o módulos completos.</li>
+          </ul>
+
+          <h4>15.3. Protección de vistas con RequirePermiso</h4>
+          <p>
+            Para proteger una página o componente se usa el wrapper:
+          </p>
+          <Code>{`<RequirePermiso modulo="clientes" accion="ver">
+          <ClientesPage />
+        </RequirePermiso>`}</Code>
+
+          <p>Comportamiento:</p>
+          <ul>
+            <li>Si no hay sesión → redirige a <code>/login</code>.</li>
+            <li>Si hay sesión pero no permiso → redirige a <code>/403</code>.</li>
+            <li>Las rutas públicas quedan excluidas automáticamente.</li>
+          </ul>
+        </Section>
+            {/* 16) Roles y permisos por módulo */}
+              <Section title="16) Roles y permisos por módulo">
+                <p>
+                  Los <b>roles</b> definen un conjunto de permisos estructurados por módulo.
+                  Cada rol almacena un JSON donde se indica qué acciones están permitidas
+                  en cada módulo.
+                </p>
+
+                <h4>Estructura típica de permisos en un rol</h4>
+                <Code>{`{
+                "clientes": {
+                  "ver": true,
+                  "crear": true,
+                  "actualizar": true,
+                  "eliminar": false
+                },
+                "obras": {
+                  "ver": true,
+                  "crear": false,
+                  "actualizar": false,
+                  "eliminar": false
+                },
+                "system": {
+                  "*": false
+                }
+              }`}</Code>
+
+                <p>
+                  Este enfoque permite:
+                </p>
+                <ul>
+                  <li>Gestionar accesos sin tocar código.</li>
+                  <li>Escalar módulos sin redefinir lógica de permisos.</li>
+                  <li>Usar el mismo esquema para frontend y backend (RLS).</li>
+                </ul>
+
+                <p>
+                  La vista <code>/system/roles</code> permite editar estos permisos de forma
+                  visual, generando automáticamente el JSON.
+                </p>
+              </Section>
+{/* 17) ActionMenu y patrón de acciones */}
+<Section title="17) ActionMenu y patrón de acciones condicionadas">
+  <p>
+    JiRo v2 utiliza un componente reutilizable <code>ActionMenu</code> para
+    centralizar las acciones de cada fila en vistas de listado
+    (clientes, obras, roles, etc.).
+  </p>
+
+  <h4>Características</h4>
+  <ul>
+    <li>Acciones definidas por configuración.</li>
+    <li>Soporte de visibilidad condicional.</li>
+    <li>Integración directa con el sistema de permisos.</li>
+  </ul>
+
+  <Code>{`const actions = [
+  {
+    label: "Ver",
+    onClick: () => onView(row),
+    permiso: { modulo: "clientes", accion: "ver" },
+  },
+  {
+    label: "Editar",
+    onClick: () => onEdit(row),
+    permiso: { modulo: "clientes", accion: "actualizar" },
+  },
+  {
+    label: "Eliminar",
+    onClick: () => onDelete(row),
+    permiso: { modulo: "clientes", accion: "eliminar" },
+  },
+];`}</Code>
+
+  <p>
+    El menú solo renderiza las acciones permitidas según el contexto del usuario,
+    evitando mostrar botones que luego fallarían.
+  </p>
+</Section>
+{/* 18) Decisiones arquitectónicas clave */}
+<Section title="18) Decisiones arquitectónicas clave">
+  <ul>
+    <li>
+      <b>Formularios dinámicos</b> en lugar de formularios hardcodeados:
+      permite escalar módulos sin duplicar lógica.
+    </li>
+    <li>
+      <b>Permisos en frontend declarativos</b>:
+      evita condicionales dispersos y facilita auditoría.
+    </li>
+    <li>
+      <b>ActionMenu desacoplado</b>:
+      misma UX en todas las tablas, menos código repetido.
+    </li>
+    <li>
+      <b>JSON como fuente de verdad</b> para módulos y permisos:
+      permite edición visual y futura automatización.
+    </li>
+    <li>
+      <b>No uso de Tailwind</b>:
+      se prioriza claridad, CSS explícito y menor fricción mental.
+    </li>
+  </ul>
+</Section>
+
 
       {/* Estado global */}
-      <Section title="14) Estado del proyecto y siguientes pasos globales">
-        <ul>
-          <li>✅ Supabase integrado y funcional con autenticación.</li>
-          <li>✅ Estructura base de rutas y página de dashboard.</li>
-          <li>✅ Página de clientes conectada a la base de datos.</li>
-          <li>✅ Página de detalle de módulo funcional y editable desde UI.</li>
-          <li>✅ Componente Form dinámico con compute, overrides y secciones.</li>
-          <li>🧩 Pendiente: middleware de sesión y control de acceso.</li>
-          <li>🧩 Pendiente: dataProvider real y selects desde tablas externas.</li>
-          <li>🧩 Pendiente: interfaz visual para builder de módulos/campos.</li>
-        </ul>
-      </Section>
+<Section title="XXX) Estado del proyecto y siguientes pasos globales">
+  <ul>
+    <li>✅ Supabase integrado y funcional (PostgreSQL + Auth).</li>
+    <li>✅ Arquitectura base consolidada con Next.js App Router y TypeScript.</li>
+    <li>✅ Sistema de módulos dinámicos operativo (definición por JSON en base de datos).</li>
+    <li>✅ Página de módulos (/system/modulos/[id]) completamente funcional y editable desde UI.</li>
+    <li>
+      ✅ Componente Form dinámico centralizado con soporte de:
+      <ul>
+        <li>modos view / edit / create,</li>
+        <li>cálculo automático (formula y aggregate),</li>
+        <li>overrides por campo,</li>
+        <li>layout por secciones configurables.</li>
+      </ul>
+    </li>
+    <li>✅ Sistema de permisos en frontend implementado (PermisosProvider + RequirePermiso).</li>
+    <li>✅ ActionMenu reutilizable con acciones condicionadas por permisos.</li>
+
+    <li>🧩 Pendiente: implementación de un dataProvider real conectado a Supabase (aggregates y selectorTabla).</li>
+    <li>🧩 Pendiente: alineación completa entre permisos frontend y políticas RLS en Supabase.</li>
+    <li>🧩 Pendiente: mejora de la UX del builder de módulos y campos (validaciones, ayudas, prevención de errores).</li>
+    <li>🧩 Pendiente: tests básicos de computeEngine, permisos críticos y flujos principales.</li>
+    <li>🧩 Pendiente: documentación funcional orientada a system admins (uso del builder y permisos).</li>
+  </ul>
+</Section>
 
       <hr style={{ margin: "32px 0" }} />
       <p>

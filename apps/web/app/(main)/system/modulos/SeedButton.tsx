@@ -28,9 +28,9 @@ export default function SeedButton() {
         type="button"
         onClick={onClick}
         disabled={pending}
-        className={styles.seedBtn}
+        className={styles.btn}
       >
-        {pending ? "Sembrando..." : "Sembrar/Actualizar módulos"}
+        {pending ? "Sembrando..." : "Reestablecer modulos"}
       </button>
       {msg && (
         <p className={ok ? styles.msgOk : styles.msgErr}>

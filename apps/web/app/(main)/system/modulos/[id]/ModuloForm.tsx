@@ -9,17 +9,73 @@ import {VALID_FIELD_TYPES,Appareance_Valid_Types} from "@repo/types";
 
 
 
+
 // TODO: Reemplaza por tu fuente real de iconos.
 // Si tienes un array exportado de tu librería, pégalo aquí:
-const ICON_OPTIONS = [
+export const ICON_OPTIONS = [
+  // 👤 Personas / Usuarios
   { name: "Usuario", value: "bi-person" },
-  { name: "Casa", value: "bi-house" },
-  { name: "Cash", value: "bi-currency-exchange" },
-  { name: "Carpeta", value: "bi-file-earmark" },
+  { name: "Usuarios", value: "bi-people" },
+  { name: "Usuario Plus", value: "bi-person-plus" },
+  { name: "Usuario Check", value: "bi-person-check" },
+  { name: "Usuario Gear", value: "bi-person-gear" },
+
+  // 🏢 Negocio / Organización
+  { name: "Empresa", value: "bi-building" },
+  { name: "Oficina", value: "bi-building-gear" },
+  { name: "Carpeta", value: "bi-folder" },
+  { name: "Carpeta Abierta", value: "bi-folder2-open" },
+  { name: "Archivo", value: "bi-file-earmark" },
+  { name: "Archivos", value: "bi-files" },
+
+  // 🧾 Datos / Tablas
+  { name: "Tabla", value: "bi-table" },
+  { name: "Lista", value: "bi-list-ul" },
+  { name: "Checklist", value: "bi-list-check" },
+  { name: "Gráfico", value: "bi-bar-chart" },
+  { name: "Gráfico Lineal", value: "bi-graph-up" },
+
+  // ⚙️ Configuración / Sistema
+  { name: "Configuración", value: "bi-gear" },
+  { name: "Ajustes", value: "bi-sliders" },
+  { name: "Herramientas", value: "bi-tools" },
+  { name: "Llave", value: "bi-key" },
+  { name: "Escudo", value: "bi-shield-lock" },
+
+  // 📅 Tiempo / Planificación
   { name: "Calendario", value: "bi-calendar-week" },
+  { name: "Reloj", value: "bi-clock" },
+  { name: "Alarma", value: "bi-alarm" },
+  { name: "Cronómetro", value: "bi-stopwatch" },
+
+  // 💰 Finanzas
+  { name: "Dinero", value: "bi-cash" },
+  { name: "Moneda", value: "bi-currency-euro" },
+  { name: "Factura", value: "bi-receipt" },
+  { name: "Tarjeta", value: "bi-credit-card" },
+
+  // 🧱 Obras / Servicios (muy JiRo)
+  { name: "Casa", value: "bi-house" },
+  { name: "Martillo", value: "bi-hammer" },
+  { name: "Construcción", value: "bi-cone-striped" },
+  { name: "Regla", value: "bi-rulers" },
+  { name: "Camión", value: "bi-truck" },
+
+  // ✉️ Comunicación
+  { name: "Email", value: "bi-envelope" },
+  { name: "Chat", value: "bi-chat-dots" },
+  { name: "Teléfono", value: "bi-telephone" },
+
+  // 🔔 Estados / UX
+  { name: "Check", value: "bi-check-circle" },
+  { name: "Error", value: "bi-x-circle" },
+  { name: "Info", value: "bi-info-circle" },
+  { name: "Advertencia", value: "bi-exclamation-triangle" },
+
+  // ⭐ Extras
   { name: "Estrella", value: "bi-star" },
-  { name: "Engranaje", value: "bi-gear" },
-  { name: "Toggles", value: "bi-toggles" },
+  { name: "Corazón", value: "bi-heart" },
+  { name: "Pin", value: "bi-geo-alt" },
 ];
 
 function validatePropsClient(props: any): string | null {
@@ -38,16 +94,26 @@ function validatePropsClient(props: any): string | null {
       return `fields[${i}].label requerido`;
     if (!VALID_FIELD_TYPES.includes(f.type))
       return `fields[${i}].type inválido`;
-    if (f.type === "selectorTabla") {
-      const r = f.ref;
-      if (!r || typeof r !== "object" || typeof r.moduleSlug !== "string" || typeof r.displayField !== "string") {
-        return `fields[${i}].ref inválido para selectorTabla`;
-      }
-    }
+if (f.type === "selectorTabla") {
+  const r = f.ref;
+  if (
+    !r ||
+    typeof r !== "object" ||
+    typeof r.moduleSlug !== "string" ||
+    typeof r.displayField !== "string"
+  ) {
+    return `fields[${i}].ref inválido para selectorTabla`;
+  }
+
+  if (r.multiple !== undefined && typeof r.multiple !== "boolean") {
+    return `fields[${i}].ref.multiple debe ser boolean`;
+  }
+}
     if (f.compute?.type === "formula") {
   if (typeof f.compute.expr !== "string" || !Array.isArray(f.compute.deps)) {
     return `fields[${i}].compute formula inválido`;
   }
+  
     }
 
     if (f.compute?.type === "aggregate") {
@@ -246,7 +312,8 @@ function FieldRow({
   canDown: boolean;
 }) {
   return (
-    <div className={styles.card} style={{ marginBottom: 12 }}>
+    <div className={styles.fieldformcard} style={{ marginBottom: 12 }}>
+      <div className={styles.card}>
       <div className={styles.grid}>
         <div>
           <label className={styles.label}>name</label>
@@ -337,11 +404,6 @@ function FieldRow({
         </div>
         
       </div>
-      
-
-      
-
-      {/* Opcionales comunes */}
       <div className={styles.grid}>
         <div>
           <label className={styles.label}>placeholder</label>
@@ -372,6 +434,13 @@ function FieldRow({
           />
         </div>
       </div>
+      </div>
+      
+
+      
+
+      {/* Opcionales comunes */}
+      
         <div className={styles.card} style={{ marginTop: 12 }}>
           <h4 style={{ marginTop: 0 }}>Opciones UI</h4>
 
@@ -464,6 +533,27 @@ function FieldRow({
                 }
               />
             </div>
+            <div>
+            <label className={styles.label}>ref.multiple</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={!!field.ref?.multiple}
+                onChange={(e) =>
+                  onChange({
+                    ...field,
+                    ref: {
+                      ...(field.ref || { moduleSlug: "", displayField: "" }),
+                      multiple: e.target.checked,
+                    },
+                  })
+                }
+              />
+              <span style={{ fontSize: 13, opacity: 0.85 }}>
+                Permitir multiselección
+              </span>
+            </div>
+          </div>
 
             <div className="full">
               <label className={styles.label}>ref.filters (JSON)</label>
@@ -912,13 +1002,14 @@ export default function ModuloForm({
   return (
     <form className={styles.card} onSubmit={onSubmit}>
       {/* Cabecera módulo */}
+      <div className={styles.card}>
       <div className={styles.grid}>
         <div>
           <label className={styles.label}>Nombre</label>
           <input className={styles.input} value={nombre} onChange={(e)=>setNombre(e.target.value)} {...readOnlyAttr}/>
         </div>
         <div>
-          <label className={styles.label}>Slug</label>
+          <label className={styles.label}>Slug/Xml</label>
           <input className={styles.input} value={slug} onChange={(e)=>setSlug(e.target.value)} {...readOnlyAttr}/>
         </div>
         <div>
@@ -929,6 +1020,7 @@ export default function ModuloForm({
             <option value="subtabla">subtabla</option>
             <option value="vista">vista</option>
           </select>
+        </div>
         </div>
   
         <div>
@@ -1173,12 +1265,15 @@ export default function ModuloForm({
       {/* Acciones */}
       <div className={styles.actionsRow}>
         {readOnly ? (
-          <a />
+          <a className={styles.btn} href={`?edit=true`}>Editar</a>
         ) : (
-          <button type="submit" disabled={pending} className={styles.btn}>
-            {pending ? (mode === "create" ? "Creando..." : "Guardando...") : (mode === "create" ? "Crear módulo" : "Guardar cambios")}
+          <button type="submit" disabled={pending}  className={styles.btn}>
+            {msg ? (msg.ok?  "Guardado" : "Guardando...") : ("Guardar")}
+            
           </button>
+          
         )}
+        <a className={styles.btn} href="/system/modulos">← Volver</a>
         {msg && <span className={msg.ok ? styles.msgOk : styles.msgErr}>{msg.text}</span>}
       </div>
     </form>

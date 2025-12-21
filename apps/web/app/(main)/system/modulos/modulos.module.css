@@ -34,10 +34,11 @@
 .seedBtn:hover { opacity: 0.95; }
 
 .treeSection {
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: #8c8c8d63;
+  border: 1px solid #1a2332;
   border-radius: 12px;
-  padding: 12px;
+  padding: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .empty {
@@ -49,7 +50,7 @@
 .tree {
   list-style: none;
   margin: 0;
-  padding: 8px 6px;
+  padding: 4px 0;
 }
 
 .node {
@@ -60,11 +61,13 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 8px;
+  padding: 8px 12px;
   border-radius: 8px;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 .nodeRow:hover {
-  background: #f9fafb;
+  background: rgba(122, 167, 255, 0.1);
+  box-shadow: inset 0 0 8px rgba(122, 167, 255, 0.05);
 }
 
 .toggle {
@@ -170,4 +173,39 @@
 .menuItem:hover, .menuItem:focus {
   background: #f8f9fa;
   text-decoration: none;
+}
+.menuItemB {
+  appearance: none;
+  background: linear-gradient(180deg, #ffffff, #ffffff);
+  color: var(--card);
+  border: none;  /* Sin reborde */
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform .05s ease, box-shadow .15s ease, background .15s ease;
+  box-shadow: var(--shadow-sm);
+}
+.menuItemB:hover, .menuItemB:focus {
+  box-shadow: 0 4px 12px rgba(122, 167, 255, 0.25);
+  transform: translateY(-2px);
+}
+.btn {
+  appearance: none;
+  background: linear-gradient(180deg, #428523, #35691c);
+  color: var(--text);
+  border: none;  /* Sin reborde */
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform .05s ease, box-shadow .15s ease, background .15s ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.btn:hover {
+  box-shadow: 0 4px 12px rgba(0, 255, 43, 0.377);
+  transform: translateY(-2px);
 }

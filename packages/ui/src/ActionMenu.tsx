@@ -8,28 +8,8 @@ import React, {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import type {ActionMenuItem,ActionMenuProps } from "@repo/types";
 
-/* ──────────────────────────────────────────────
-   Tipos
-────────────────────────────────────────────── */
-
-export type ActionMenuItem = {
-  label: string;
-  onClick?: () => void | Promise<void>;
-  icon?: React.ReactNode;
-  variant?: "danger";
-  disabled?: boolean;
-  hidden?: boolean;
-  title?: string;
-};
-
-export type ActionMenuProps = {
-  items?: (ActionMenuItem | false | null | undefined)[];
-  align?: "start" | "end";
-  size?: "sm" | "md";
-  disabled?: boolean;
-  ariaLabel?: string;
-};
 
 /* ──────────────────────────────────────────────
    Componente

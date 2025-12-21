@@ -90,16 +90,8 @@ export default async function ModuloUnifiedPage(props: {
       <header className={styles.header}>
         <div>
           <h1 className={styles.title}>{modulo.nombre}</h1>
-          <p className={styles.subtitle}>/{modulo.slug} · {modulo.tipo}</p>
         </div>
-        <nav className={styles.actions}>
-          {!isEdit ? (
-            <a className={styles.btn} href={`?edit=true`}>Editar</a>
-          ) : (
-            <a className={styles.btnSecondary} href={`?edit=false`}>Ver</a>
-          )}
-          <a className={styles.btnLight} href="/system/modulos">← Volver</a>
-        </nav>
+
       </header>
 
       <ModuloForm initialData={modulo} mode={mode} />

@@ -2,7 +2,8 @@
 "use server";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { MODULOS_SEED, type SeedNode } from "@/lib/seed/modulos.seed";
+import { MODULOS_SEED } from "@/lib/seed/modulos.seed";
+import { SeedNode } from "@repo/types";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 
 const TABLE = "modulos";

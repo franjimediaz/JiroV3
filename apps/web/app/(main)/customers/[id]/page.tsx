@@ -1,123 +1,116 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { ModuleSchema } from "@repo/types";
-import {Form} from "@repo/ui"; // ⬅️ tu componente Form.tsx
+import { Form } from "@repo/ui";
 
 export const dynamic = "force-dynamic";
 
-// ---------------------------
-// 1. Schema del módulo customer desde Supabase
-//    Tabla de ejemplo: "modulos", columna "props" (jsonb) y "slug"
-// ---------------------------
-async function fetchCustomerSchema(): Promise<ModuleSchema> {
+const CFG = {
+  moduleSlug: "customers",
+  table: "customers",
+  titleSingular: "Clientes",
+  displayField: "name",
+} as const;
+
+async function fetchSchemaBySlug(slug: string): Promise<ModuleSchema> {
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from("modulos")
     .select("props")
-    .eq("slug", "customers") // 👈 aquí usas el slug que hayas definido para el módulo
+    .eq("slug", slug)
     .maybeSingle();
 
   if (error) {
-    console.error("Error cargando schema de customers:", error);
-    throw new Error("No se pudo cargar el schema de customers");
+    console.error(`Error cargando schema de ${slug}:`, error);
+    throw new Error(`No se pudo cargar el schema de ${slug}`);
   }
+  if (!data) throw new Error(`Módulo '${slug}' no encontrado en modulos`);
 
-  if (!data) {
-    throw new Error("Módulo 'clientes' no encontrado en modulos");
-  }
-
-  // props puede venir ya como objeto (jsonb) o como string
   const raw = (data as any).props;
-  const schema = typeof raw === "string" ? (JSON.parse(raw) as ModuleSchema) : (raw as ModuleSchema);
-
-  return schema;
+  return typeof raw === "string"
+    ? (JSON.parse(raw) as ModuleSchema)
+    : (raw as ModuleSchema);
 }
 
-// ---------------------------
-// 2. Fetch del registro customer desde Supabase
-//    Tabla: "customer" (o la que tengas)
-// ---------------------------
-async function fetchCustomer(id: string) {
+async function fetchRowById(table: string, id: string) {
   const supabase = await createClient();
 
   const { data, error } = await supabase
-    .from("customers")          // 👈 nombre real de tu tabla
+    .from(table)
     .select("*")
     .eq("id", id)
     .maybeSingle();
 
   if (error) {
-    console.error("Error cargando customer:", error);
-    throw new Error("No se pudo cargar el customer");
-  }
-
+  console.error(`Error cargando ${table}(${id}):`, {
+    message: (error as any)?.message,
+    code: (error as any)?.code,
+    details: (error as any)?.details,
+    hint: (error as any)?.hint,
+  });
+  throw new Error(`No se pudo cargar el registro de ${table}`);
+}
   if (!data) return null;
 
-  // Si quieres añadir meta.overrides por defecto:
   return {
     ...data,
     meta: (data as any).meta || { overrides: {} },
   };
 }
 
-// ---------------------------
-// 3. Page que usa Form directamente
-// ---------------------------
-export default async function CustomerPage({
+async function resolveMaybePromise<T>(
+  v: Promise<T> | T | undefined
+): Promise<T | undefined> {
+  if (!v) return undefined;
+  return typeof (v as any).then === "function" ? await (v as any) : (v as any);
+}
+
+export default async function EntityPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }> | { id: string };
   searchParams?: Promise<Record<string, string>> | Record<string, string>;
 }) {
-  // Soporta tu caso de params/searchParams como Promise
-  const p =
-    params && typeof (params as any).then === "function"
-      ? await (params as any)
-      : (params as any);
-  const sp =
-    searchParams && typeof (searchParams as any).then === "function"
-      ? await (searchParams as any)
-      : (searchParams ?? {});
+  const p = await resolveMaybePromise(params);
+  const sp = (await resolveMaybePromise(searchParams)) ?? {};
 
   const id = p?.id;
   if (!id) notFound();
 
-  const [schema, customer] = await Promise.all([
-    fetchCustomerSchema(),
-    fetchCustomer(id),
+  const isEdit = sp?.edit === "true";
+
+  const [schema, row] = await Promise.all([
+    fetchSchemaBySlug(CFG.moduleSlug),
+    fetchRowById(CFG.table, id),
   ]);
 
-  if (!customer) {
-    notFound();
-  }
-
-  const isEdit = sp?.edit === "true";
+  // Si no existe, 404
+  if (!row) notFound();
 
   const buildHref = (nextEdit: boolean) => {
     const qs = new URLSearchParams(sp || {});
     if (nextEdit) qs.set("edit", "true");
     else qs.delete("edit");
-    const query = qs.toString();
-    return query ? `/customers/${id}?${query}` : `/customers/${id}`;
+    const q = qs.toString();
+    return q ? `/${CFG.table}/${id}?${q}` : `/${CFG.table}/${id}`;
   };
+
+  const display = (row as any)?.[CFG.displayField] ?? id;
 
   return (
     <main className="container py-4 bg-secondary bg-opacity-10 rounded">
       <header className="d-flex align-items-center mb-4">
-        <h1 className="me-auto">Cliente: {customer.name}</h1>
-        
-      
+        <h1 className="me-auto">
+          {CFG.titleSingular}: {String(display)}
+        </h1>
       </header>
 
       <Form
         schema={schema}
-        initialData={customer}
-        
+        initialData={row}
         mode={isEdit ? "edit" : "view"}
-        // si tu Form admite onChange, puedes engancharlo luego para guardar
-        // onChange={(vals) => console.log("vals", vals)}
       />
     </main>
   );

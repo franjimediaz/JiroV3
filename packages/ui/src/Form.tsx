@@ -3,14 +3,16 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { Field, ModuleSchema, FieldType } from "@repo/types";
 import { applyCompute } from "./engines/computeEngine";
-import { dataProvider } from "./providers/DataProvider";
+import type { DataProvider } from "./engines/computeEngine";
+import { dataProvider as defaultDataProvider } from "./providers/DataProvider";
+import { PopupSelector } from "./PopUpSelector";
 
 type Mode = "view" | "edit" | "create";
 
 type Props = {
   schema: ModuleSchema;
   initialData?: any;            // { ...valores, meta?: { overrides?: { [k]: {enabled,value} } } }
-  onChange?: (values: any) => void;
+  onChange?: (values: any) => void | Promise<void>;
   readOnly?: boolean;
 
   // NUEVO: modo lógico del formulario
@@ -20,6 +22,8 @@ type Props = {
   onSubmit?: (values: any) => void;
   onBack?: () => void;
   onEdit?: () => void;
+
+  dataProvider?: DataProvider;
 };
 
 export default function Form({
@@ -31,6 +35,7 @@ export default function Form({
   onSubmit,
   onBack,
   onEdit,
+  dataProvider = defaultDataProvider,
 }: Props) {
   // Derivar modo por defecto si no viene
   const effectiveMode: Mode =
@@ -208,11 +213,17 @@ export default function Form({
 
   // --------- ACCIONES (Guardar / Editar / Volver) ---------
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (effectiveMode === "view") return;
-    onSubmit?.(values);
-  };
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (effectiveMode === "view") return;
+
+  try {
+    await onSubmit?.(values);  // ✅ CLAVE: esperar al Server Action
+  } catch (err) {
+    console.error("Error en submit:", err);
+    alert((err as any)?.message || "Error guardando");
+  }
+};                                                                                                                                                                                                      
 
   const handleBack = () => {
     if (onBack) return onBack();
@@ -349,7 +360,99 @@ function FieldInput({
   readOnly?: boolean;
 }) {
   const type = field.type as FieldType;
+const [popupOpen, setPopupOpen] = useState(false);
+const [popupItems, setPopupItems] = useState<{ value: any; label: string }[]>([]);
+const [popupLoading, setPopupLoading] = useState(false);
+const isMultiple = type === "selectorTabla" && !!field.ref?.multiple;
+const [labelCache, setLabelCache] = useState<Record<string, string>>({});
 
+
+// selección borrador
+const selectedSet = useMemo(() => {
+  if (!isMultiple) return new Set<any>(value ? [value] : []);
+  return new Set<any>(Array.isArray(value) ? value : []);
+}, [isMultiple, value]);
+
+const [draft, setDraft] = useState<Set<any>>(new Set(selectedSet));
+
+
+//-------------------------
+const toggleDraft = (v: any) => {
+  setDraft((prev) => {
+    const next = new Set(prev);
+    if (isMultiple) {
+      next.has(v) ? next.delete(v) : next.add(v);
+      return next;
+    }
+    next.clear();
+    next.add(v);
+    return next;
+  });
+};
+
+const applyDraft = () => {
+  if (isMultiple) onChange(Array.from(draft));
+  else onChange(draft.size ? Array.from(draft)[0] : "");
+  setPopupOpen(false);
+};
+//-----------------------------
+async function handleSearch(q: string) {
+const moduleSlug = field.ref?.moduleSlug;
+const displayField = field.ref?.displayField || "name";
+const valueField = field.ref?.valueField || "id"; // si no lo tienes, usamos id
+
+if (!moduleSlug) {
+  setPopupItems([
+    { value: "__missing__", label: "⚠️ Falta ref.moduleSlug en este selectorTabla" },
+  ]);
+  return;
+}
+
+setPopupLoading(true);
+try {
+  const params = new URLSearchParams();
+  params.set("moduleSlug", moduleSlug);
+  params.set("q", q || "");
+  params.set("limit", "30");
+  params.set("displayField", displayField);
+
+  const r = await fetch(`/api/dp/list?${params.toString()}`, {
+    credentials: "include",
+  });
+
+  const json = await r.json();
+
+  if (!r.ok) {
+    setPopupItems([
+      {
+        value: "__err__",
+        label: `❌ ${json?.error?.message || json?.error || "Error cargando datos"}`,
+      },
+    ]);
+    return;
+  }
+
+  const rows = json.data || [];
+  setPopupItems(
+    rows.map((row: any) => ({
+      value: row?.[valueField],
+      label: row?.[displayField] ?? String(row?.[valueField] ?? ""),
+    }))
+  );
+} finally {
+  setPopupLoading(false);
+}
+}
+
+//-------------------------
+async function openSelectorTablaPopup() {
+  if (readOnly) return;
+  setPopupOpen(true);
+  // primera carga
+  await handleSearch("");
+}
+
+//-------------------------
   if (type === "boolean") {
     return (
       <div className="form-check">
@@ -467,21 +570,78 @@ function FieldInput({
   }
 
   if (type === "selectorTabla") {
-    // Placeholder: integra tu SelectorTabla real cuando quieras
-    return (
-      <input
-        type="text"
-        className="form-control"
-        value={value ?? ""}
-        placeholder={
-          field.placeholder ||
-          `ID de ${field.ref?.moduleSlug || "registro"}`
-        }
-        onChange={(e) => onChange(e.target.value)}
-        disabled={readOnly}
-      />
+  const summary = (() => {
+  if (!value) return "— Seleccionar —";
+
+  if (isMultiple) {
+    if (!Array.isArray(value) || value.length === 0) {
+      return "— Seleccionar —";
+    }
+
+    const labels = value.map(
+      (v) => labelCache[v] || String(v)
     );
+
+    // si hay muchos, no ensuciamos el input
+    if (labels.length > 3) {
+      return `${labels.length} seleccionados`;
+    }
+
+    return labels.join(", ");
   }
+
+  // single
+  return labelCache[value] || String(value);
+})();
+
+  return (
+    <>
+      <button
+        type="button"
+        className="form-control d-flex justify-content-between align-items-center"
+        onClick={openSelectorTablaPopup}
+        disabled={readOnly}
+      >
+        <span style={{ opacity: value ? 1 : 0.75 }}>{summary}</span>
+        <span style={{ opacity: 0.7 }}>🔎</span>
+      </button>
+      
+        <PopupSelector
+        open={popupOpen}
+        title={field.label || `Seleccionar (${field.ref?.moduleSlug || ""})`}
+        multiple={isMultiple}
+        value={isMultiple ? (Array.isArray(value) ? value : []) : value}
+        items={popupItems}
+        loading={popupLoading}
+        onSearch={handleSearch}
+        onClose={() => setPopupOpen(false)}
+        onApply={(next) => {
+  // next puede ser id o ids[]
+          if (Array.isArray(next)) {
+            const newCache: Record<string, string> = {};
+            popupItems.forEach((item) => {
+              if (next.includes(item.value)) {
+                newCache[item.value] = item.label;
+              }
+            });
+            setLabelCache((prev) => ({ ...prev, ...newCache }));
+          } else {
+            const found = popupItems.find((i) => i.value === next);
+            if (found) {
+              setLabelCache((prev) => ({ ...prev, [next]: found.label }));
+            }
+          }
+
+          onChange(next);
+        }}
+      />
+ 
+
+    </>
+  );
+}
+
+
 
   // text / textarea / formula (formula suele ser readOnly salvo override)
   if (field.ui?.variant === "textarea" || type === "textarea") {
@@ -505,7 +665,9 @@ function FieldInput({
       disabled={readOnly}
       placeholder={field.placeholder}
     />
+    
   );
+
 }
 
 /* ---------------- Utils ---------------- */

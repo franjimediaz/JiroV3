@@ -13,4 +13,8 @@ export const dataProvider: DataProvider = {
     console.warn("[@repo/ui] aggregate STUB → reemplazar por implementación real", { input, record });
     return 0;
   },
+   async list(input) {
+    console.warn("[@repo/ui] list STUB → reemplazar por implementación real", { input });
+    return { data: [] };
+  },
 };

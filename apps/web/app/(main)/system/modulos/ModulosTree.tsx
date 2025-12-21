@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import type { ModuloNode } from "./page";
 import styles from "./modulos.module.css";
 import Link from "next/link";
+import { exportModuloSeed, seedToClipboardText } from "./exportModuloSeed";
+import  CreateModule  from "./CreateModule";
 
 type Props = { nodes: ModuloNode[] };
 
@@ -30,8 +32,67 @@ function NodeRow({ node }: { node: ModuloNode }) {
   return () => document.removeEventListener("click", onDocClick);
 }, []);
 
+
+async function handleCopySeed() {
+      const seed = exportModuloSeed(node);
+      const constName = `${(node?.slug ?? "modulo").replace(/[^a-zA-Z0-9_]/g, "_")}Seed`;
+      const text = seedToClipboardText(seed, constName);
+      await navigator.clipboard.writeText(text);
+      alert("Seed copiada al portapapeles.");
+      }
+
+      function downloadText(filename: string, text: string) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function handleDownloadSeed() {
+  const seed = exportModuloSeed(node);
+  const constName = `${(node?.slug ?? "modulo").replace(/[^a-zA-Z0-9_]/g, "_")}Seed`;
+  const text = seedToClipboardText(seed, constName);
+  downloadText(`${constName}.ts`, text);
+}
+
+const actions = [
+  {
+    key: "view",
+    label: "Ver",
+    icon: "bi-eye",
+    type: "link",
+    href: `/system/modulos/${node.id}`,
+  },
+  {
+    key: "edit",
+    label: "Editar",
+    icon: "bi-pencil",
+    type: "link",
+    href: `/system/modulos/${node.id}?edit=true`,
+  },
+  {
+    key: "export",
+    label: "Exportar seed",
+    icon: "bi-download",
+    type: "button",
+    onClick: handleDownloadSeed,
+  },
+  {
+    key: "copy",
+    label: "Copiar seed",
+    icon: "bi-copy",
+    type: "button",
+    onClick: handleCopySeed,
+  },
+];
+
+const [openModule, setOpenModule] = useState(false);
   return (
     <li className={styles.node}>
+
       <div className={styles.nodeRow}>
         <button
           type="button"
@@ -79,9 +140,25 @@ function NodeRow({ node }: { node: ModuloNode }) {
                 <Link href={`/system/modulos/${node.id}?edit=true`} className={styles.menuItem} role="menuitem">
                   <i className="bi bi-pencil me-2" aria-hidden="true" /> Editar
                 </Link>
+                <button type="button" className={styles.menuItemB} role="menuitem" onClick={handleDownloadSeed}>
+                  <i className="bi bi-download me-2" aria-hidden="true" />Exportar seed
+                </button>
+                <button type="button" className={styles.menuItemB} role="menuitem" onClick={handleCopySeed}>
+                  <i className="bi bi-copy me-2" aria-hidden="true" /> Copiar seed
+                </button>
+                <button  className={styles.menuItemB} role="menuitem" onClick={() => setOpenModule(true)}>
+                  <i className="bi bi-plus me-2" aria-hidden="true" /> Nueva tabla
+                </button>
+                
               </div>
             )}
-          
+
+              <CreateModule
+                    open={openModule}
+                    onClose={() => setOpenModule(false)}
+                    parentId={node.id /* o null */}
+                    defaultTipo="tabla"
+                  />
           {/* Aquí podrías añadir acciones: Ver, Editar, Eliminar */}
         </div>
       </div>
@@ -98,11 +175,24 @@ function NodeRow({ node }: { node: ModuloNode }) {
 }
 
 export default function ModulosTree({ nodes }: Props) {
+  const [openModule, setOpenModule] = useState(false);
   return (
+    <div>
+      <button  className={styles.btn} role="menuitem" onClick={() => setOpenModule(true)}>
+                  <i className="bi bi-plus me-2" aria-hidden="true" /> Nuevo Módulo
+                </button>
     <ul className={styles.tree}>
       {nodes.map((n) => (
         <NodeRow key={n.id} node={n} />
       ))}
     </ul>
+    <CreateModule
+      open={openModule}
+      onClose={() => setOpenModule(false)}
+      parentId={null}
+      defaultTipo="tabla"
+      />
+    </div>
+    
   );
 }

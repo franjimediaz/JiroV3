@@ -58,6 +58,7 @@ export type Field = {
   options?: string[];          // para select/multiselect
     ref?: {
     moduleSlug: string;
+    multiple?: boolean;
     table?: string;            // opcional si coincide con moduleSlug
     displayField: string;
     valueField?: string;       // por defecto "id"
@@ -77,7 +78,7 @@ export type Field = {
     icon?: string;
     color?: string;
     width?: "1/1" | "1/2" | "1/3" | "2/3";
-    variant?: "input" | "textarea" | "currency" | "percent";
+    variant?: "input" | "textarea" | "currency" | "percent"|"richtext";
     placeholder?: string;
     help?: string;
   };
@@ -115,4 +116,46 @@ export type ModuleSchema = {
     icon?: string;
     color?: string;
   };
+};
+export type ListViewProps = {
+  schema: ModuleSchema;
+  data: any[];
+  loading?: boolean;
+
+  onViewRow?: (row: any) => void;
+  onEditRow?: (row: any) => void;
+  onDeleteRow?: (row: any) => void;
+  onCreate?: () => void;
+};
+export type ActionMenuItem = {
+  label: string;
+  onClick?: () => void | Promise<void>;
+  icon?: React.ReactNode;
+  variant?: "danger";
+  disabled?: boolean;
+  hidden?: boolean;
+  title?: string;
+};
+
+export type ActionMenuProps = {
+  items?: (ActionMenuItem | false | null | undefined)[];
+  align?: "start" | "end";
+  size?: "sm" | "md";
+  disabled?: boolean;
+  ariaLabel?: string;
+};
+export type SeedNode = {
+  slug: string;
+  nombre: string;
+  route?: string;
+  tipo: "carpeta" | "tabla" | "subtabla" | "vista";
+  orden?: number;
+  activo?: boolean;
+  props?: any;
+  children?: SeedNode[];
+  db?:any;
+  ui?:any;
+  fields?: Field[];
+  formSections?: FormSection[];
+ 
 };

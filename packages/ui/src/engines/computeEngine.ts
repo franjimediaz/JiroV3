@@ -7,6 +7,14 @@ export type AggregateInput = {
   op: "sum" | "avg" | "min" | "max" | "count";
   where: Array<{ field: string; op: "=" | "in"; valueFrom?: "this" | "context"; path?: string; value?: any }>;
 };
+export type ListInput = {
+  moduleSlug: string; // o table, pero tú trabajas con módulo
+  q?: string;
+  limit?: number;
+  filters?: { field: string; op: "=" | "!=" | ">" | "<" | "in"; value: any }[];
+  sort?: { field: string; dir: "asc" | "desc" }[];
+};
+export type ListResult = { data: any[]; error?: any };
 
 export type DataProvider = {
   aggregate: (
@@ -14,6 +22,10 @@ export type DataProvider = {
     record: any,
     context?: Record<string, any>
   ) => Promise<number>;
+   list?: (
+    input: ListInput,
+    context?: Record<string, any>
+  ) => Promise<ListResult>;
 };
 
 /**

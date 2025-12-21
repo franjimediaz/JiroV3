@@ -7,6 +7,7 @@
   --border: #26303a;
   --ring: #7aa7ff;
   --accent: #e6f0ff;
+  --field-bg:#454740;
 
   --ok-bg: #0f2f1c;
   --ok-bd: #2b8a3e;
@@ -42,6 +43,15 @@
   color: var(--text);
   font-family: var(--font);
 }
+.fieldformcard {
+  background: var(--field-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--pad-lg);
+  box-shadow: var(--shadow-md);
+  color: var(--text);
+  font-family: var(--font);
+}
 
 .label {
   font-size: 12px;
@@ -50,6 +60,13 @@
   margin-bottom: 6px;
   display: inline-block;
   user-select: none;
+}
+.title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--card);
+  margin: 0 0 24px 0;
+  letter-spacing: -0.02em;
 }
 
 .input,
@@ -143,19 +160,19 @@ select.input:disabled {
   appearance: none;
   background: linear-gradient(180deg, #1b222a, #141a20);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: none;
   padding: 10px 14px;
   border-radius: 10px;
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
-  transition: transform .05s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
+  transition: transform .05s ease, box-shadow .15s ease, background .15s ease;
   box-shadow: var(--shadow-sm);
 }
 
 .btn:hover {
-  border-color: #3a495a;
   transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(122, 167, 255, 0.3);
 }
 
 .btn:active {

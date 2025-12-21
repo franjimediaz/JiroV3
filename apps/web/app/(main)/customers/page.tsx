@@ -1,4 +1,4 @@
-// app/customers/page.tsx   (server)
+
 import CustomersPageClient from "./CustomerPageClient";
 import { fetchModuloBySlug } from "@/lib/modulos/modulos";
 import { createClient } from "@/lib/supabase/server";
@@ -15,7 +15,7 @@ export default async function CustomersPage() {
   return (
     <CustomersPageClient
       customers={customers ?? []}
-      schema={modulo.props} // <- esto es tu ModuleSchema real
+      schema={modulo.props}
     />
   );
 }

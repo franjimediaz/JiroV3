@@ -1,19 +1,9 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import type { ModuleSchema, Field, FieldType } from "@repo/types";
+import type {Field, FieldType, ListViewProps } from "@repo/types";
 import { ActionMenu } from "./ActionMenu";
 
-type ListViewProps = {
-  schema: ModuleSchema;
-  data: any[];
-  loading?: boolean;
-
-  onViewRow?: (row: any) => void;
-  onEditRow?: (row: any) => void;
-  onDeleteRow?: (row: any) => void;
-  onCreate?: () => void;
-};
 
 export default function ListView({
   schema,
@@ -103,9 +93,9 @@ export default function ListView({
               className="btn btn-sm btn-primary"
               onClick={onCreate}
               style={{
-                background: "linear-gradient(90deg, #2563eb, #3b82f6)",
+                background: "linear-gradient(90deg, #35eb25ff, #27b61aff",
                 border: "none",
-                borderRadius: 999,
+                borderRadius: 950,
               }}
             >
               <i className="bi bi-plus-lg me-1" />
@@ -145,12 +135,12 @@ export default function ListView({
           <thead>
             <tr>
               {listFields.map((f) => (
-                <th key={f.name} className="text-nowrap">
+                <th key={f.name} className="text-nowrap" style={{ background: color || "#5374a1ff" }}>
                   {f.label}
                 </th>
               ))}
               {(onViewRow || onEditRow || onDeleteRow) && (
-                <th className="text-end text-nowrap">Acciones</th>
+                <th className="text-end text-nowrap" style={{ background: color || "#5374a1ff" }}>Acciones</th>
               )}
             </tr>
           </thead>
