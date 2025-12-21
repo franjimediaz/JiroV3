@@ -303,3 +303,92 @@ form.card > .card {
 .tableLike tr:hover td {
   background: #111821;
 }
+.fieldRow{
+  border: 1px solid var(--border, #26303a);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.02);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.fieldHeader{
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.fieldToggle{
+  flex: 1;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldTitle{
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.fieldSub{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  opacity: 0.95;
+}
+
+.badgeSoft{
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #26303a);
+  color: var(--text-dim, #b8c2cc);
+}
+
+.badgeWarn{
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #b45309;
+  color: #f59e0b;
+}
+
+.fieldActions{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.iconBtn{
+  border-radius: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border, #26303a);
+  background: rgba(255,255,255,0.04);
+  cursor: pointer;
+}
+
+.iconBtn:disabled{
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dangerBtn{
+  border-radius: 10px;
+  padding: 6px 10px;
+  border: 1px solid #7f1d1d;
+  background: rgba(220,38,38,0.15);
+  color: #fecaca;
+  cursor: pointer;
+}
+
+.fieldBody{
+  border-top: 1px solid var(--border, #26303a);
+  padding: 12px;
+}

@@ -302,6 +302,7 @@ function FieldRow({
   onMoveDown,
   canUp,
   canDown,
+  readOnly,
 }: {
   field: FieldSchema;
   onChange: (f: FieldSchema) => void;
@@ -310,528 +311,629 @@ function FieldRow({
   onMoveDown: () => void;
   canUp: boolean;
   canDown: boolean;
+  readOnly?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
+
+  const summaryLabel = field.label?.trim() || "Sin label";
+  const summaryName = field.name?.trim() || "sin_name";
+  const summaryType = field.type || "text";
+  const summaryCompute = getComputeKind(field);
+
+  const duplicate = () => {
+    const baseName = (field.name || "campo").replace(/\s+/g, "_");
+    const copy: FieldSchema = {
+      ...field,
+      name: `${baseName}_copy_${Math.floor(Math.random() * 1000)}`,
+      label: `${field.label || "Campo"} (copia)`,
+    };
+    onChange(copy);
+  };
+
   return (
     <div className={styles.fieldformcard} style={{ marginBottom: 12 }}>
-      <div className={styles.card}>
-      <div className={styles.grid}>
-        <div>
-          <label className={styles.label}>name</label>
-          <input
-            className={styles.input}
-            value={field.name}
-            onChange={(e) => onChange({ ...field, name: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className={styles.label}>label</label>
-          <input
-            className={styles.input}
-            value={field.label}
-            onChange={(e) => onChange({ ...field, label: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className={styles.label}>type</label>
-          <select
-            className={styles.input}
-            value={field.type}
-            onChange={(e) => onChange({ ...field, type: e.target.value as FieldType })}
-          >
-            {VALID_FIELD_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </div>
-        {/* Modo de cálculo */}
-        <div>
-          <label className={styles.label}>compute</label>
-          <select
-            className={styles.input}
-            value={getComputeKind(field)}
-            onChange={(e) => onChange(setComputeKind(field, e.target.value as any))}
-          >
-            <option value="none">none</option>
-            <option value="formula">formula</option>
-            <option value="aggregate">aggregate</option>
-          </select>
-        </div>
-
-        <div className={styles.switchRow}>
-          <label className={styles.label}>required</label>
-          <input
-            type="checkbox"
-            checked={!!field.required}
-            onChange={(e) => onChange({ ...field, required: e.target.checked })}
-          />
-        </div>
-          <div className={styles.switchRow}>
-            <label className={styles.label}>visible</label>
-            <input
-              type="checkbox"
-              checked={field.visible ?? true}
-              onChange={(e) => onChange({ ...field, visible: e.target.checked })}
-            />
-          </div>
-
-          <div className={styles.switchRow}>
-            <label className={styles.label}>readOnly</label>
-            <input
-              type="checkbox"
-              checked={!!field.readOnly}
-              onChange={(e) => onChange({ ...field, readOnly: e.target.checked })}
-            />
-          </div>
-          <div className={styles.switchRow}>
-          <label className={styles.label}>allowOverride (forzar valor)</label>
-          <input
-            type="checkbox"
-            checked={!!field.allowOverride}
-            onChange={(e) => onChange({ ...field, allowOverride: e.target.checked })}
-          />
-        </div>
-        <div>
-          <label className={styles.label}>appareance</label>
-          <select
-            className={styles.input}
-            value={field.appareance}
-            onChange={(e) => onChange({ ...field, appareance: e.target.value as Appareance })}
-          >
-            {Appareance_Valid_Types.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </div>
-        
-      </div>
-      <div className={styles.grid}>
-        <div>
-          <label className={styles.label}>placeholder</label>
-          <input
-            className={styles.input}
-            value={field.placeholder || ""}
-            onChange={(e) => onChange({ ...field, placeholder: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className={styles.label}>help</label>
-          <input
-            className={styles.input}
-            value={field.help || ""}
-            onChange={(e) => onChange({ ...field, help: e.target.value })}
-          />
-        </div>
-        <div>
-          <label className={styles.label}>defaultValue</label>
-          <input
-            className={styles.input}
-            value={
-              typeof field.defaultValue === "string" || typeof field.defaultValue === "number"
-                ? String(field.defaultValue)
-                : field.defaultValue === undefined ? "" : JSON.stringify(field.defaultValue)
-            }
-            onChange={(e) => onChange({ ...field, defaultValue: e.target.value })}
-          />
-        </div>
-      </div>
-      </div>
-      
-
-      
-
-      {/* Opcionales comunes */}
-      
-        <div className={styles.card} style={{ marginTop: 12 }}>
-          <h4 style={{ marginTop: 0 }}>Opciones UI</h4>
-
-          <div className={styles.grid}>
-            <div>
-              <label className={styles.label}>ui.width</label>
-              <select
-                className={styles.input}
-                value={field.ui?.width || "1/1"}
-                onChange={(e) =>
-                  onChange({
-                    ...field,
-                    ui: { ...(field.ui || {}), width: e.target.value as any },
-                  })
-                }
-              >
-                <option value="1/1">1/1</option>
-                <option value="1/2">1/2</option>
-                <option value="1/3">1/3</option>
-                <option value="2/3">2/3</option>
-              </select>
-            </div>
-
-            <div>
-              <label className={styles.label}>ui.variant</label>
-              <select
-                className={styles.input}
-                value={field.ui?.variant || "input"}
-                onChange={(e) =>
-                  onChange({
-                    ...field,
-                    ui: { ...(field.ui || {}), variant: e.target.value as any },
-                  })
-                }
-              >
-                <option value="input">input</option>
-                <option value="textarea">textarea</option>
-                <option value="currency">currency</option>
-                <option value="percent">percent</option>
-                <option value="richtext">richtext</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      {/* Específico por tipo */}
-      {["select","multiselect"].includes(field.type) && (
-        <Labeled label="options">
-          <ArrayChips
-            value={field.options || []}
-            onChange={(opts) => onChange({ ...field, options: opts })}
-          />
-        </Labeled>
-      )}
-
-      {field.type === "selectorTabla" && (
-        <div className={styles.grid}>
-          <div>
-            <label className={styles.label}>ref.moduleSlug</label>
-            <input
-              className={styles.input}
-              value={field.ref?.moduleSlug || ""}
-              onChange={(e) =>
-                onChange({ ...field, ref: { ...(field.ref || { moduleSlug: "", displayField: "" }), moduleSlug: e.target.value } })
-              }
-            />
-          </div>
-          <div>
-            <label className={styles.label}>ref.displayField</label>
-            <input
-              className={styles.input}
-              value={field.ref?.displayField || ""}
-              onChange={(e) =>
-                onChange({ ...field, ref: { ...(field.ref || { moduleSlug: "", displayField: "" }), displayField: e.target.value } })
-              }
-            />
-          </div>
-          <div>
-              <label className={styles.label}>ref.valueField</label>
-              <input
-                className={styles.input}
-                value={field.ref?.valueField || "id"}
-                onChange={(e) =>
-                  onChange({
-                    ...field,
-                    ref: {
-                      ...(field.ref || { moduleSlug: "", displayField: "" }),
-                      valueField: e.target.value,
-                    },
-                  })
-                }
-              />
-            </div>
-            <div>
-            <label className={styles.label}>ref.multiple</label>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input
-                type="checkbox"
-                checked={!!field.ref?.multiple}
-                onChange={(e) =>
-                  onChange({
-                    ...field,
-                    ref: {
-                      ...(field.ref || { moduleSlug: "", displayField: "" }),
-                      multiple: e.target.checked,
-                    },
-                  })
-                }
-              />
-              <span style={{ fontSize: 13, opacity: 0.85 }}>
-                Permitir multiselección
-              </span>
-            </div>
-          </div>
-
-            <div className="full">
-              <label className={styles.label}>ref.filters (JSON)</label>
-              <textarea
-                className={styles.textarea}
-                rows={4}
-                value={JSON.stringify(field.ref?.filters || [], null, 2)}
-                onChange={(e) => {
-                  try {
-                    const filters = JSON.parse(e.target.value || "[]");
-                    onChange({
-                      ...field,
-                      ref: {
-                        ...(field.ref || { moduleSlug: "", displayField: "" }),
-                        filters,
-                      },
-                    });
-                  } catch {
-                    // opcional: podrías marcar error visual
-                  }
-                }}
-                spellCheck={false}
-              />
-              <div className={styles.hint}>
-                Ejemplo: [{"{"}"field":"obraId","op":"=","value":123{""}{"}"}]
-              </div>
-            </div>
-
-            <div className="full">
-              <label className={styles.label}>ref.sort (JSON)</label>
-              <textarea
-                className={styles.textarea}
-                rows={3}
-                value={JSON.stringify(field.ref?.sort || [], null, 2)}
-                onChange={(e) => {
-                  try {
-                    const sort = JSON.parse(e.target.value || "[]");
-                    onChange({
-                      ...field,
-                      ref: {
-                        ...(field.ref || { moduleSlug: "", displayField: "" }),
-                        sort,
-                      },
-                    });
-                  } catch {
-                    // opcional: marcar error
-                  }
-                }}
-                spellCheck={false}
-              />
-              <div className={styles.hint}>
-                Ejemplo: [{"{"}"field":"nombre","direction":"asc"{""}{"}"}]
-              </div>
-            </div>
-        </div>
-      )}
-      {field.type === "formula" && (
-  <div className={styles.card} style={{ marginTop: 12 }}>
-    <h4 style={{ marginTop: 0 }}>Cálculo (formula)</h4>
-
-    <label className={styles.label}>Expresión</label>
-    <input
-      className={styles.input}
-      value={(field.compute?.type === "formula" && field.compute.expr) || ""}
-      onChange={(e) =>
-        onChange({
-          ...field,
-          compute: {
-            type: "formula",
-            expr: e.target.value,
-            deps:
-              (field.compute?.type === "formula" && field.compute.deps) || [],
-            persist:
-              (field.compute?.type === "formula" && field.compute.persist) ||
-              "onSave",
-          },
-        })
-      }
-    />
-
-    <label className={styles.label}>Dependencias (coma separadas)</label>
-    <input
-      className={styles.input}
-      value={
-        (field.compute?.type === "formula" && field.compute.deps?.join(",")) ||
-        ""
-      }
-      onChange={(e) =>
-        onChange({
-          ...field,
-          compute: {
-            type: "formula",
-            expr:
-              (field.compute?.type === "formula" && field.compute.expr) || "",
-            deps: e.target.value
-              .split(",")
-              .map((d) => d.trim())
-              .filter(Boolean),
-            persist:
-              (field.compute?.type === "formula" && field.compute.persist) ||
-              "onSave",
-          },
-        })
-      }
-    />
-
-    <label className={styles.label}>Persistencia</label>
-    <select
-      className={styles.input}
-      value={
-        (field.compute?.type === "formula" && field.compute.persist) ||
-        "onSave"
-      }
-      onChange={(e) =>
-        onChange({
-          ...field,
-          compute: {
-            type: "formula",
-            expr:
-              (field.compute?.type === "formula" && field.compute.expr) || "",
-            deps:
-              (field.compute?.type === "formula" && field.compute.deps) || [],
-            persist: e.target.value as "none" | "onSave" | "always",
-          },
-        })
-      }
-    >
-      <option value="none">none</option>
-      <option value="onSave">onSave</option>
-      <option value="always">always</option>
-    </select>
-  </div>
-      )}
-      {getComputeKind(field) === "formula" && (
-        <div className={styles.card} style={{ marginTop: 12 }}>
-          <h4 style={{ marginTop: 0 }}>Cálculo (formula)</h4>
-
-          <label className={styles.label}>Expresión</label>
-          <input
-            className={styles.input}
-            value={ensureFormula(field).expr}
-            onChange={(e) => {
-              const base = ensureFormula(field);
-              onChange({ ...field, compute: { ...base, expr: e.target.value } });
-            }}
-          />
-
-          <label className={styles.label}>Dependencias (coma separadas)</label>
-          <input
-            className={styles.input}
-            value={ensureFormula(field).deps.join(",")}
-            onChange={(e) => {
-              const deps = e.target.value.split(",").map((d) => d.trim()).filter(Boolean);
-              const base = ensureFormula(field);
-              onChange({ ...field, compute: { ...base, deps } });
-            }}
-          />
-
-          <label className={styles.label}>Persistencia</label>
-          <select
-            className={styles.input}
-            value={ensureFormula(field).persist}
-            onChange={(e) => {
-              const base = ensureFormula(field);
-              onChange({
-                ...field,
-                compute: { ...base, persist: e.target.value as "none" | "onSave" | "always" },
-              });
-            }}
-          >
-            <option value="none">none</option>
-            <option value="onSave">onSave</option>
-            <option value="always">always</option>
-          </select>
-        </div>
-      )}
-      {getComputeKind(field) === "aggregate" && (
-  <div className={styles.card} style={{ marginTop: 12 }}>
-    <h4 style={{ marginTop: 0 }}>Cálculo (aggregate)</h4>
-
-    <div className={styles.grid}>
-      <div>
-        <label className={styles.label}>sourceTable</label>
-        <input
-          className={styles.input}
-          value={ensureAggregate(field).sourceTable}
-          onChange={(e) => {
-            const base = ensureAggregate(field);
-            onChange({ ...field, compute: { ...base, sourceTable: e.target.value } });
-          }}
-        />
-      </div>
-
-      <div>
-        <label className={styles.label}>field</label>
-        <input
-          className={styles.input}
-          value={ensureAggregate(field).field}
-          onChange={(e) => {
-            const base = ensureAggregate(field);
-            onChange({ ...field, compute: { ...base, field: e.target.value } });
-          }}
-        />
-      </div>
-
-      <div>
-        <label className={styles.label}>op</label>
-        <select
-          className={styles.input}
-          value={ensureAggregate(field).op}
-          onChange={(e) => {
-            const base = ensureAggregate(field);
-            onChange({ ...field, compute: { ...base, op: e.target.value as any } });
+      {/* ========= HEADER COMPACTO ========= */}
+      <div className={styles.card} style={{ padding: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            justifyContent: "space-between",
           }}
         >
-          <option value="sum">sum</option>
-          <option value="avg">avg</option>
-          <option value="min">min</option>
-          <option value="max">max</option>
-          <option value="count">count</option>
-        </select>
-      </div>
-    </div>
+          <button
+            type="button"
+            className={styles.btn}
+            onClick={() => setOpen((v) => !v)}
+            style={{
+              flex: 1,
+              textAlign: "left",
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+            }}
+            title={open ? "Ocultar detalle" : "Mostrar detalle"}
+          >
+            <div style={{ fontWeight: 700 }}>
+              {summaryLabel}
+              <span style={{ opacity: 0.8, fontWeight: 500 }}> · {summaryName}</span>
+            </div>
 
-    <label className={styles.label}>where (JSON)</label>
-    <textarea
-      className={styles.textarea}
-      rows={5}
-      value={JSON.stringify(ensureAggregate(field).where, null, 2)}
-      onChange={(e) => {
-        try {
-          const where = JSON.parse(e.target.value || "[]");
-          const base = ensureAggregate(field);
-          onChange({ ...field, compute: { ...base, where } });
-        } catch {
-          // podrías marcar error visual si quieres
-        }
-      }}
-      spellCheck={false}
-    />
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, opacity: 0.9 }}>
+              <span className={styles.hint}>type: {summaryType}</span>
+              <span className={styles.hint}>compute: {summaryCompute}</span>
+              {field.required ? <span className={styles.hint}>required</span> : null}
+              {field.readOnly ? <span className={styles.hint}>readOnly</span> : null}
+              {(field.visible ?? true) === false ? <span className={styles.hint}>hidden</span> : null}
+              {field.allowOverride ? <span className={styles.hint}>override</span> : null}
+            </div>
+          </button>
 
-    <label className={styles.label}>persist</label>
-    <select
-      className={styles.input}
-      value={ensureAggregate(field).persist}
-      onChange={(e) => {
-        const base = ensureAggregate(field);
-        onChange({
-          ...field,
-          compute: { ...base, persist: e.target.value as "none" | "onSave" | "always" },
-        });
-      }}
-    >
-      <option value="none">none</option>
-      <option value="onSave">onSave</option>
-      <option value="always">always</option>
-    </select>
-  </div>
-)}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={onMoveUp}
+              disabled={!canUp || readOnly}
+              title="Subir"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={onMoveDown}
+              disabled={!canDown || readOnly}
+              title="Bajar"
+            >
+              ↓
+            </button>
 
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={duplicate}
+              disabled={readOnly}
+              title="Duplicar (rápido)"
+            >
+              ⎘
+            </button>
 
-
-      
-      
-      
-
-      <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" className={styles.btn} onClick={onMoveUp} disabled={!canUp}>↑</button>
-          <button type="button" className={styles.btn} onClick={onMoveDown} disabled={!canDown}>↓</button>
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={onRemove}
+              disabled={readOnly}
+              style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}
+              title="Eliminar campo"
+            >
+              Eliminar
+            </button>
+          </div>
         </div>
-        <button type="button" className={styles.btn} onClick={onRemove} style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}>
-          Eliminar campo
-        </button>
       </div>
+
+      {/* ========= DETALLE PLEGABLE (tu contenido original, sin perder nada) ========= */}
+      {open && (
+        <>
+          {/* BLOQUE PRINCIPAL (tu grid 1 + grid 2) */}
+          <div className={styles.card} style={{ marginTop: 12 }}>
+            <div className={styles.grid}>
+              <div>
+                <label className={styles.label}>name</label>
+                <input
+                  className={styles.input}
+                  value={field.name}
+                  onChange={(e) => onChange({ ...field, name: e.target.value })}
+                  disabled={readOnly}
+                />
+              </div>
+
+              <div>
+                <label className={styles.label}>label</label>
+                <input
+                  className={styles.input}
+                  value={field.label}
+                  onChange={(e) => onChange({ ...field, label: e.target.value })}
+                  disabled={readOnly}
+                />
+              </div>
+
+              <div>
+                <label className={styles.label}>type</label>
+                <select
+                  className={styles.input}
+                  value={field.type}
+                  onChange={(e) => onChange({ ...field, type: e.target.value as FieldType })}
+                  disabled={readOnly}
+                >
+                  {VALID_FIELD_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Modo de cálculo */}
+              <div>
+                <label className={styles.label}>compute</label>
+                <select
+                  className={styles.input}
+                  value={getComputeKind(field)}
+                  onChange={(e) => onChange(setComputeKind(field, e.target.value as any))}
+                  disabled={readOnly}
+                >
+                  <option value="none">none</option>
+                  <option value="formula">formula</option>
+                  <option value="aggregate">aggregate</option>
+                </select>
+              </div>
+
+              <div className={styles.switchRow}>
+                <label className={styles.label}>required</label>
+                <input
+                  type="checkbox"
+                  checked={!!field.required}
+                  onChange={(e) => onChange({ ...field, required: e.target.checked })}
+                  disabled={readOnly}
+                />
+              </div>
+
+              <div className={styles.switchRow}>
+                <label className={styles.label}>visible</label>
+                <input
+                  type="checkbox"
+                  checked={field.visible ?? true}
+                  onChange={(e) => onChange({ ...field, visible: e.target.checked })}
+                  disabled={readOnly}
+                />
+              </div>
+
+              <div className={styles.switchRow}>
+                <label className={styles.label}>readOnly</label>
+                <input
+                  type="checkbox"
+                  checked={!!field.readOnly}
+                  onChange={(e) => onChange({ ...field, readOnly: e.target.checked })}
+                  disabled={readOnly}
+                />
+              </div>
+
+              <div className={styles.switchRow}>
+                <label className={styles.label}>allowOverride (forzar valor)</label>
+                <input
+                  type="checkbox"
+                  checked={!!field.allowOverride}
+                  onChange={(e) => onChange({ ...field, allowOverride: e.target.checked })}
+                  disabled={readOnly}
+                />
+              </div>
+
+              <div>
+                <label className={styles.label}>appareance</label>
+                <select
+                  className={styles.input}
+                  value={field.appareance}
+                  onChange={(e) => onChange({ ...field, appareance: e.target.value as Appareance })}
+                  disabled={readOnly}
+                >
+                  {Appareance_Valid_Types.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className={styles.grid}>
+              <div>
+                <label className={styles.label}>placeholder</label>
+                <input
+                  className={styles.input}
+                  value={field.placeholder || ""}
+                  onChange={(e) => onChange({ ...field, placeholder: e.target.value })}
+                  disabled={readOnly}
+                />
+              </div>
+
+              <div>
+                <label className={styles.label}>help</label>
+                <input
+                  className={styles.input}
+                  value={field.help || ""}
+                  onChange={(e) => onChange({ ...field, help: e.target.value })}
+                  disabled={readOnly}
+                />
+              </div>
+
+              <div>
+                <label className={styles.label}>defaultValue</label>
+                <input
+                  className={styles.input}
+                  value={
+                    typeof field.defaultValue === "string" || typeof field.defaultValue === "number"
+                      ? String(field.defaultValue)
+                      : field.defaultValue === undefined
+                        ? ""
+                        : JSON.stringify(field.defaultValue)
+                  }
+                  onChange={(e) => onChange({ ...field, defaultValue: e.target.value })}
+                  disabled={readOnly}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Opcionales comunes */}
+          <div className={styles.card} style={{ marginTop: 12 }}>
+            <h4 style={{ marginTop: 0 }}>Opciones UI</h4>
+
+            <div className={styles.grid}>
+              <div>
+                <label className={styles.label}>ui.width</label>
+                <select
+                  className={styles.input}
+                  value={field.ui?.width || "1/1"}
+                  onChange={(e) =>
+                    onChange({
+                      ...field,
+                      ui: { ...(field.ui || {}), width: e.target.value as any },
+                    })
+                  }
+                  disabled={readOnly}
+                >
+                  <option value="1/1">1/1</option>
+                  <option value="1/2">1/2</option>
+                  <option value="1/3">1/3</option>
+                  <option value="2/3">2/3</option>
+                </select>
+              </div>
+
+              <div>
+                <label className={styles.label}>ui.variant</label>
+                <select
+                  className={styles.input}
+                  value={field.ui?.variant || "input"}
+                  onChange={(e) =>
+                    onChange({
+                      ...field,
+                      ui: { ...(field.ui || {}), variant: e.target.value as any },
+                    })
+                  }
+                  disabled={readOnly}
+                >
+                  <option value="input">input</option>
+                  <option value="textarea">textarea</option>
+                  <option value="currency">currency</option>
+                  <option value="percent">percent</option>
+                  <option value="richtext">richtext</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Específico por tipo */}
+          {["select", "multiselect"].includes(field.type) && (
+            <Labeled label="options">
+              <ArrayChips
+                value={field.options || []}
+                onChange={(opts) => onChange({ ...field, options: opts })}
+              />
+            </Labeled>
+          )}
+
+          {field.type === "selectorTabla" && (
+            <div className={styles.card} style={{ marginTop: 12 }}>
+              <h4 style={{ marginTop: 0 }}>Selector Tabla</h4>
+
+              <div className={styles.grid}>
+                <div>
+                  <label className={styles.label}>ref.moduleSlug</label>
+                  <input
+                    className={styles.input}
+                    value={field.ref?.moduleSlug || ""}
+                    onChange={(e) =>
+                      onChange({
+                        ...field,
+                        ref: {
+                          ...(field.ref || { moduleSlug: "", displayField: "" }),
+                          moduleSlug: e.target.value,
+                        },
+                      })
+                    }
+                    disabled={readOnly}
+                  />
+                </div>
+
+                <div>
+                  <label className={styles.label}>ref.displayField</label>
+                  <input
+                    className={styles.input}
+                    value={field.ref?.displayField || ""}
+                    onChange={(e) =>
+                      onChange({
+                        ...field,
+                        ref: {
+                          ...(field.ref || { moduleSlug: "", displayField: "" }),
+                          displayField: e.target.value,
+                        },
+                      })
+                    }
+                    disabled={readOnly}
+                  />
+                </div>
+
+                <div>
+                  <label className={styles.label}>ref.valueField</label>
+                  <input
+                    className={styles.input}
+                    value={field.ref?.valueField || "id"}
+                    onChange={(e) =>
+                      onChange({
+                        ...field,
+                        ref: {
+                          ...(field.ref || { moduleSlug: "", displayField: "" }),
+                          valueField: e.target.value,
+                        },
+                      })
+                    }
+                    disabled={readOnly}
+                  />
+                </div>
+
+                <div>
+                  <label className={styles.label}>ref.multiple</label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!field.ref?.multiple}
+                      onChange={(e) =>
+                        onChange({
+                          ...field,
+                          ref: {
+                            ...(field.ref || { moduleSlug: "", displayField: "" }),
+                            multiple: e.target.checked,
+                          },
+                        })
+                      }
+                      disabled={readOnly}
+                    />
+                    <span style={{ fontSize: 13, opacity: 0.85 }}>Permitir multiselección</span>
+                  </div>
+                </div>
+
+                <div className="full">
+                  <label className={styles.label}>ref.filters (JSON)</label>
+                  <textarea
+                    className={styles.textarea}
+                    rows={4}
+                    value={JSON.stringify(field.ref?.filters || [], null, 2)}
+                    onChange={(e) => {
+                      try {
+                        const filters = JSON.parse(e.target.value || "[]");
+                        onChange({
+                          ...field,
+                          ref: {
+                            ...(field.ref || { moduleSlug: "", displayField: "" }),
+                            filters,
+                          },
+                        });
+                      } catch {
+                        // opcional: marcar error visual
+                      }
+                    }}
+                    spellCheck={false}
+                    disabled={readOnly}
+                  />
+                  <div className={styles.hint}>
+                    Ejemplo: [{"{"}"field":"obraId","op":"=","value":123{""}{"}"}]
+                  </div>
+                </div>
+
+                <div className="full">
+                  <label className={styles.label}>ref.sort (JSON)</label>
+                  <textarea
+                    className={styles.textarea}
+                    rows={3}
+                    value={JSON.stringify(field.ref?.sort || [], null, 2)}
+                    onChange={(e) => {
+                      try {
+                        const sort = JSON.parse(e.target.value || "[]");
+                        onChange({
+                          ...field,
+                          ref: {
+                            ...(field.ref || { moduleSlug: "", displayField: "" }),
+                            sort,
+                          },
+                        });
+                      } catch {
+                        // opcional: marcar error
+                      }
+                    }}
+                    spellCheck={false}
+                    disabled={readOnly}
+                  />
+                  <div className={styles.hint}>
+                    Ejemplo: [{"{"}"field":"nombre","direction":"asc"{""}{"}"}]
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* IMPORTANTE: tu código tenía un bloque field.type === "formula" y otro getComputeKind(field) === "formula".
+             Dejo SOLO el segundo (getComputeKind) porque es el que realmente corresponde al selector compute y evita duplicar UI.
+             Si quieres mantener ambos por compatibilidad, te lo vuelvo a dejar doble, pero no aporta y confunde. */}
+
+          {getComputeKind(field) === "formula" && (
+            <div className={styles.card} style={{ marginTop: 12 }}>
+              <h4 style={{ marginTop: 0 }}>Cálculo (formula)</h4>
+
+              <label className={styles.label}>Expresión</label>
+              <input
+                className={styles.input}
+                value={ensureFormula(field).expr}
+                onChange={(e) => {
+                  const base = ensureFormula(field);
+                  onChange({ ...field, compute: { ...base, expr: e.target.value } });
+                }}
+                disabled={readOnly}
+              />
+
+              <label className={styles.label}>Dependencias (coma separadas)</label>
+              <input
+                className={styles.input}
+                value={ensureFormula(field).deps.join(",")}
+                onChange={(e) => {
+                  const deps = e.target.value
+                    .split(",")
+                    .map((d) => d.trim())
+                    .filter(Boolean);
+                  const base = ensureFormula(field);
+                  onChange({ ...field, compute: { ...base, deps } });
+                }}
+                disabled={readOnly}
+              />
+
+              <label className={styles.label}>Persistencia</label>
+              <select
+                className={styles.input}
+                value={ensureFormula(field).persist}
+                onChange={(e) => {
+                  const base = ensureFormula(field);
+                  onChange({
+                    ...field,
+                    compute: { ...base, persist: e.target.value as "none" | "onSave" | "always" },
+                  });
+                }}
+                disabled={readOnly}
+              >
+                <option value="none">none</option>
+                <option value="onSave">onSave</option>
+                <option value="always">always</option>
+              </select>
+            </div>
+          )}
+
+          {getComputeKind(field) === "aggregate" && (
+            <div className={styles.card} style={{ marginTop: 12 }}>
+              <h4 style={{ marginTop: 0 }}>Cálculo (aggregate)</h4>
+
+              <div className={styles.grid}>
+                <div>
+                  <label className={styles.label}>sourceTable</label>
+                  <input
+                    className={styles.input}
+                    value={ensureAggregate(field).sourceTable}
+                    onChange={(e) => {
+                      const base = ensureAggregate(field);
+                      onChange({ ...field, compute: { ...base, sourceTable: e.target.value } });
+                    }}
+                    disabled={readOnly}
+                  />
+                </div>
+
+                <div>
+                  <label className={styles.label}>field</label>
+                  <input
+                    className={styles.input}
+                    value={ensureAggregate(field).field}
+                    onChange={(e) => {
+                      const base = ensureAggregate(field);
+                      onChange({ ...field, compute: { ...base, field: e.target.value } });
+                    }}
+                    disabled={readOnly}
+                  />
+                </div>
+
+                <div>
+                  <label className={styles.label}>op</label>
+                  <select
+                    className={styles.input}
+                    value={ensureAggregate(field).op}
+                    onChange={(e) => {
+                      const base = ensureAggregate(field);
+                      onChange({ ...field, compute: { ...base, op: e.target.value as any } });
+                    }}
+                    disabled={readOnly}
+                  >
+                    <option value="sum">sum</option>
+                    <option value="avg">avg</option>
+                    <option value="min">min</option>
+                    <option value="max">max</option>
+                    <option value="count">count</option>
+                  </select>
+                </div>
+              </div>
+
+              <label className={styles.label}>where (JSON)</label>
+              <textarea
+                className={styles.textarea}
+                rows={5}
+                value={JSON.stringify(ensureAggregate(field).where, null, 2)}
+                onChange={(e) => {
+                  try {
+                    const where = JSON.parse(e.target.value || "[]");
+                    const base = ensureAggregate(field);
+                    onChange({ ...field, compute: { ...base, where } });
+                  } catch {
+                    // opcional: error visual
+                  }
+                }}
+                spellCheck={false}
+                disabled={readOnly}
+              />
+
+              <label className={styles.label}>persist</label>
+              <select
+                className={styles.input}
+                value={ensureAggregate(field).persist}
+                onChange={(e) => {
+                  const base = ensureAggregate(field);
+                  onChange({
+                    ...field,
+                    compute: { ...base, persist: e.target.value as "none" | "onSave" | "always" },
+                  });
+                }}
+                disabled={readOnly}
+              >
+                <option value="none">none</option>
+                <option value="onSave">onSave</option>
+                <option value="always">always</option>
+              </select>
+            </div>
+          )}
+
+          {/* ========= FOOTER DE ACCIONES (lo mantengo, por si te gusta tenerlo también abajo) ========= */}
+          <div className={styles.actionsRow} style={{ justifyContent: "space-between", marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" className={styles.btn} onClick={onMoveUp} disabled={!canUp || readOnly}>
+                ↑
+              </button>
+              <button type="button" className={styles.btn} onClick={onMoveDown} disabled={!canDown || readOnly}>
+                ↓
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={onRemove}
+              disabled={readOnly}
+              style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}
+            >
+              Eliminar campo
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
+
 
 // —— Form principal ————————————————————————————————————————————————
 
@@ -1117,107 +1219,108 @@ export default function ModuloForm({
           </div>
         </div>
       </Section>
- <Section title="Secciones de formulario (layout opcional)">
-        <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            className={styles.btn}
-            onClick={addSection}
-            disabled={readOnly}
-          >
-            + Añadir sección
-          </button>
-        </div>
-
-        {getFormSections().length === 0 && (
-          <div className={styles.hint}>
-            Aún no hay secciones. Puedes seguir usando el formulario plano, o crear secciones como
-            “Identificación”, “Contacto”, etc.
-          </div>
-        )}
-
-        {getFormSections().map((section, idx) => {
-          const allFieldNames = propsObj.fields.map((f) => f.name);
-          return (
-            <div key={section.id} className={styles.card} style={{ marginTop: 12 }}>
-              <div className={styles.grid}>
-                <div>
-                  <label className={styles.label}>Label sección</label>
-                  <input
-                    className={styles.input}
-                    value={section.label}
-                    onChange={(e) =>
-                      updateSection(idx, { label: e.target.value })
-                    }
-                    disabled={readOnly}
-                  />
-                </div>
-                <div>
-                  <label className={styles.label}>ID (opcional, para referencia)</label>
-                  <input
-                    className={styles.input}
-                    value={section.id}
-                    onChange={(e) =>
-                      updateSection(idx, { id: e.target.value || `section_${idx + 1}` })
-                    }
-                    disabled={readOnly}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className={styles.label}>Descripción</label>
-                <input
-                  className={styles.input}
-                  value={section.description || ""}
-                  onChange={(e) =>
-                    updateSection(idx, { description: e.target.value })
-                  }
-                  disabled={readOnly}
-                />
-              </div>
-
-              <div>
-                <label className={styles.label}>Campos dentro de esta sección</label>
-                <select
-                  multiple
-                  className={styles.input}
-                  value={section.fields}
-                  onChange={(e) => {
-                    const selected = Array.from(
-                      e.currentTarget.selectedOptions
-                    ).map((opt) => opt.value);
-                    updateSection(idx, { fields: selected });
-                  }}
-                  disabled={readOnly}
-                  style={{ height: 120 }}
-                >
-                  {allFieldNames.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-                <div className={styles.hint}>
-                  Mantén Ctrl (o Cmd en Mac) para seleccionar varios campos.
-                </div>
-              </div>
-
+      
+      <Section title="Secciones de formulario (layout opcional)">
               <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
                 <button
                   type="button"
                   className={styles.btn}
-                  onClick={() => removeSection(idx)}
+                  onClick={addSection}
                   disabled={readOnly}
-                  style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}
                 >
-                  Eliminar sección
+                  + Añadir sección
                 </button>
               </div>
-            </div>
-          );
-        })}
-      </Section>
+
+              {getFormSections().length === 0 && (
+                <div className={styles.hint}>
+                  Aún no hay secciones. Puedes seguir usando el formulario plano, o crear secciones como
+                  “Identificación”, “Contacto”, etc.
+                </div>
+              )}
+
+              {getFormSections().map((section, idx) => {
+                const allFieldNames = propsObj.fields.map((f) => f.name);
+                return (
+                  <div key={section.id} className={styles.card} style={{ marginTop: 12 }}>
+                    <div className={styles.grid}>
+                      <div>
+                        <label className={styles.label}>Label sección</label>
+                        <input
+                          className={styles.input}
+                          value={section.label}
+                          onChange={(e) =>
+                            updateSection(idx, { label: e.target.value })
+                          }
+                          disabled={readOnly}
+                        />
+                      </div>
+                      <div>
+                        <label className={styles.label}>ID (opcional, para referencia)</label>
+                        <input
+                          className={styles.input}
+                          value={section.id}
+                          onChange={(e) =>
+                            updateSection(idx, { id: e.target.value || `section_${idx + 1}` })
+                          }
+                          disabled={readOnly}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className={styles.label}>Descripción</label>
+                      <input
+                        className={styles.input}
+                        value={section.description || ""}
+                        onChange={(e) =>
+                          updateSection(idx, { description: e.target.value })
+                        }
+                        disabled={readOnly}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={styles.label}>Campos dentro de esta sección</label>
+                      <select
+                        multiple
+                        className={styles.input}
+                        value={section.fields}
+                        onChange={(e) => {
+                          const selected = Array.from(
+                            e.currentTarget.selectedOptions
+                          ).map((opt) => opt.value);
+                          updateSection(idx, { fields: selected });
+                        }}
+                        disabled={readOnly}
+                        style={{ height: 120 }}
+                      >
+                        {allFieldNames.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                      <div className={styles.hint}>
+                        Mantén Ctrl (o Cmd en Mac) para seleccionar varios campos.
+                      </div>
+                    </div>
+
+                    <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        className={styles.btn}
+                        onClick={() => removeSection(idx)}
+                        disabled={readOnly}
+                        style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}
+                      >
+                        Eliminar sección
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </Section>
       {/* Sección Fields */}
       <Section title="Formulario">
         <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
