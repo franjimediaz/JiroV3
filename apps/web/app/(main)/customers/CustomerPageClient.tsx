@@ -1,7 +1,7 @@
 "use client";
 
 import { RequirePermiso } from "@/lib/perms";
-import {ListView} from "@repo/ui"; // ruta donde lo hayas guardado
+import {ListView} from "@repo/ui";
 import type { ModuleSchema } from "@repo/types";
 
 type Customer = {
@@ -12,7 +12,7 @@ type Customer = {
 
 type CustomersPageClientProps = {
   customers: Customer[];
-  schema: ModuleSchema; // ⬅️ añadimos el schema del módulo
+  schema: ModuleSchema;
 };
 
 export default function CustomersPageClient({ customers, schema }: CustomersPageClientProps) {
