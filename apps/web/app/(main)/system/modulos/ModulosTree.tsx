@@ -11,7 +11,7 @@ import  CreateModule  from "./CreateModule";
 type Props = { nodes: ModuloNode[] };
 
 function NodeRow({ node }: { node: ModuloNode }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);

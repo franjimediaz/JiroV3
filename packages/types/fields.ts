@@ -35,54 +35,80 @@ export type FieldType =
   | "file"
   | "image"
   | "selectorTabla"
+  | "ReverseLink"
   | "formula";
  export type Appareance = "List" | "Always" | "Zoom";
 
-export type SelectorRef = { moduleSlug: string; displayField: string };
 export type FormSection = {
   id: string;
   label: string;
   description?: string;
   fields: string[]; // names de campos
 };
+export type SelectorTablaRef = {
+  moduleSlug: string;
+  multiple?: boolean;
+  table?: string;
+  displayField: string; // obligatorio SOLO aquí
+  valueField?: string;
+  filters?: QueryFilter[];
+  sort?: QuerySort[];
+};
 
-export type Field = {
+export type ReverseLinkRef = {
+  moduleSlug: string;
+  foreignKey: string;
+  parentKey?: string;
+  limit?: number;
+  sort?: QuerySort[];
+  filters?: QueryFilter[];
+};
+
+export type BaseField = {
   name: string;
   label: string;
-  type: FieldType;
   required?: boolean;
-  // Configuración de cálculo (fórmulas o agregados)
+
   compute?: Compute;
-  // Permitir forzar valor individualmente por registro
   allowOverride?: boolean;
-  options?: string[];          // para select/multiselect
-    ref?: {
-    moduleSlug: string;
-    multiple?: boolean;
-    table?: string;            // opcional si coincide con moduleSlug
-    displayField: string;
-    valueField?: string;       // por defecto "id"
-    filters?: Array<{ field: string; op: "=" | "!=" | ">" | "<" | "in"; value: any }>;
-    sort?: { field: string; direction: "asc" | "desc" }[];
-  };          // para selectorTabla
+  options?: string[];
+
   placeholder?: string;
   help?: string;
   defaultValue?: any;
   visible?: boolean;
   readOnly?: boolean;
+
   list?: boolean;
   filter?: boolean;
-  appareance?:Appareance;
+  appareance?: Appareance;
 
   ui?: {
     icon?: string;
     color?: string;
     width?: "1/1" | "1/2" | "1/3" | "2/3";
-    variant?: "input" | "textarea" | "currency" | "percent"|"richtext";
+    variant?: "input" | "textarea" | "currency" | "percent" | "richtext";
     placeholder?: string;
     help?: string;
   };
 };
+
+export type SelectorTablaField = BaseField & {
+  type: "selectorTabla";
+  ref: SelectorTablaRef; // requerido y displayField obligatorio
+};
+
+export type ReverseLinkField = BaseField & {
+  type: "ReverseLink";
+  ref: ReverseLinkRef; // requerido y sin displayField
+};
+
+export type OtherField = BaseField & {
+  type: Exclude<FieldType, "selectorTabla" | "ReverseLink">;
+  ref?: never; // opcional: evita que ref aparezca donde no toca
+};
+
+export type Field = SelectorTablaField | ReverseLinkField | OtherField;
 export const VALID_FIELD_TYPES: FieldType[] = [
   "text",
   "textarea",
@@ -99,6 +125,7 @@ export const VALID_FIELD_TYPES: FieldType[] = [
   "image",
   "selectorTabla",
   "formula",
+  "ReverseLink",
 ];
 export const Appareance_Valid_Types: Appareance[] = [
   "List",
@@ -159,3 +186,16 @@ export type SeedNode = {
   formSections?: FormSection[];
  
 };
+export type FilterOp = "=" | "!=" | ">" | ">=" | "<" | "<=" | "in" | "contains";
+
+export type QueryFilter = {
+  field: string;
+  op: FilterOp;
+  value: any;
+};
+
+export type QuerySort = {
+  field: string;
+  direction: "asc" | "desc";
+};
+

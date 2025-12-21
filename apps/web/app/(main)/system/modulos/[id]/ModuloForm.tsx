@@ -4,14 +4,11 @@ import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./modulo-detalle.module.css";
 import { upsertModuloAction } from "@/actions/modulos";
-import type { Field as FieldSchema, FieldType, ModuleSchema, Appareance, Compute, FormSection} from "@repo/types";
+import type { Field as FieldSchema, FieldType, ModuleSchema, Field, Appareance, Compute, FormSection} from "@repo/types";
 import {VALID_FIELD_TYPES,Appareance_Valid_Types} from "@repo/types";
 
 
 
-
-// TODO: Reemplaza por tu fuente real de iconos.
-// Si tienes un array exportado de tu librería, pégalo aquí:
 export const ICON_OPTIONS = [
   // 👤 Personas / Usuarios
   { name: "Usuario", value: "bi-person" },
@@ -92,28 +89,38 @@ function validatePropsClient(props: any): string | null {
       return `fields[${i}].name requerido`;
     if (!f.label || typeof f.label !== "string")
       return `fields[${i}].label requerido`;
+    console.log("VALID TYPES", VALID_FIELD_TYPES);
+    console.log("CHECK TYPE", i, JSON.stringify(f.type), "includes?", VALID_FIELD_TYPES.includes(f.type));
     if (!VALID_FIELD_TYPES.includes(f.type))
       return `fields[${i}].type inválido`;
-if (f.type === "selectorTabla") {
-  const r = f.ref;
-  if (
-    !r ||
-    typeof r !== "object" ||
-    typeof r.moduleSlug !== "string" ||
-    typeof r.displayField !== "string"
-  ) {
-    return `fields[${i}].ref inválido para selectorTabla`;
-  }
+    console.log("VALIDATE FIELD", i, "type=", f.type, "ref=", f.ref);
+    if (f.type === "selectorTabla") {
+      const r = f.ref;
+      if (
+        !r ||
+        typeof r !== "object" ||
+        typeof r.moduleSlug !== "string" ||
+        typeof r.displayField !== "string"
+      ) {
+        return `fields[${i}].ref inválido para selectorTabla`;
+      }
 
-  if (r.multiple !== undefined && typeof r.multiple !== "boolean") {
-    return `fields[${i}].ref.multiple debe ser boolean`;
-  }
-}
-    if (f.compute?.type === "formula") {
-  if (typeof f.compute.expr !== "string" || !Array.isArray(f.compute.deps)) {
-    return `fields[${i}].compute formula inválido`;
-  }
-  
+      if (r.multiple !== undefined && typeof r.multiple !== "boolean") {
+        return `fields[${i}].ref.multiple debe ser boolean`;
+      }
+    }
+    if (f.type === "ReverseLink") {
+      const r = f.ref;
+      if (!r || typeof r !== "object") return `fields[${i}].ref inválido para ReverseLink`;
+      if (typeof (r as any).moduleSlug !== "string") return `fields[${i}].ref.moduleSlug requerido`;
+      if (typeof (r as any).foreignKey !== "string") return `fields[${i}].ref.foreignKey requerido`;
+      // parentKey opcional
+    }
+        if (f.compute?.type === "formula") {
+      if (typeof f.compute.expr !== "string" || !Array.isArray(f.compute.deps)) {
+        return `fields[${i}].compute formula inválido`;
+      }
+      
     }
 
     if (f.compute?.type === "aggregate") {
@@ -132,7 +139,55 @@ if (f.type === "selectorTabla") {
   return null;
 }
 
+function normalizeFieldType(field: Field, nextType: FieldType): Field {
+  const base: any = { ...field, type: nextType };
+
+  if (nextType === "selectorTabla") {
+    return {
+      ...base,
+      type: "selectorTabla",
+      ref: {
+        moduleSlug: (field as any).ref?.moduleSlug ?? "",
+        displayField: (field as any).ref?.displayField ?? "name",
+        multiple: (field as any).ref?.multiple,
+        table: (field as any).ref?.table,
+        valueField: (field as any).ref?.valueField,
+        filters: (field as any).ref?.filters,
+        sort: (field as any).ref?.sort,
+      },
+    };
+  }
+
+  if (nextType === "ReverseLink") {
+    return {
+      ...base,
+      type: "ReverseLink",
+      ref: {
+        moduleSlug: (field as any).ref?.moduleSlug ?? "",
+        foreignKey: (field as any).ref?.foreignKey ?? "",
+        parentKey: (field as any).ref?.parentKey ?? "id",
+        limit: (field as any).ref?.limit ?? 20,
+        filters: (field as any).ref?.filters,
+        sort: (field as any).ref?.sort,
+      },
+    };
+  }
+
+  const { ref, ...rest } = base;
+  return rest as Field;
+}
+
+
+
 // —— Subcomponentes UI simples ————————————————————————————————
+function getSectionFieldSet(sections: Array<{ fields: string[] }>) {
+  const set = new Set<string>();
+  for (const s of sections) {
+    for (const name of s.fields || []) set.add(name);
+  }
+  return set;
+}
+
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -445,7 +500,7 @@ function FieldRow({
                 <select
                   className={styles.input}
                   value={field.type}
-                  onChange={(e) => onChange({ ...field, type: e.target.value as FieldType })}
+                  onChange={(e) => onChange(normalizeFieldType(field, e.target.value as FieldType))}
                   disabled={readOnly}
                 >
                   {VALID_FIELD_TYPES.map((t) => (
@@ -763,6 +818,113 @@ function FieldRow({
               </div>
             </div>
           )}
+          {field.type === "ReverseLink" && (
+            <div className={styles.grid}>
+              <div>
+                <label className={styles.label}>ref.moduleSlug (tabla destino)</label>
+                <input
+                  className={styles.input}
+                  value={field.ref?.moduleSlug || ""}
+                  onChange={(e) =>
+                    onChange({
+                      ...field,
+                      ref: { ...(field.ref || {}), moduleSlug: e.target.value },
+                    })
+                  }
+                />
+              </div>
+
+    <div>
+      <label className={styles.label}>ref.foreignKey (FK en la tabla destino)</label>
+      <input
+        className={styles.input}
+        value={field.ref?.foreignKey || ""}
+        onChange={(e) =>
+          onChange({
+            ...field,
+            ref: { ...(field.ref || {}), foreignKey: e.target.value },
+          })
+        }
+        placeholder="ej: clienteId"
+      />
+    </div>
+
+    <div>
+      <label className={styles.label}>ref.parentKey (campo del registro actual)</label>
+      <input
+        className={styles.input}
+        value={field.ref?.parentKey || "id"}
+        onChange={(e) =>
+          onChange({
+            ...field,
+            ref: { ...(field.ref || {}), parentKey: e.target.value },
+          })
+        }
+        placeholder="id"
+      />
+    </div>
+
+    <div>
+      <label className={styles.label}>ref.limit</label>
+      <input
+        className={styles.input}
+        type="number"
+        value={field.ref?.limit ?? 20}
+        onChange={(e) =>
+          onChange({
+            ...field,
+            ref: { ...(field.ref || {}), limit: Number(e.target.value || 20) },
+          })
+        }
+      />
+    </div>
+
+    <div className="full">
+      <label className={styles.label}>ref.filters extra (JSON)</label>
+      <textarea
+        className={styles.textarea}
+        rows={4}
+        value={JSON.stringify(field.ref?.filters || [], null, 2)}
+        onChange={(e) => {
+          try {
+            const filters = JSON.parse(e.target.value || "[]");
+            onChange({
+              ...field,
+              ref: { ...(field.ref || {}), filters },
+            });
+          } catch {}
+        }}
+        spellCheck={false}
+      />
+      <div className={styles.hint}>
+        Se aplican además del filtro FK. Ej: [{"{"}"field":"estado","op":"=","value":"activa"{""}{"}"}]
+      </div>
+    </div>
+
+    <div className="full">
+      <label className={styles.label}>ref.sort (JSON)</label>
+      <textarea
+        className={styles.textarea}
+        rows={3}
+        value={JSON.stringify(field.ref?.sort || [], null, 2)}
+        onChange={(e) => {
+          try {
+            const sort = JSON.parse(e.target.value || "[]");
+            onChange({
+              ...field,
+              ref: { ...(field.ref || {}), sort },
+            });
+          } catch {}
+        }}
+        spellCheck={false}
+      />
+      <div className={styles.hint}>
+        Ej: [{"{"}"field":"created_at","direction":"desc"{""}{"}"}]
+      </div>
+    </div>
+  </div>
+)}
+
 
           {/* IMPORTANTE: tu código tenía un bloque field.type === "formula" y otro getComputeKind(field) === "formula".
              Dejo SOLO el segundo (getComputeKind) porque es el que realmente corresponde al selector compute y evita duplicar UI.
@@ -1044,6 +1206,7 @@ export default function ModuloForm({
         router.refresh();
       }
     });
+    console.log("FIELDS[0] DEBUG", propsObj.fields?.[0]);
   };
 
   // Helpers de fields
@@ -1100,6 +1263,26 @@ export default function ModuloForm({
 
 
   const readOnlyAttr = { disabled: readOnly } as const;
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+
+    const isSectionOpen = (id: string) => !!openSections[id];
+
+    const toggleSectionOpen = (id: string) => {
+      setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
+    };
+    const moveSection = (idx: number, dir: -1 | 1) => {
+    const sections = [...getFormSections()];
+    const next = idx + dir;
+
+    if (next < 0 || next >= sections.length) return;
+
+    const copy = [...sections];
+    const [item] = copy.splice(idx, 1);
+    copy.splice(next, 0, item);
+
+    setFormSections(copy);
+  };
+
 
   return (
     <form className={styles.card} onSubmit={onSubmit}>
@@ -1219,50 +1402,106 @@ export default function ModuloForm({
           </div>
         </div>
       </Section>
-      
-      <Section title="Secciones de formulario (layout opcional)">
-              <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  className={styles.btn}
-                  onClick={addSection}
-                  disabled={readOnly}
-                >
-                  + Añadir sección
-                </button>
-              </div>
 
-              {getFormSections().length === 0 && (
-                <div className={styles.hint}>
-                  Aún no hay secciones. Puedes seguir usando el formulario plano, o crear secciones como
-                  “Identificación”, “Contacto”, etc.
+
+      <Section title="Formulario">
+          <div className={styles.actionsRow} style={{ justifyContent: "space-between", gap: 12 }}>
+            <button type="button" className={styles.btnAdd} onClick={addField} disabled={readOnly}>
+              + Añadir campo
+            </button>
+
+            <button type="button" className={styles.btnAdd} onClick={addSection} disabled={readOnly}>
+              + Añadir sección
+            </button>
+          </div>
+
+          {/* hints */}
+          {propsObj.fields.length === 0 && getFormSections().length === 0 && (
+            <div className={styles.hint}>
+              Aún no hay campos ni secciones. Puedes crear secciones (Identificación, Contacto…) y luego asignar campos.
+            </div>
+          )}
+
+          {/* ====== SECCIONES (con fields dentro) ====== */}
+          {getFormSections().map((section, sIdx) => {
+            const allFieldNames = propsObj.fields.map((f) => f.name);
+            const fieldsInSection = propsObj.fields.filter((f) => (section.fields || []).includes(f.name));
+
+            return (
+              <div key={section.id} className={styles.sectionRow}>
+                {/* header compacto + acciones */}
+                <div className={styles.sectionHeader}>
+                  <button
+                    type="button"
+                    className={styles.sectionToggle}
+                    onClick={() => toggleSectionOpen(section.id)} // te dejo función abajo
+                    title="Mostrar/ocultar sección"
+                  >
+                    <div className={styles.sectionTitleLine}>
+                      <span className={styles.sectionTitle}>{section.label || "Sección sin label"}</span>
+                      <span className={styles.sectionMeta}>
+                        <span className={styles.badgeSoft}>id: {section.id}</span>
+                        <span className={styles.badgeSoft}>{(section.fields || []).length} campos</span>
+                      </span>
+                    </div>
+                    {section.description ? (
+                      <div className={styles.sectionDescPreview}>
+                        {section.description.length > 80 ? section.description.slice(0, 80) + "…" : section.description}
+                      </div>
+                    ) : null}
+                  </button>
+
+                  <div className={styles.sectionActions}>
+                    <button
+                      type="button"
+                      className={styles.iconBtn}
+                      onClick={() => moveSection(sIdx, -1)}
+                      disabled={readOnly || sIdx === 0}
+                      title="Subir sección"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.iconBtn}
+                      onClick={() => moveSection(sIdx, +1)}
+                      disabled={readOnly || sIdx === getFormSections().length - 1}
+                      title="Bajar sección"
+                    >
+                      ↓
+                    </button>
+
+                    <button
+                      type="button"
+                      className={styles.dangerBtn}
+                      onClick={() => removeSection(sIdx)}
+                      disabled={readOnly}
+                      title="Eliminar sección"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
                 </div>
-              )}
 
-              {getFormSections().map((section, idx) => {
-                const allFieldNames = propsObj.fields.map((f) => f.name);
-                return (
-                  <div key={section.id} className={styles.card} style={{ marginTop: 12 }}>
+                {/* body de sección (config + asignación) */}
+                {isSectionOpen(section.id) && (
+                  <div className={styles.sectionBody}>
                     <div className={styles.grid}>
                       <div>
                         <label className={styles.label}>Label sección</label>
                         <input
                           className={styles.input}
                           value={section.label}
-                          onChange={(e) =>
-                            updateSection(idx, { label: e.target.value })
-                          }
+                          onChange={(e) => updateSection(sIdx, { label: e.target.value })}
                           disabled={readOnly}
                         />
                       </div>
                       <div>
-                        <label className={styles.label}>ID (opcional, para referencia)</label>
+                        <label className={styles.label}>ID</label>
                         <input
                           className={styles.input}
                           value={section.id}
-                          onChange={(e) =>
-                            updateSection(idx, { id: e.target.value || `section_${idx + 1}` })
-                          }
+                          onChange={(e) => updateSection(sIdx, { id: e.target.value || `section_${sIdx + 1}` })}
                           disabled={readOnly}
                         />
                       </div>
@@ -1273,27 +1512,23 @@ export default function ModuloForm({
                       <input
                         className={styles.input}
                         value={section.description || ""}
-                        onChange={(e) =>
-                          updateSection(idx, { description: e.target.value })
-                        }
+                        onChange={(e) => updateSection(sIdx, { description: e.target.value })}
                         disabled={readOnly}
                       />
                     </div>
 
-                    <div>
-                      <label className={styles.label}>Campos dentro de esta sección</label>
+                    <div style={{ marginTop: 12 }}>
+                      <label className={styles.label}>Campos en esta sección</label>
                       <select
                         multiple
                         className={styles.input}
                         value={section.fields}
                         onChange={(e) => {
-                          const selected = Array.from(
-                            e.currentTarget.selectedOptions
-                          ).map((opt) => opt.value);
-                          updateSection(idx, { fields: selected });
+                          const selected = Array.from(e.currentTarget.selectedOptions).map((opt) => opt.value);
+                          updateSection(sIdx, { fields: selected });
                         }}
                         disabled={readOnly}
-                        style={{ height: 120 }}
+                        style={{ height: 140 }}
                       >
                         {allFieldNames.map((name) => (
                           <option key={name} value={name}>
@@ -1301,49 +1536,81 @@ export default function ModuloForm({
                           </option>
                         ))}
                       </select>
-                      <div className={styles.hint}>
-                        Mantén Ctrl (o Cmd en Mac) para seleccionar varios campos.
-                      </div>
+                      <div className={styles.hint}>Ctrl/Cmd para seleccionar varios.</div>
                     </div>
 
-                    <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
-                      <button
-                        type="button"
-                        className={styles.btn}
-                        onClick={() => removeSection(idx)}
-                        disabled={readOnly}
-                        style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}
-                      >
-                        Eliminar sección
-                      </button>
+                    {/* ===== fields dentro de sección ===== */}
+                    <div style={{ marginTop: 14 }}>
+                      {fieldsInSection.length === 0 ? (
+                        <div className={styles.hint}>No hay campos asignados a esta sección.</div>
+                      ) : (
+                        fieldsInSection.map((f) => {
+                          const idx = propsObj.fields.findIndex((x) => x.name === f.name);
+                          if (idx === -1) return null;
+
+                          return (
+                            <FieldRow
+                              key={idx}
+                              field={propsObj.fields[idx]}
+                              onChange={(patch) => updateField(idx, patch)}
+                              onRemove={() => removeField(idx)}
+                              onMoveUp={() => moveField(idx, -1)}
+                              onMoveDown={() => moveField(idx, +1)}
+                              canUp={idx > 0}
+                              canDown={idx < propsObj.fields.length - 1}
+                              readOnly={readOnly}
+                            />
+                          );
+                        })
+                      )}
                     </div>
                   </div>
-                );
-              })}
-            </Section>
-      {/* Sección Fields */}
-      <Section title="Formulario">
-        <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
-          <button type="button" className={styles.btn} onClick={addField} disabled={readOnly}>+ Añadir campo</button>
-        </div>
+                )}
+              </div>
+            );
+          })}
 
-        {propsObj.fields.length === 0 && (
-          <div className={styles.hint}>Aún no hay campos. Pulsa “Añadir campo”.</div>
-        )}
+          {/* ====== CAMPOS SIN SECCIÓN ====== */}
+          {(() => {
+            const sections = getFormSections();
+            const inSections = getSectionFieldSet(sections);
+            const unassigned = propsObj.fields
+              .map((f, idx) => ({ f, idx }))
+              .filter(({ f }) => !inSections.has(f.name));
 
-        {propsObj.fields.map((f, idx) => (
-          <FieldRow
-            key={idx}
-            field={f}
-            onChange={(patch) => updateField(idx, patch)}
-            onRemove={() => removeField(idx)}
-            onMoveUp={() => moveField(idx, -1)}
-            onMoveDown={() => moveField(idx, +1)}
-            canUp={idx > 0}
-            canDown={idx < propsObj.fields.length - 1}
-          />
-        ))}
+            if (unassigned.length === 0) return null;
+
+            return (
+              <div className={styles.sectionRow} style={{ marginTop: 12 }}>
+                <div className={styles.sectionHeader}>
+                  <div className={styles.sectionTitleLine}>
+                    <span className={styles.sectionTitle}>Campos sin sección</span>
+                    <span className={styles.sectionMeta}>
+                      <span className={styles.badgeSoft}>{unassigned.length} campos</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className={styles.sectionBody}>
+                  {unassigned.map(({ idx }) => (
+                    <FieldRow
+                      key={idx}
+                      field={propsObj.fields[idx]}
+                      onChange={(patch) => updateField(idx, patch)}
+                      onRemove={() => removeField(idx)}
+                      onMoveUp={() => moveField(idx, -1)}
+                      onMoveDown={() => moveField(idx, +1)}
+                      canUp={idx > 0}
+                      canDown={idx < propsObj.fields.length - 1}
+                      readOnly={readOnly}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
       </Section>
+
 
       {/* JSON avanzado (opcional) */}
       <div className={styles.card} style={{ marginTop: 16 }}>

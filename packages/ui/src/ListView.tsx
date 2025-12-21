@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import type {Field, FieldType, ListViewProps } from "@repo/types";
 import { ActionMenu } from "./ActionMenu";
+import { dataProvider } from "./providers/DataProvider";
 
 
 export default function ListView({
@@ -39,6 +40,24 @@ export default function ListView({
   );
 
   const [filters, setFilters] = useState<Record<string, string>>({});
+
+  // Cache para resolver selectorTabla (id -> displayField) en la lista
+  const [labelCache, setLabelCache] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!filteredData?.length) return;
+
+    preloadSelectorLabels({
+      rows: filteredData,
+      fields: listFields,
+      dataProvider,
+      cache: labelCache,
+      setCache: setLabelCache,
+    }).catch(() => {
+      // si falla, degradamos mostrando el id
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ listFields]);
 
   const handleFilterChange = (fieldName: string, value: string) => {
     setFilters((prev) => ({ ...prev, [fieldName]: value }));
@@ -162,7 +181,7 @@ export default function ListView({
                 <tr key={row[primaryKey] ?? idx}>
                   {listFields.map((f) => (
                     <td key={f.name} className="text-nowrap">
-                      {renderCell(row[f.name], f)}
+                      {renderCell(row[f.name], f, labelCache)}
                     </td>
                   ))}
 
@@ -208,7 +227,85 @@ function capitalize(str: string) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-function renderCell(value: any, field: Field) {
+function getSelectorRef(ref: any): { moduleSlug?: string; displayField?: string; valueField?: string } | null {
+  if (!ref || typeof ref !== "object") return null;
+  // “displayField” solo existe en SelectorTablaRef
+  if ("displayField" in ref) return ref;
+  return null;
+}
+
+function cacheKey(moduleSlug: string, id: string) {
+  return `${moduleSlug}::${id}`;
+}
+
+async function preloadSelectorLabels(params: {
+  rows: any[];
+  fields: Field[];
+  dataProvider: any;
+  cache: Record<string, string>;
+  setCache: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+}) {
+  const { rows, fields, dataProvider, cache, setCache } = params;
+
+  // Agrupamos por referencia (mismo moduleSlug/valueField/displayField)
+  const pending = new Map<
+    string,
+    { moduleSlug: string; valueField: string; displayField: string; ids: Set<string> }
+  >();
+
+  for (const f of fields) {
+    if (f.type !== "selectorTabla") continue;
+
+    const ref = getSelectorRef((f as any).ref);
+    const moduleSlug = ref?.moduleSlug ? String(ref.moduleSlug) : "";
+    const valueField = ref?.valueField ? String(ref.valueField) : "id";
+    const displayField = ref?.displayField ? String(ref.displayField) : "id";
+    if (!moduleSlug) continue;
+
+    const k = `${moduleSlug}|${valueField}|${displayField}`;
+    if (!pending.has(k)) {
+      pending.set(k, { moduleSlug, valueField, displayField, ids: new Set() });
+    }
+
+    const bucket = pending.get(k)!;
+
+    for (const r of rows) {
+      const id = r?.[f.name];
+      if (!id) continue;
+      const idStr = String(id);
+      const ck = cacheKey(moduleSlug, idStr);
+      if (!cache[ck]) bucket.ids.add(idStr);
+    }
+  }
+
+  for (const b of pending.values()) {
+    const ids = Array.from(b.ids);
+    if (!ids.length) continue;
+
+    // Ideal: backend soporta op "in".
+    const res = await dataProvider.list({
+      moduleSlug: b.moduleSlug,
+      filters: [{ field: b.valueField, op: "in", value: ids }],
+      limit: Math.min(ids.length, 500),
+    });
+
+    const rowsRes = Array.isArray(res?.data) ? res.data : [];
+    const patch: Record<string, string> = {};
+
+    for (const r of rowsRes) {
+      const id = String(r?.[b.valueField]);
+      const label = String(r?.[b.displayField] ?? id);
+      patch[cacheKey(b.moduleSlug, id)] = label;
+    }
+
+    if (Object.keys(patch).length) {
+      setCache((prev) => ({ ...prev, ...patch }));
+    }
+  }
+}
+
+
+function renderCell(value: any, field: Field, labelCache: Record<string, string>) {
   if (value === null || value === undefined || value === "") return "—";
 
   switch (field.type as FieldType) {
@@ -274,15 +371,23 @@ function renderCell(value: any, field: Field) {
       );
 
     case "selectorTabla": {
-      // Más adelante puedes mejorar esto usando field.ref.displayField.
+      const ref = getSelectorRef((field as any).ref);
+      const moduleSlug = ref?.moduleSlug ? String(ref.moduleSlug) : "";
+      const df = ref?.displayField ? String(ref.displayField) : "id";
+
+      // Si ya viene el objeto relacionado, intenta pintar displayField directamente
       if (typeof value === "object" && value !== null) {
-        const display =
-          (value as any)[field.ref?.displayField || "id"] ??
-          (value as any).id ??
-          JSON.stringify(value);
-        return String(display);
+        const v: any = value;
+        return String(v[df] ?? v.id ?? JSON.stringify(v));
       }
-      return String(value);
+
+      // Normal: guardamos el ID. Lo resolvemos contra caché.
+      const id = String(value ?? "");
+      if (moduleSlug && id) {
+        const lbl = labelCache[cacheKey(moduleSlug, id)];
+        if (lbl) return lbl;
+      }
+      return id;
     }
 
     case "formula":

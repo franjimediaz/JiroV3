@@ -7,7 +7,7 @@
   --border: #26303a;
   --ring: #7aa7ff;
   --accent: #e6f0ff;
-  --field-bg:#454740;
+  --field-bg:#13ecda62;
 
   --ok-bg: #0f2f1c;
   --ok-bd: #2b8a3e;
@@ -159,6 +159,19 @@ select.input:disabled {
 .btn {
   appearance: none;
   background: linear-gradient(180deg, #1b222a, #141a20);
+  color: var(--text);
+  border: none;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform .05s ease, box-shadow .15s ease, background .15s ease;
+  box-shadow: var(--shadow-sm);
+}
+.btnAdd {
+  appearance: none;
+  background: linear-gradient(180deg, #37800d, #37800d85);
   color: var(--text);
   border: none;
   padding: 10px 14px;
@@ -392,3 +405,98 @@ form.card > .card {
   border-top: 1px solid var(--border, #26303a);
   padding: 12px;
 }
+.sectionRow {
+  border: 1px solid var(--border, #26303a);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+  margin-top: 12px;
+}
+.sectionHeader {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+}
+.sectionToggle {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sectionTitleLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sectionTitle {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text);
+}
+.sectionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  opacity: 0.95;
+}
+.sectionDescPreview {
+  font-size: 13px;
+  color: var(--text-dim, #b8c2cc);
+}
+.sectionActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.iconBtn {
+  border-radius: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border, #26303a);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+
+.iconBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.dangerBtn {
+  border-radius: 10px;
+  padding: 6px 10px;
+  border: 1px solid #7f1d1d;
+  background: rgba(220, 38, 38, 0.15);
+  color: #fecaca;
+  cursor: pointer;
+}
+.sectionBody {
+  border-top: 1px solid var(--border, #26303a);
+  padding: 12px;
+}
+.badgeSoft {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #26303a);
+  color: var(--text-dim, #b8c2cc);
+}
+.sectionBody .fieldformcard {
+  margin-top: 8px;
+}
+
+.sectionBody .fieldformcard:first-child {
+  margin-top: 0;
+}
+.sectionRow:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+

@@ -6,6 +6,7 @@ import { applyCompute } from "./engines/computeEngine";
 import type { DataProvider } from "./engines/computeEngine";
 import { dataProvider as defaultDataProvider } from "./providers/DataProvider";
 import { PopupSelector } from "./PopUpSelector";
+import  Selector from "./Selector";
 
 type Mode = "view" | "edit" | "create";
 
@@ -26,6 +27,7 @@ type Props = {
   dataProvider?: DataProvider;
 };
 
+
 export default function Form({
   schema,
   initialData = {},
@@ -40,6 +42,7 @@ export default function Form({
   // Derivar modo por defecto si no viene
   const effectiveMode: Mode =
     mode || (readOnly ? "view" : "edit");
+    
 
   // Valores editables + meta para overrides
   const [values, setValues] = useState<any>(() =>
@@ -158,7 +161,7 @@ export default function Form({
   // Render de un campo individual
   const renderField = (f: Field) => {
     if (f.visible === false) return null;
-
+    if (f.type === "ReverseLink") return null;
     const v = values[f.name] ?? "";
     const isOverride = !!values?.meta?.overrides?.[f.name]?.enabled;
 
@@ -167,7 +170,10 @@ export default function Form({
       effectiveMode === "view" ||
       (!!f.readOnly && !isOverride) ||
       (!!f.compute && !f.allowOverride && f.type !== "selectorTabla");
-
+    const reverseLinkFields = useMemo(
+  () => (schema.fields || []).filter((f) => f.type === "ReverseLink"),
+  [schema.fields]
+);
     return (
       <div key={f.name} className={colClass(f)}>
         <div className="field-box">
@@ -206,8 +212,11 @@ export default function Form({
           {computing && f.compute && !isOverride && (
             <div className="small text-muted mt-1">recalculando…</div>
           )}
+
         </div>
+
       </div>
+      
     );
   };
 
@@ -282,7 +291,10 @@ export default function Form({
       </>
     );
   };
-
+  const reverseLinkFields = useMemo(
+    () => (schema.fields || []).filter((f) => f.type === "ReverseLink"),
+    [schema.fields]
+  );
   // --------- RENDER PRINCIPAL ---------
 
   return (
@@ -337,6 +349,20 @@ export default function Form({
           {schema.fields.map((f) => renderField(f))}
         </div>
       )}
+      {/* ReverseLink (tablas relacionadas) */}
+        {reverseLinkFields.length > 0 && (
+          <div className="d-flex flex-column gap-3">
+            {reverseLinkFields.map((f) => (
+              <ReverseLinkTable
+                key={f.name}
+                field={f}
+                parentRecord={values}
+                mode={effectiveMode}
+              />
+            ))}
+          </div>
+        )}
+
 
       {/* Acciones */}
       <div className="d-flex justify-content-end gap-2 mt-3">
@@ -363,7 +389,7 @@ function FieldInput({
 const [popupOpen, setPopupOpen] = useState(false);
 const [popupItems, setPopupItems] = useState<{ value: any; label: string }[]>([]);
 const [popupLoading, setPopupLoading] = useState(false);
-const isMultiple = type === "selectorTabla" && !!field.ref?.multiple;
+const isMultiple = field.type === "selectorTabla" && !!field.ref.multiple;
 const [labelCache, setLabelCache] = useState<Record<string, string>>({});
 
 
@@ -397,19 +423,19 @@ const applyDraft = () => {
 };
 //-----------------------------
 async function handleSearch(q: string) {
-const moduleSlug = field.ref?.moduleSlug;
-const displayField = field.ref?.displayField || "name";
-const valueField = field.ref?.valueField || "id"; // si no lo tienes, usamos id
+  if (field.type !== "selectorTabla") return;
 
-if (!moduleSlug) {
-  setPopupItems([
-    { value: "__missing__", label: "⚠️ Falta ref.moduleSlug en este selectorTabla" },
-  ]);
-  return;
-}
+  const { moduleSlug, displayField, valueField } = field.ref;
+  const df = displayField || "name";
+  const vf = valueField || "id"; // fallback
 
-setPopupLoading(true);
-try {
+  if (!moduleSlug) {
+    setPopupItems([{ value: "__missing__", label: "⚠️ Falta ref.moduleSlug en este selectorTabla" }]);
+    return;
+  }
+
+  setPopupLoading(true);
+  try {
   const params = new URLSearchParams();
   params.set("moduleSlug", moduleSlug);
   params.set("q", q || "");
@@ -435,8 +461,8 @@ try {
   const rows = json.data || [];
   setPopupItems(
     rows.map((row: any) => ({
-      value: row?.[valueField],
-      label: row?.[displayField] ?? String(row?.[valueField] ?? ""),
+      value: row?.[vf],
+      label: row?.[displayField] ?? String(row?.[vf] ?? ""),
     }))
   );
 } finally {
@@ -453,6 +479,7 @@ async function openSelectorTablaPopup() {
 }
 
 //-------------------------
+  
   if (type === "boolean") {
     return (
       <div className="form-check">
@@ -466,6 +493,7 @@ async function openSelectorTablaPopup() {
       </div>
     );
   }
+  
 
   if (type === "number" || type === "money" || type === "percent") {
     return (
@@ -593,48 +621,37 @@ async function openSelectorTablaPopup() {
   // single
   return labelCache[value] || String(value);
 })();
+ const ref = field.ref;
+
+  const moduleSlug =
+    ref && "moduleSlug" in ref ? (ref as any).moduleSlug : "";
+
+  const displayField =
+    ref && "displayField" in ref ? (ref as any).displayField : "id";
+
+  const valueField =
+    ref && "valueField" in ref ? (ref as any).valueField : "id";
+
+  const filters =
+    ref && "filters" in ref ? (ref as any).filters : [];
+
+  const sort =
+    ref && "sort" in ref ? (ref as any).sort : [];
 
   return (
     <>
-      <button
-        type="button"
-        className="form-control d-flex justify-content-between align-items-center"
-        onClick={openSelectorTablaPopup}
-        disabled={readOnly}
-      >
-        <span style={{ opacity: value ? 1 : 0.75 }}>{summary}</span>
-        <span style={{ opacity: 0.7 }}>🔎</span>
-      </button>
-      
-        <PopupSelector
-        open={popupOpen}
-        title={field.label || `Seleccionar (${field.ref?.moduleSlug || ""})`}
-        multiple={isMultiple}
-        value={isMultiple ? (Array.isArray(value) ? value : []) : value}
-        items={popupItems}
-        loading={popupLoading}
-        onSearch={handleSearch}
-        onClose={() => setPopupOpen(false)}
-        onApply={(next) => {
-  // next puede ser id o ids[]
-          if (Array.isArray(next)) {
-            const newCache: Record<string, string> = {};
-            popupItems.forEach((item) => {
-              if (next.includes(item.value)) {
-                newCache[item.value] = item.label;
-              }
-            });
-            setLabelCache((prev) => ({ ...prev, ...newCache }));
-          } else {
-            const found = popupItems.find((i) => i.value === next);
-            if (found) {
-              setLabelCache((prev) => ({ ...prev, [next]: found.label }));
-            }
-          }
 
-          onChange(next);
-        }}
-      />
+          <Selector
+            moduleSlug={moduleSlug}
+            displayField={displayField}
+            valueField={valueField}
+            value={value ?? ""}
+            onChange={onChange}
+            readOnly={readOnly}
+            filters={filters}
+            sort={sort}
+            placeholder={field.placeholder || "Selecciona un registro"}
+          />
  
 
     </>
@@ -669,6 +686,231 @@ async function openSelectorTablaPopup() {
   );
 
 }
+
+function ReverseLinkTable({
+  field,
+  parentRecord,
+  mode,
+}: {
+  field: Field;            // viene tipado como Field, pero lo estrechamos dentro
+  parentRecord: any;
+  mode: "view" | "edit" | "create";
+}) {
+  if (field.type !== "ReverseLink") return null;
+type ListFilterOp = "=" | "!=" | ">" | "<" | "in";
+type ListFilter = { field: string; op: ListFilterOp; value: any };
+type ListSort = { field: string; dir: "asc" | "desc" };
+
+function toListOp(op: any): ListFilterOp {
+  if (op === "=" || op === "!=" || op === ">" || op === "<" || op === "in") return op;
+  return "=";
+}
+
+  const ref = field.ref; // ReverseLinkRef
+
+  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState<any[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [targetSchema, setTargetSchema] = useState<ModuleSchema | null>(null);
+
+  const parentKey = ref.parentKey || "id";
+  const parentId = parentRecord?.[parentKey];
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      setErr(null);
+
+      if (mode === "create" || !parentId) {
+        setRows([]);
+        return;
+      }
+
+      if (!ref.moduleSlug?.trim()) {
+        setErr("ReverseLink: falta ref.moduleSlug");
+        return;
+      }
+      if (!ref.foreignKey?.trim()) {
+        setErr("ReverseLink: falta ref.foreignKey");
+        return;
+      }
+
+      // dataProvider necesario
+      if (!defaultDataProvider?.list || !defaultDataProvider?.getSchema) {
+        setErr("dataProvider no implementa list/getSchema");
+        return;
+      }
+
+      setLoading(true);
+      try {
+        // 1) Schema destino (para columnas list/always)
+        const sch = await defaultDataProvider.getSchema(ref.moduleSlug);
+        if (!cancelled) setTargetSchema(sch);
+
+        // 2) Query de relacionados
+      const extraFilters = Array.isArray(ref.filters) ? ref.filters : [];
+
+        const filters: ListFilter[] = [
+          ...extraFilters.map((f): ListFilter => ({
+            field: String(f.field),
+            op: toListOp(f.op),
+            value: f.value,
+          })),
+          { field: ref.foreignKey, op: "=", value: parentId },
+        ];
+
+        const sort: ListSort[] = Array.isArray(ref.sort)
+          ? ref.sort.map((s): ListSort => ({
+              field: String(s.field),
+              dir: s.direction === "desc" ? "desc" : "asc",
+            }))
+          : [];
+
+          const result = await defaultDataProvider.list({
+            moduleSlug: ref.moduleSlug,
+            filters,
+            sort,
+            limit: ref.limit ?? 20,
+          });
+          console.log("[ReverseLink] result raw", result);
+
+        const data = Array.isArray(result?.data)
+          ? result.data
+          : Array.isArray(result)
+          ? result
+          : []; console.log("[ReverseLink] rows length", data.length, data[0]);
+
+        if (!cancelled) setRows(data);
+      } catch (e: any) {
+        if (!cancelled) setErr(e?.message || "Error cargando ReverseLink");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    mode,
+    parentId,
+    ref.moduleSlug,
+    ref.foreignKey,
+    ref.limit,
+    JSON.stringify(ref.filters || []),
+    JSON.stringify(ref.sort || []),
+  ]);
+
+  const columns =
+    (targetSchema?.fields || []).filter((f) =>
+      ["List", "Always"].includes(f.appareance || "Zoom")
+    );
+
+      const getRowId = (r: any) => r?.id;
+
+  // Ruta base del módulo relacionado.
+  // Si en tu app la ruta real NO coincide con /{moduleSlug}/{id}, cámbialo aquí UNA vez.
+  const baseRoute = `/${ref.moduleSlug}`;
+
+  const goView = (r: any) => {
+    const id = getRowId(r);
+    if (!id) return;
+    window.location.href = `${baseRoute}/${id}`;
+  };
+
+  const goEdit = (r: any) => {
+    const id = getRowId(r);
+    if (!id) return;
+    window.location.href = `${baseRoute}/${id}?edit=true`;
+  };
+
+  return (
+    <div className="card">
+      <div className="card-header d-flex align-items-start justify-content-between gap-3">
+        <div>
+          <div className="fw-semibold">{field.label || field.name}</div>
+          <div className="small text-muted">
+            {ref.moduleSlug} · {rows.length} registros
+          </div>
+        </div>
+      </div>
+
+      <div className="card-body">
+        {mode === "create" && (
+          <div className="text-muted small">
+            Guarda el registro para ver elementos relacionados.
+          </div>
+        )}
+
+        {err && <div className="alert alert-danger py-2 mb-0">{err}</div>}
+
+        {!err && loading && <div className="text-muted">Cargando…</div>}
+
+        {!err && !loading && rows.length === 0 && (
+          <div className="text-muted small">No hay registros relacionados.</div>
+        )}
+
+        {!err && !loading && rows.length > 0 && (
+          <>
+            {columns.length === 0 ? (
+              <div className="text-muted small">
+                No hay campos con appareance List/Always en {ref.moduleSlug}.
+              </div>
+            ) : (
+              <div className="table-responsive">
+                <table className="table table-sm align-middle mb-0">
+                  <thead>
+                    <tr>
+                      {columns.map((c) => (
+                        <th key={c.name}>{c.label || c.name}</th>
+                      ))}
+                      <th style={{ width: 180 }}>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r, idx) => (
+                      <tr key={r?.id || idx}>
+                        {columns.map((c) => (
+                          <td key={c.name}>
+                            {String(r?.[c.name] ?? "")}
+                          </td>
+                        ))}
+                        <td>
+                        <div className="d-flex gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary"
+                            onClick={() => goView(r)}
+                            disabled={!r?.id}
+                          >
+                            Ver
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-warning"
+                            onClick={() => goEdit(r)}
+                            disabled={!r?.id}
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 /* ---------------- Utils ---------------- */
 

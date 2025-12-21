@@ -8,7 +8,7 @@ const TABLE = "modulos";
 // --- Validación mínima de props (runtime, sin Zod) ---
 const FIELD_TYPES = new Set([
   "text","textarea","number","money","date","datetime","boolean",
-  "select","multiselect","color","file","image","selectorTabla",
+  "select","multiselect","color","file","image","selectorTabla","ReverseLink",
 ]);
 
 function validateModuleProps(props: any): { ok: boolean; detail?: string } {
