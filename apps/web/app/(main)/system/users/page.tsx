@@ -1,44 +1,21 @@
+// app/customers/page.tsx   (server)
+import CustomersPageClient from "./PageClient";
+import { fetchModuloBySlug } from "@/lib/modulos/modulos";
 import { createClient } from "@/lib/supabase/server";
-import UsersAdminClient from "./UsersAdminClient";
 
-type DbUser = {
-  uid: string;
-  email: string | null;
-  name: string | null;
-  role_id: string | null;
-};
-
-type DbRole = {
-  id: string;
-  title: string;
-};
-
-export default async function SystemUsersPage() {
+export default async function CustomersPage() {
   const supabase = await createClient();
 
-  // Cargar usuarios (tabla pública)
-  const { data: usersData, error: usersError } = await supabase
+  const { data: customers } = await supabase
     .from("users")
-    .select("uid, email, name, role_id")
-    .order("email", { ascending: true });
+    .select("*");
 
-  if (usersError) {
-    console.error("Error cargando users:", usersError);
-  }
+  const modulo = await fetchModuloBySlug("users");
 
-  const users: DbUser[] = usersData ?? [];
-
-  // Cargar roles
-  const { data: rolesData, error: rolesError } = await supabase
-    .from("rol")
-    .select("id, title")
-    .order("title", { ascending: true });
-
-  if (rolesError) {
-    console.error("Error cargando roles:", rolesError);
-  }
-
-  const roles: DbRole[] = rolesData ?? [];
-
-  return <UsersAdminClient users={users} roles={roles} />;
+  return (
+    <CustomersPageClient
+      customers={customers ?? []}
+      schema={modulo.props} // <- esto es tu ModuleSchema real
+    />
+  );
 }
