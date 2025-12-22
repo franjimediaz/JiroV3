@@ -3,77 +3,13 @@
 import { useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./modulo-detalle.module.css";
+import {IconPicker} from "@repo/ui";
 import { upsertModuloAction } from "@/actions/modulos";
 import type { Field as FieldSchema, FieldType, ModuleSchema, Field, Appareance, Compute, FormSection} from "@repo/types";
 import {VALID_FIELD_TYPES,Appareance_Valid_Types} from "@repo/types";
 
 
 
-export const ICON_OPTIONS = [
-  // 👤 Personas / Usuarios
-  { name: "Usuario", value: "bi-person" },
-  { name: "Usuarios", value: "bi-people" },
-  { name: "Usuario Plus", value: "bi-person-plus" },
-  { name: "Usuario Check", value: "bi-person-check" },
-  { name: "Usuario Gear", value: "bi-person-gear" },
-
-  // 🏢 Negocio / Organización
-  { name: "Empresa", value: "bi-building" },
-  { name: "Oficina", value: "bi-building-gear" },
-  { name: "Carpeta", value: "bi-folder" },
-  { name: "Carpeta Abierta", value: "bi-folder2-open" },
-  { name: "Archivo", value: "bi-file-earmark" },
-  { name: "Archivos", value: "bi-files" },
-
-  // 🧾 Datos / Tablas
-  { name: "Tabla", value: "bi-table" },
-  { name: "Lista", value: "bi-list-ul" },
-  { name: "Checklist", value: "bi-list-check" },
-  { name: "Gráfico", value: "bi-bar-chart" },
-  { name: "Gráfico Lineal", value: "bi-graph-up" },
-
-  // ⚙️ Configuración / Sistema
-  { name: "Configuración", value: "bi-gear" },
-  { name: "Ajustes", value: "bi-sliders" },
-  { name: "Herramientas", value: "bi-tools" },
-  { name: "Llave", value: "bi-key" },
-  { name: "Escudo", value: "bi-shield-lock" },
-
-  // 📅 Tiempo / Planificación
-  { name: "Calendario", value: "bi-calendar-week" },
-  { name: "Reloj", value: "bi-clock" },
-  { name: "Alarma", value: "bi-alarm" },
-  { name: "Cronómetro", value: "bi-stopwatch" },
-
-  // 💰 Finanzas
-  { name: "Dinero", value: "bi-cash" },
-  { name: "Moneda", value: "bi-currency-euro" },
-  { name: "Factura", value: "bi-receipt" },
-  { name: "Tarjeta", value: "bi-credit-card" },
-
-  // 🧱 Obras / Servicios (muy JiRo)
-  { name: "Casa", value: "bi-house" },
-  { name: "Martillo", value: "bi-hammer" },
-  { name: "Construcción", value: "bi-cone-striped" },
-  { name: "Regla", value: "bi-rulers" },
-  { name: "Camión", value: "bi-truck" },
-
-  // ✉️ Comunicación
-  { name: "Email", value: "bi-envelope" },
-  { name: "Chat", value: "bi-chat-dots" },
-  { name: "Teléfono", value: "bi-telephone" },
-
-  // 🔔 Estados / UX
-  { name: "Check", value: "bi-check-circle" },
-  { name: "Error", value: "bi-x-circle" },
-  { name: "Info", value: "bi-info-circle" },
-  { name: "Advertencia", value: "bi-exclamation-triangle" },
-
-  // ⭐ Extras
-  { name: "Estrella", value: "bi-star" },
-  { name: "Corazón", value: "bi-heart" },
-  { name: "Pin", value: "bi-geo-alt" },
-];
 
 function validatePropsClient(props: any): string | null {
   if (!props || typeof props !== "object") return "props debe ser un objeto";
@@ -207,60 +143,6 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function IconPicker({
-  value,
-  onChange,
-}: {
-  value?: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))",
-          gap: 8,
-        }}
-      >
-        {ICON_OPTIONS.map((icon) => (
-          <button
-            type="button"
-            key={icon.value}
-            onClick={() => onChange(icon.value)}
-            className={styles.btn}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 8,
-              background:
-                value === icon.value ? "var(--ring)" : undefined,
-              border:
-                value === icon.value
-                  ? "1px solid #042a75ff"
-                  : "1px solid var(--border,#ddd)",
-            }}
-            title={icon.name}
-          >
-            {/* Sustituir este span por Icon component */}
-            <span className={"bi " + icon.value}></span>
-            <small style={{ fontSize: 11, marginTop: 4, color: "#ffffffff" }}>
-              {icon.name}
-            </small>
-          </button>
-        ))}
-      </div>
-      <div style={{ marginTop: 8, fontSize: 12 }}>
-        Icono seleccionado:{" "}
-        <strong>
-          {ICON_OPTIONS.find((i) => i.value === value)?.name || "—"}
-        </strong>
-      </div>
-    </div>
-  );
-}
 
 
 function ArrayChips({
@@ -545,6 +427,24 @@ function FieldRow({
                   disabled={readOnly}
                 />
               </div>
+
+              <div>
+                  <label className={styles.label}>visible when</label>
+                  <select
+                    className={styles.input}
+                    value={field.visibleWhen || "add_edit"}
+                    onChange={(e) =>
+                      onChange({
+                        ...field,
+                        visibleWhen: e.target.value as "add" | "edit" | "add_edit",
+                      })
+                    }
+                  >
+                    <option value="add">add</option>
+                    <option value="edit">edit</option>
+                    <option value="add_edit">add & edit</option>
+                  </select>
+                </div>
 
               <div className={styles.switchRow}>
                 <label className={styles.label}>readOnly</label>
@@ -1391,14 +1291,14 @@ export default function ModuloForm({
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
             <label className={styles.label}>ui.icon</label>
+
             <IconPicker
-              value={propsObj.ui?.icon}
-              onChange={(icon) => {
+             value={propsObj.ui?.icon}
+             onChange={(icon) => {
                 const ui = { ...(propsObj.ui || {}), icon };
                 setPropsObj({ ...propsObj, ui });
                 setRawText(JSON.stringify({ ...propsObj, ui }, null, 2));
-              }}
-            />
+              }} />
           </div>
         </div>
       </Section>

@@ -32,6 +32,7 @@ export type FieldType =
   | "select"
   | "multiselect"
   | "color"
+  | "iconpicker"
   | "file"
   | "image"
   | "selectorTabla"
@@ -59,10 +60,12 @@ export type ReverseLinkRef = {
   moduleSlug: string;
   foreignKey: string;
   parentKey?: string;
+  route?: string;
   limit?: number;
   sort?: QuerySort[];
   filters?: QueryFilter[];
 };
+export type VisibleWhen = "add" | "edit" | "add_edit";
 
 export type BaseField = {
   name: string;
@@ -77,6 +80,7 @@ export type BaseField = {
   help?: string;
   defaultValue?: any;
   visible?: boolean;
+  visibleWhen?: VisibleWhen;
   readOnly?: boolean;
 
   list?: boolean;
@@ -109,6 +113,7 @@ export type OtherField = BaseField & {
 };
 
 export type Field = SelectorTablaField | ReverseLinkField | OtherField;
+
 export const VALID_FIELD_TYPES: FieldType[] = [
   "text",
   "textarea",
@@ -121,11 +126,13 @@ export const VALID_FIELD_TYPES: FieldType[] = [
   "select",
   "multiselect",
   "color",
+  "iconpicker",
   "file",
   "image",
   "selectorTabla",
   "formula",
   "ReverseLink",
+  
 ];
 export const Appareance_Valid_Types: Appareance[] = [
   "List",

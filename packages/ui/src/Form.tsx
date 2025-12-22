@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { Field, ModuleSchema, FieldType } from "@repo/types";
 import { applyCompute } from "./engines/computeEngine";
 import type { DataProvider } from "./engines/computeEngine";
 import { dataProvider as defaultDataProvider } from "./providers/DataProvider";
-import { PopupSelector } from "./PopUpSelector";
+import { IconPicker } from "./IconPicker";
 import  Selector from "./Selector";
 
 type Mode = "view" | "edit" | "create";
@@ -26,8 +26,6 @@ type Props = {
 
   dataProvider?: DataProvider;
 };
-
-
 export default function Form({
   schema,
   initialData = {},
@@ -158,9 +156,24 @@ export default function Form({
     }
   };
 
+  function isFieldVisibleInMode(
+  field: Field,
+  mode: "view" | "edit" | "create"
+) {
+  if (field.visible === false) return false;
+
+  const vw = field.visibleWhen || "add_edit";
+
+  if (mode === "create") return vw === "add" || vw === "add_edit";
+  if (mode === "edit") return vw === "edit" || vw === "add_edit";
+
+  // view → respeta visible, pero no el when
+  return true;
+}
+
   // Render de un campo individual
   const renderField = (f: Field) => {
-    if (f.visible === false) return null;
+    if (!isFieldVisibleInMode(f, effectiveMode)) return null;
     if (f.type === "ReverseLink") return null;
     const v = values[f.name] ?? "";
     const isOverride = !!values?.meta?.overrides?.[f.name]?.enabled;
@@ -657,7 +670,13 @@ async function openSelectorTablaPopup() {
     </>
   );
 }
-
+if (type === "iconpicker") {
+  return (
+    <IconPicker
+     value={value || ""}
+     onChange={(v) => onChange(v)} />
+  );
+}
 
 
   // text / textarea / formula (formula suele ser readOnly salvo override)
@@ -692,19 +711,20 @@ function ReverseLinkTable({
   parentRecord,
   mode,
 }: {
-  field: Field;            // viene tipado como Field, pero lo estrechamos dentro
+  field: Field; // viene tipado como Field, pero lo estrechamos dentro
   parentRecord: any;
   mode: "view" | "edit" | "create";
 }) {
   if (field.type !== "ReverseLink") return null;
-type ListFilterOp = "=" | "!=" | ">" | "<" | "in";
-type ListFilter = { field: string; op: ListFilterOp; value: any };
-type ListSort = { field: string; dir: "asc" | "desc" };
 
-function toListOp(op: any): ListFilterOp {
-  if (op === "=" || op === "!=" || op === ">" || op === "<" || op === "in") return op;
-  return "=";
-}
+  type ListFilterOp = "=" | "!=" | ">" | "<" | "in";
+  type ListFilter = { field: string; op: ListFilterOp; value: any };
+  type ListSort = { field: string; dir: "asc" | "desc" };
+
+  function toListOp(op: any): ListFilterOp {
+    if (op === "=" || op === "!=" || op === ">" || op === "<" || op === "in") return op;
+    return "=";
+  }
 
   const ref = field.ref; // ReverseLinkRef
 
@@ -712,6 +732,9 @@ function toListOp(op: any): ListFilterOp {
   const [rows, setRows] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [targetSchema, setTargetSchema] = useState<ModuleSchema | null>(null);
+
+  // ✅ NUEVO: cache de labels para selectorTabla (moduleSlug:value -> display)
+  const [labelCache, setLabelCache] = useState<Record<string, string>>({});
 
   const parentKey = ref.parentKey || "id";
   const parentId = parentRecord?.[parentKey];
@@ -749,7 +772,7 @@ function toListOp(op: any): ListFilterOp {
         if (!cancelled) setTargetSchema(sch);
 
         // 2) Query de relacionados
-      const extraFilters = Array.isArray(ref.filters) ? ref.filters : [];
+        const extraFilters = Array.isArray(ref.filters) ? ref.filters : [];
 
         const filters: ListFilter[] = [
           ...extraFilters.map((f): ListFilter => ({
@@ -767,19 +790,16 @@ function toListOp(op: any): ListFilterOp {
             }))
           : [];
 
-          const result = await defaultDataProvider.list({
-            moduleSlug: ref.moduleSlug,
-            filters,
-            sort,
-            limit: ref.limit ?? 20,
-          });
-          console.log("[ReverseLink] result raw", result);
+        const result = await defaultDataProvider.list({
+          moduleSlug: ref.moduleSlug,
+          filters,
+          sort,
+          limit: ref.limit ?? 20,
+        });
+        console.log("[ReverseLink] result raw", result);
 
-        const data = Array.isArray(result?.data)
-          ? result.data
-          : Array.isArray(result)
-          ? result
-          : []; console.log("[ReverseLink] rows length", data.length, data[0]);
+        const data = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
+        console.log("[ReverseLink] rows length", data.length, data[0]);
 
         if (!cancelled) setRows(data);
       } catch (e: any) {
@@ -803,16 +823,21 @@ function toListOp(op: any): ListFilterOp {
     JSON.stringify(ref.sort || []),
   ]);
 
+  // columnas visibles
   const columns =
-    (targetSchema?.fields || []).filter((f) =>
-      ["List", "Always"].includes(f.appareance || "Zoom")
-    );
+    (targetSchema?.fields || []).filter((f) => ["List", "Always"].includes(f.appareance || "Zoom"));
 
-      const getRowId = (r: any) => r?.id;
+  // ✅ NUEVO: aseguramos “fields completos” (con type/ref de selectorTabla)
+  const columnsFull = useMemo(() => {
+    const byName = new Map((targetSchema?.fields || []).map((f) => [f.name, f] as const));
+    return columns.map((c) => byName.get(c.name) ?? c) as Field[];
+  }, [columns, targetSchema]);
+
+  const getRowId = (r: any) => r?.id;
 
   // Ruta base del módulo relacionado.
   // Si en tu app la ruta real NO coincide con /{moduleSlug}/{id}, cámbialo aquí UNA vez.
-  const baseRoute = `/${ref.moduleSlug}`;
+  const baseRoute = `/${ref.route}`;
 
   const goView = (r: any) => {
     const id = getRowId(r);
@@ -824,6 +849,103 @@ function toListOp(op: any): ListFilterOp {
     const id = getRowId(r);
     if (!id) return;
     window.location.href = `${baseRoute}/${id}?edit=true`;
+  };
+
+  // ---------------------------
+  // ✅ NUEVO: precarga labels para columnas selectorTabla
+  // ---------------------------
+  const selectorCols = useMemo(() => {
+    return columnsFull.filter((c) => {
+      if (c.type !== "selectorTabla") return false;
+      const moduleSlug = (c as any)?.ref?.moduleSlug;
+      const displayField = (c as any)?.ref?.displayField;
+      // si no hay displayField, no precargamos (fallback a id)
+      return !!moduleSlug && !!displayField;
+    });
+  }, [columnsFull]);
+
+  const preloadSelectorLabels = useCallback(async () => {
+    if (!defaultDataProvider?.list) return;
+    if (rows.length === 0) return;
+    if (selectorCols.length === 0) return;
+
+    // agrupamos por módulo referenciado
+    const buckets = new Map<
+      string,
+      { ids: Set<any>; valueField: string; displayField: string }
+    >();
+
+    for (const col of selectorCols) {
+      const moduleSlug = String((col as any).ref.moduleSlug);
+      const valueField = String((col as any).ref.valueField || "id");
+      const displayField = String((col as any).ref.displayField);
+
+      let b = buckets.get(moduleSlug);
+      if (!b) {
+        b = { ids: new Set<any>(), valueField, displayField };
+        buckets.set(moduleSlug, b);
+      }
+
+      for (const r of rows) {
+        const raw = r?.[col.name];
+        if (raw === null || raw === undefined || raw === "") continue;
+
+        const cacheKey = `${moduleSlug}:${String(raw)}`;
+        if (labelCache[cacheKey]) continue;
+
+        b.ids.add(raw);
+      }
+    }
+
+    for (const [moduleSlug, b] of buckets.entries()) {
+      const ids = Array.from(b.ids);
+      if (ids.length === 0) continue;
+
+      try {
+        const res = await defaultDataProvider.list({
+          moduleSlug,
+          filters: [{ field: b.valueField, op: "in", value: ids }],
+          limit: Math.max(ids.length, 50),
+        });
+
+        const data = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+
+        const patch: Record<string, string> = {};
+        for (const row of data) {
+          const idVal = row?.[b.valueField];
+          if (idVal === null || idVal === undefined) continue;
+          patch[`${moduleSlug}:${String(idVal)}`] = String(row?.[b.displayField] ?? idVal);
+        }
+
+        setLabelCache((prev) => ({ ...prev, ...patch }));
+      } catch {
+        // degradamos mostrando id si falla
+      }
+    }
+  }, [rows, selectorCols, labelCache]);
+
+  useEffect(() => {
+    preloadSelectorLabels();
+  }, [preloadSelectorLabels]);
+
+  // ✅ NUEVO: render por celda (si es selectorTabla, usa labelCache)
+  const renderCellValue = (r: any, c: Field) => {
+    const raw = r?.[c.name];
+
+    if (raw === null || raw === undefined) return "";
+
+    if (c.type === "selectorTabla") {
+      const moduleSlug = (c as any)?.ref?.moduleSlug;
+      const displayField = (c as any)?.ref?.displayField;
+      if (moduleSlug && displayField) {
+        const key = `${moduleSlug}:${String(raw)}`;
+        return labelCache[key] ?? String(raw);
+      }
+      // si no tiene displayField configurado, fallback a id
+      return String(raw);
+    }
+
+    return String(raw);
   };
 
   return (
@@ -839,9 +961,7 @@ function toListOp(op: any): ListFilterOp {
 
       <div className="card-body">
         {mode === "create" && (
-          <div className="text-muted small">
-            Guarda el registro para ver elementos relacionados.
-          </div>
+          <div className="text-muted small">Guarda el registro para ver elementos relacionados.</div>
         )}
 
         {err && <div className="alert alert-danger py-2 mb-0">{err}</div>}
@@ -854,7 +974,7 @@ function toListOp(op: any): ListFilterOp {
 
         {!err && !loading && rows.length > 0 && (
           <>
-            {columns.length === 0 ? (
+            {columnsFull.length === 0 ? (
               <div className="text-muted small">
                 No hay campos con appareance List/Always en {ref.moduleSlug}.
               </div>
@@ -863,7 +983,7 @@ function toListOp(op: any): ListFilterOp {
                 <table className="table table-sm align-middle mb-0">
                   <thead>
                     <tr>
-                      {columns.map((c) => (
+                      {columnsFull.map((c) => (
                         <th key={c.name}>{c.label || c.name}</th>
                       ))}
                       <th style={{ width: 180 }}>Acciones</th>
@@ -872,32 +992,30 @@ function toListOp(op: any): ListFilterOp {
                   <tbody>
                     {rows.map((r, idx) => (
                       <tr key={r?.id || idx}>
-                        {columns.map((c) => (
-                          <td key={c.name}>
-                            {String(r?.[c.name] ?? "")}
-                          </td>
+                        {columnsFull.map((c) => (
+                          <td key={c.name}>{renderCellValue(r, c)}</td>
                         ))}
                         <td>
-                        <div className="d-flex gap-2">
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-primary"
-                            onClick={() => goView(r)}
-                            disabled={!r?.id}
-                          >
-                            Ver
-                          </button>
+                          <div className="d-flex gap-2">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-primary"
+                              onClick={() => goView(r)}
+                              disabled={!r?.id}
+                            >
+                              Ver
+                            </button>
 
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-warning"
-                            onClick={() => goEdit(r)}
-                            disabled={!r?.id}
-                          >
-                            Editar
-                          </button>
-                        </div>
-                      </td>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-warning"
+                              onClick={() => goEdit(r)}
+                              disabled={!r?.id}
+                            >
+                              Editar
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -910,6 +1028,7 @@ function toListOp(op: any): ListFilterOp {
     </div>
   );
 }
+
 
 
 /* ---------------- Utils ---------------- */

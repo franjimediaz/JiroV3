@@ -3,13 +3,12 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { isUUID } from "@/lib/utils/isUUID";
+import {VALID_FIELD_TYPES} from "@repo/types";
 const TABLE = "modulos";
 
 // --- Validación mínima de props (runtime, sin Zod) ---
-const FIELD_TYPES = new Set([
-  "text","textarea","number","money","date","datetime","boolean",
-  "select","multiselect","color","file","image","selectorTabla","ReverseLink",
-]);
+const FIELD_TYPES = 
+  VALID_FIELD_TYPES.reduce((set, t) => (set.add(t), set), new Set<string>());
 
 function validateModuleProps(props: any): { ok: boolean; detail?: string } {
   if (!props || typeof props !== "object") return { ok: false, detail: "props debe ser un objeto" };
