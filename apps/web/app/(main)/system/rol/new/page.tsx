@@ -5,8 +5,8 @@ import NewFormClient from "./NewFormClient";
 export const dynamic = "force-dynamic";
 
 const CFG = {
-  moduleSlug: "customers",
-  titleNew: "Nuevo cliente",
+  moduleSlug: "rol",
+  titleNew: "Nuevo rol",
 } as const;
 
 async function fetchSchemaBySlug(slug: string): Promise<ModuleSchema> {

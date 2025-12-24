@@ -999,7 +999,7 @@ function ReverseLinkTable({
                           <div className="d-flex gap-2">
                             <button
                               type="button"
-                              className="btn btn-sm btn-outline-primary"
+                              className="btn btn-sm btn-primary"
                               onClick={() => goView(r)}
                               disabled={!r?.id}
                             >
@@ -1008,7 +1008,7 @@ function ReverseLinkTable({
 
                             <button
                               type="button"
-                              className="btn btn-sm btn-outline-warning"
+                              className="btn btn-sm btn-warning"
                               onClick={() => goEdit(r)}
                               disabled={!r?.id}
                             >

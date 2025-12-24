@@ -25,7 +25,7 @@ export default function RolPageClient({ Rol, schema }: RolPageClientProps) {
         onViewRow={(row) => (window.location.href = `/system/rol/${row.id}`)}
         onEditRow={(row) => (window.location.href = `/system/rol/${row.id}?edit=true`)}
         onDeleteRow={(row) => alert("Aquí pondrás tu modal para borrar: " + row.id)}
-        onCreate={() => (window.location.href = "/rol/new")}
+        onCreate={() => (window.location.href = "/system/rol/new")}
       />
     </RequirePermiso>
   );

@@ -37,7 +37,8 @@ export type FieldType =
   | "image"
   | "selectorTabla"
   | "ReverseLink"
-  | "formula";
+  | "formula"
+  | "timestamp";
  export type Appareance = "List" | "Always" | "Zoom";
 
 export type FormSection = {
@@ -132,6 +133,7 @@ export const VALID_FIELD_TYPES: FieldType[] = [
   "selectorTabla",
   "formula",
   "ReverseLink",
+  "timestamp",
   
 ];
 export const Appareance_Valid_Types: Appareance[] = [

@@ -1,13 +1,12 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { ModuleSchema } from "@repo/types";
-import { Form } from "@repo/ui";
+import FormClient from "./FormClient";
 
 export const dynamic = "force-dynamic";
 
 const CFG = {
   moduleSlug: "py",
-  table: "py",
   titleSingular: "Proyectos",
   displayField: "name",
 } as const;
@@ -33,24 +32,24 @@ async function fetchSchemaBySlug(slug: string): Promise<ModuleSchema> {
     : (raw as ModuleSchema);
 }
 
-async function fetchRowById(table: string, id: string) {
+async function fetchRowById(table: string, primaryKey: string, id: string) {
   const supabase = await createClient();
 
   const { data, error } = await supabase
     .from(table)
     .select("*")
-    .eq("id", id)
+    .eq(primaryKey, id)
     .maybeSingle();
 
   if (error) {
-  console.error(`Error cargando ${table}(${id}):`, {
-    message: (error as any)?.message,
-    code: (error as any)?.code,
-    details: (error as any)?.details,
-    hint: (error as any)?.hint,
-  });
-  throw new Error(`No se pudo cargar el registro de ${table}`);
-}
+    console.error(`Error cargando ${table}(${id}):`, {
+      message: (error as any)?.message,
+      code: (error as any)?.code,
+      details: (error as any)?.details,
+      hint: (error as any)?.hint,
+    });
+    throw new Error(`No se pudo cargar el registro de ${table}`);
+  }
   if (!data) return null;
 
   return {
@@ -81,24 +80,17 @@ export default async function EntityPage({
 
   const isEdit = sp?.edit === "true";
 
-  const [schema, row] = await Promise.all([
-    fetchSchemaBySlug(CFG.moduleSlug),
-    fetchRowById(CFG.table, id),
-  ]);
+  const schema = await fetchSchemaBySlug(CFG.moduleSlug);
 
-  // Si no existe, 404
+  // ✅ tabla y PK salen del schema (no hardcode)
+  const table = CFG.moduleSlug;
+  const primaryKey = schema.db.primaryKey ?? "id";
+
+  const row = await fetchRowById(table, primaryKey, id);
   if (!row) notFound();
 
-  const buildHref = (nextEdit: boolean) => {
-    const qs = new URLSearchParams(sp || {});
-    if (nextEdit) qs.set("edit", "true");
-    else qs.delete("edit");
-    const q = qs.toString();
-    return q ? `/${CFG.table}/${id}?${q}` : `/${CFG.table}/${id}`;
-  };
-
   const display = (row as any)?.[CFG.displayField] ?? id;
-
+console.log("FormClient props:", { schema, isEdit, table, primaryKey, id });
   return (
     <main className="container py-4 bg-secondary bg-opacity-10 rounded">
       <header className="d-flex align-items-center mb-4">
@@ -106,11 +98,14 @@ export default async function EntityPage({
           {CFG.titleSingular}: {String(display)}
         </h1>
       </header>
-
-      <Form
+      
+      <FormClient
         schema={schema}
         initialData={row}
         mode={isEdit ? "edit" : "view"}
+        table={table}
+        primaryKey={primaryKey}
+        id={id}
       />
     </main>
   );

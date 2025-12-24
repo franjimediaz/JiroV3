@@ -6,6 +6,7 @@ import { ActionMenu } from "./ActionMenu";
 import { dataProvider } from "./providers/DataProvider";
 
 
+
 export default function ListView({
   schema,
   data,

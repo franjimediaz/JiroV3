@@ -719,6 +719,7 @@ function FieldRow({
             </div>
           )}
           {field.type === "ReverseLink" && (
+             <div className={styles.card} style={{ marginTop: 12 }}>
             <div className={styles.grid}>
               <div>
                 <label className={styles.label}>ref.moduleSlug (tabla destino)</label>
@@ -778,7 +779,19 @@ function FieldRow({
         }
       />
     </div>
-
+              <div>
+                <label className={styles.label}>ref.route (tabla destino)</label>
+                <input
+                  className={styles.input}
+                  value={field.ref?.route || ""}
+                  onChange={(e) =>
+                    onChange({
+                      ...field,
+                      ref: { ...(field.ref || {}), route: e.target.value },
+                    })
+                  }
+                />
+              </div>
     <div className="full">
       <label className={styles.label}>ref.filters extra (JSON)</label>
       <textarea
@@ -822,6 +835,7 @@ function FieldRow({
         Ej: [{"{"}"field":"created_at","direction":"desc"{""}{"}"}]
       </div>
     </div>
+  </div>
   </div>
 )}
 

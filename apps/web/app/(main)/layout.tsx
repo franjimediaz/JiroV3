@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import Providers from "../providers";
 import { createClient } from "@/lib/supabase/server";
+import { PermisosProvider } from "@/lib/perms";
 import type { SidebarItem } from "@repo/ui";
 import "../globals.css";
 import "bootstrap/dist/css/bootstrap.min.css";
@@ -81,6 +82,7 @@ export default async function MainLayout({
   const items: SidebarItem[] = error ? [] : buildTree((data ?? []) as ModuloRow[]);
 
   return (
+    <PermisosProvider>
     <div className={`${geistSans.variable} ${geistMono.variable}`}>
       <Providers>
         {/* NAV SUPERIOR */}
@@ -140,5 +142,6 @@ export default async function MainLayout({
         </div>
       </Providers>
     </div>
+    </PermisosProvider>
   );
 }
