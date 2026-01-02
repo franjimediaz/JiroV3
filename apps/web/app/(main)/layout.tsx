@@ -95,21 +95,19 @@ export default async function MainLayout({
               data-bs-target="#sidebarOffcanvas"
               aria-controls="sidebarOffcanvas"
             >
-              Menú
+            
             </button>
-            <a className="navbar-brand ms-lg-2" href="/">
-              JiRo v2
-            </a>
-            <div className="d-flex align-items-center gap-2">
-              <a className="btn btn-outline-light d-none d-lg-inline" href="/docs">
-                Mi Perfil
+            
+            <a className="navbar-brand ms-lg-2 d-flex align-items-center" href="/">
+                <img
+                  src="/mylogo2.png"
+                  alt="JiRo v2"
+                  height="90"
+                  style={{ objectFit: "contain", width: "auto" }}
+                  
+                  className="d-inline-block align-text-top"
+                />
               </a>
-              <form action="/auth/signout" method="post" className="m-0">
-                <button className="btn btn-outline-light" type="submit">
-                  Salir
-                </button>
-              </form>
-            </div>
           </div>
         </nav>
 

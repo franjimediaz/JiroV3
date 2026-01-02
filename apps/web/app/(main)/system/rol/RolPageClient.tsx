@@ -1,6 +1,5 @@
 "use client";
 
-import { RequirePermiso } from "@/lib/perms";
 import {ListView} from "@repo/ui"; // ruta donde lo hayas guardado
 import type { ModuleSchema } from "@repo/types";
 
@@ -17,7 +16,7 @@ type RolPageClientProps = {
 
 export default function RolPageClient({ Rol, schema }: RolPageClientProps) {
   return (
-    <RequirePermiso modulo="rol" accion="ver">
+    
 
       <ListView
         schema={schema}
@@ -27,6 +26,6 @@ export default function RolPageClient({ Rol, schema }: RolPageClientProps) {
         onDeleteRow={(row) => alert("Aquí pondrás tu modal para borrar: " + row.id)}
         onCreate={() => (window.location.href = "/system/rol/new")}
       />
-    </RequirePermiso>
+    
   );
 }

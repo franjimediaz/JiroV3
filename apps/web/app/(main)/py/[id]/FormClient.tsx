@@ -22,6 +22,10 @@ function sanitize(values: any, schema: any) {
         out[f.name] = v.split(",").map((x) => x.trim()).filter(Boolean);
       }
     }
+    if (f.name === "created_at" || f.name === "updated_at") {
+      delete out[f.name];
+      continue;
+    }
 
     // 2) Si algún campo llega como "" pero parece array (por seguridad)
     if (v === "") {

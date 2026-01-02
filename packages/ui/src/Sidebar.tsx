@@ -99,6 +99,7 @@ export function Sidebar({
         <h6 className="text-uppercase text-dark mb-3">{title}</h6>
         {tree}
       </div>
+      <SidebarUser />
     </aside>
   );
 }
@@ -224,5 +225,58 @@ function NavItem({
     </li>
   );
 }
+function SidebarUser() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="border-top p-3 position-relative">
+      <button
+        type="button"
+        className="btn w-100 d-flex align-items-center justify-content-between"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <div className="d-flex align-items-center gap-2">
+          <i className="bi bi-person-circle fs-5" />
+          <span className="small">Mi cuenta</span>
+        </div>
+        
+      </button>
+
+      {open && (
+        <div
+          className="position-absolute bg-white border rounded shadow-sm"
+          style={{
+            bottom: "100%",
+            left: 16,
+            right: 16,
+            marginBottom: 8,
+            zIndex: 1000,
+          }}
+        >
+          <ul className="list-unstyled mb-0">
+            <li>
+              <a
+                href="/mi-perfil"
+                className="dropdown-item d-flex align-items-center gap-2"
+              >
+                <i className="bi bi-person" />
+                Mi perfil
+              </a>
+            </li>
+            <li>
+                <form action="/auth/signout" method="post" className="m-0">
+                <button className="dropdown-item d-flex align-items-center gap-2 text-danger" type="submit">
+                  <i className="bi bi-box-arrow-right" />
+                  Salir
+                </button>
+              </form>
+            </li>
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 export default Sidebar;

@@ -29,6 +29,10 @@ function sanitize(values: any, schema: any) {
       // (esto evita el error en columnas array)
       out[f.name] = null;
     }
+    if (f.name === "created_at" || f.name === "updated_at") {
+      delete out[f.name];
+      continue;
+    }
   }
 
   return out;

@@ -239,10 +239,13 @@ export default function RoleDetailPage() {
       <div className={styles.headerBar}>
         <div>
           <div className={styles.breadcrumb}>System / Roles / Detalle</div>
-          <h1 className={styles.title}>{role.title}</h1>
+          <h1 className={styles.label}>{role.title}</h1>
           <div className={styles.subtitle}>
             <span className={styles.slugBadge}>{role.slug}</span>
           </div>
+        </div>
+        <div>
+          
         </div>
         <div className={styles.headerActions}>
           <button

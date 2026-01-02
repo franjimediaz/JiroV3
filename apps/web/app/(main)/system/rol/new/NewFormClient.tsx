@@ -17,7 +17,10 @@ function sanitize(values: any, schema: ModuleSchema) {
     if ((f.type === "date" || f.type === "datetime" || f.type === "timestamp"|| f.type === "text") && v === "") {
       out[f.name] = null;
     }
-
+if (f.name === "created_at" || f.name === "updated_at") {
+      delete out[f.name];
+      continue;
+    }
     // ✅ Multiselect: nunca ""
     if (f.type === "multiselect") {
       if (v === "" || v == null) out[f.name] = [];
@@ -89,7 +92,7 @@ export default function NewFormClient({
         const newId = (data as any)?.[primaryKey] ?? (data as any)?.id;
         if (newId) {
           // ✅ redirige al detalle en modo view
-          router.push(`/${table}/${newId}`);
+          router.push(`system/${table}/${newId}`);
           router.refresh();
         } else {
           // si no devuelve id por RLS o select, al menos vuelve

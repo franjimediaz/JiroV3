@@ -21,11 +21,16 @@ function sanitize(values: any, schema: ModuleSchema) {
      for (const k of Object.keys(out)) {
     if (out[k] === "") out[k] = null;
   }
+  if (f.name === "created_at" || f.name === "updated_at") {
+      delete out[f.name];
+      continue;
+    }
 
     // ✅ Multiselect: nunca ""
     if (f.type === "multiselect") {
       if (v === "" || v == null) out[f.name] = [];
     }
+
     const isArrayLikeType =
       f.type === "multiselect" ||
       f.type === "ReverseLink" ||          // si lo tienes como type

@@ -1,50 +1,43 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-// Este GET *no cambia* ↓
+export const dynamic = "force-dynamic";
+
+const ROLE_PERMS: Record<string, { modulo: string; accion: string }[]> = {
+  systemadmin: [{ modulo: "*", accion: "*" }],
+  admin: [
+    { modulo: "customers", accion: "*" },
+    { modulo: "users", accion: "ver" },
+  ],
+  user: [{ modulo: "customers", accion: "ver" }],
+};
+
 export async function GET() {
   const supabase = await createClient();
 
-  // 1) Usuario actual según Supabase Auth
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) {
-    return NextResponse.json(
-      { error: "No hay sesión activa" },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "No hay sesión activa" }, { status: 401 });
   }
 
-  // 2) Leer TU TABLA PUBLICA users
-  const { data: userDb, error: userDbError } = await supabase
-    .from("users")             // 👈 tu tabla pública
-    .select("role")            // 👈 campo role definido por ti
-    .eq("uid", user.id)         // 👈 importante: coincide con auth.users.id
+  // OJO: revisa tu columna real. Si tu tabla guarda uid, ok.
+  // Si tu tabla usa id=uid, entonces usa .eq("id", user.id)
+  const { data: userDb } = await supabase
+    .from("users")
+    .select("role_id")
+    .eq("uid", user.id)
     .maybeSingle();
 
-  if (userDbError) {
-    console.error("Error leyendo public.users:", userDbError);
-  }
-
-  // 3) Rol final del usuario, prioridad a tu tabla
   const role =
-    userDb?.role ||                            // 👈 tu tabla OWNERSHIP
-    (user.app_metadata as any)?.role ||        // fallback
-    (user.user_metadata as any)?.role ||       // fallback
-    "user";                                    // default
+    userDb?.role_id ||
+    (user.app_metadata as any)?.role ||
+    (user.user_metadata as any)?.role ||
+    "user";
 
-  // 4) Permisos (de momento modo dios para seguir desarrollando)
-  const permisos = [{ modulo: "*", accion: "*" }];
+  const permisos = ROLE_PERMS[role] ?? ROLE_PERMS.user;
 
-  return NextResponse.json(
-    {
-      userId: user.id,
-      role,
-      permisos,
-    },
-    { status: 200 }
-  );
+  return NextResponse.json({ userId: user.id, role, permisos }, { status: 200 });
 }
+
+
+

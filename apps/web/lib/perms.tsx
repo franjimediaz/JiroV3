@@ -1,181 +1,130 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
-
-/* ----------------------------------------------
-   Tipos base
----------------------------------------------- */
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useRouter } from "next/navigation";
 
 export type Accion = "ver" | "crear" | "actualizar" | "eliminar" | "*";
+export type Permiso = { modulo: string; accion: Accion | string };
 
-export interface Permiso {
-  modulo: string;
-  accion: Accion;
-}
-
-interface PermisosContextValue {
+type Ctx = {
+  loading: boolean;
   permisos: Permiso[];
   hasPermiso: (modulo: string, accion?: Accion) => boolean;
-  loading: boolean;
-}
-
-/* ----------------------------------------------
-   Contexto
----------------------------------------------- */
-
-const PermisosContext = createContext<PermisosContextValue | null>(null);
-
-/* ----------------------------------------------
-   Normalización de nombres
----------------------------------------------- */
-
-const aliasModulo: Record<string, string> = {
-  // Roles
-  roles: "roles",
-  role: "roles",
-  "system/roles": "roles",
-
-  // Clientes / Customers
-  clientes: "customers",
-  customer: "customers",
-  customers: "customers",
-
-  // Resto de módulos
-  obras: "py", // si en tu tabla modulos el slug es "py", esto está bien
-  usuarios: "usuarios",
-  servicios: "servicios",
-  tareas: "tareas",
-  materiales: "materiales",
-  presupuestos: "presupuestos",
-  modulos: "modulos",
+  refresh: () => Promise<void>;
 };
 
+const PermsContext = createContext<Ctx | null>(null);
+
+// Normalización “de verdad”
 const aliasAccion: Record<string, Accion> = {
   read: "ver",
   view: "ver",
-  ver: "ver",
-
+  list: "ver",
+  get: "ver",
   create: "crear",
   add: "crear",
-  nuevo: "crear",
-  crear: "crear",
-
-  update: "actualizar",
+  new: "crear",
   edit: "actualizar",
-  actualizar: "actualizar",
-
+  update: "actualizar",
   delete: "eliminar",
   remove: "eliminar",
-  eliminar: "eliminar",
 };
 
-/* ----------------------------------------------
-   Helpers
----------------------------------------------- */
+function normalizarModulo(input: string): string {
+  if (!input) return "";
+  let m = String(input).trim().toLowerCase();
+  m = m.split("?")[0].split("#")[0];
+  m = m.replace(/^\/+/, "");
+  m = m.replace(/^public\./, "");
+  m = m.replace(/\\/g, "/");
 
-function normalizarModulo(m: string): string {
-  return aliasModulo[m.toLowerCase()] || m.toLowerCase();
+  // si viene como ruta, nos quedamos con el último segmento
+  if (m.includes("/")) m = m.split("/").filter(Boolean).pop() || m;
+  if (m.includes(".")) m = m.split(".").filter(Boolean).pop() || m;
+
+  return m;
 }
 
-function normalizarAccion(a: string | undefined): Accion {
-  if (!a) return "ver";
-  return aliasAccion[a.toLowerCase()] || (a as Accion);
+function normalizarAccion(a: any): Accion {
+  const k = String(a || "ver").trim().toLowerCase();
+  return aliasAccion[k] || (k as Accion);
 }
-
-/* ----------------------------------------------
-   Provider
----------------------------------------------- */
 
 export function PermisosProvider({ children }: { children: React.ReactNode }) {
-  const [permisos, setPermisos] = useState<Permiso[]>([]);
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [permisos, setPermisos] = useState<Permiso[]>([]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/perms", { credentials: "include" });
+
+      // ✅ Si no hay sesión, esto NO es “sin permisos”, es “sin login”
+      if (res.status === 401) {
+        setPermisos([]);
+        router.replace("/login");
+        return;
+      }
+
+      const ct = res.headers.get("content-type") || "";
+      if (!res.ok || !ct.includes("application/json")) {
+        // fail closed
+        setPermisos([]);
+        return;
+      }
+
+      const data = await res.json();
+      const raw = Array.isArray(data?.permisos) ? data.permisos : [];
+
+      const norm: Permiso[] = raw.map((p: any) => ({
+        modulo: normalizarModulo(p.modulo),
+        accion: normalizarAccion(p.accion),
+      }));
+
+      setPermisos(norm);
+    } catch {
+      setPermisos([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [router]);
 
   useEffect(() => {
-    async function cargarPermisos() {
-      try {
-        const res = await fetch("/api/perms", { credentials: "include" });
+    load();
+  }, [load]);
 
-        if (!res.ok) {
-          console.warn("No se pudo cargar /api/perms, activando acceso total en dev");
-          setPermisos([{ modulo: "*", accion: "*" }]);
-          setLoading(false);
-          return;
-        }
+  const hasPermiso = useCallback(
+    (modulo: string, accion: Accion = "ver") => {
+      const m = normalizarModulo(modulo);
+      const a = normalizarAccion(accion);
 
-        const data = await res.json();
+      return permisos.some((p) => {
+        const pm = normalizarModulo(p.modulo);
+        const pa = normalizarAccion(p.accion);
 
-        // Normalizamos permisos que vienen de la API
-        const normalizados = (data?.permisos || []).map((p: any) => ({
-          modulo: normalizarModulo(p.modulo),
-          accion: normalizarAccion(p.accion),
-        }));
-
-        // Fallback: si no hay permisos definidos, acceso total en dev
-        const efectivos = normalizados.length
-          ? normalizados
-          : [{ modulo: "*", accion: "*" }];
-
-        setPermisos(efectivos);
-      } catch (err) {
-        console.error(
-          "Error cargando permisos desde /api/perms, activando acceso total en dev:",
-          err
-        );
-        setPermisos([{ modulo: "*", accion: "*" }]);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    cargarPermisos();
-  }, []);
-
-  /* ----------------------------------------------
-     Función hasPermiso (con wildcard en módulo y acción)
-  ---------------------------------------------- */
-  function hasPermiso(modulo: string, accion: Accion = "ver"): boolean {
-    const mod = normalizarModulo(modulo);
-    const acc = normalizarAccion(accion);
-
-    return permisos.some((p) => {
-      const pm = normalizarModulo(p.modulo);
-      const pa = normalizarAccion(p.accion);
-
-      const moduloOK = pm === "*" || pm === mod;
-      const accionOK = pa === "*" || pa === acc || acc === "*";
-
-      return moduloOK && accionOK;
-    });
-  }
-
-  const value: PermisosContextValue = {
-    permisos,
-    hasPermiso,
-    loading,
-  };
-
-  return (
-    <PermisosContext.Provider value={value}>
-      {children}
-    </PermisosContext.Provider>
+        const matchModulo = pm === "*" || pm === m;
+        const matchAccion = pa === "*" || pa === a;
+        return matchModulo && matchAccion;
+      });
+    },
+    [permisos]
   );
+
+  const value = useMemo<Ctx>(
+    () => ({ loading, permisos, hasPermiso, refresh: load }),
+    [loading, permisos, hasPermiso, load]
+  );
+
+  return <PermsContext.Provider value={value}>{children}</PermsContext.Provider>;
 }
-
-/* ----------------------------------------------
-   Hook de acceso
----------------------------------------------- */
-
-export function usePerms() {
-  const ctx = useContext(PermisosContext);
-  if (!ctx)
-    throw new Error("usePerms debe usarse dentro de <PermisosProvider>.");
-  return ctx;
-}
-
-/* ----------------------------------------------
-   RequirePermiso — para proteger páginas y componentes
----------------------------------------------- */
 
 export function RequirePermiso({
   modulo,
@@ -183,34 +132,24 @@ export function RequirePermiso({
   children,
 }: {
   modulo: string;
-  accion?: Accion;
+  accion?: "ver" | "crear" | "actualizar" | "eliminar";
   children: React.ReactNode;
 }) {
-  const { hasPermiso, loading } = usePerms();
   const router = useRouter();
-  const pathname = usePathname();
-  const [allowed, setAllowed] = React.useState<boolean | null>(null);
+  const { loading, hasPermiso } = usePerms();
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (loading) return;
+    if (!hasPermiso(modulo, accion)) router.replace("/403");
+  }, [loading, modulo, accion, hasPermiso, router]);
 
-    const ok = hasPermiso(modulo, accion);
-    setAllowed(ok);
-
-    if (!ok) {
-      console.warn(
-        `🚫 Acceso denegado a ${pathname}: falta permiso ${modulo}:${accion}: Acceso:`,
-        hasPermiso.toString()
-      );
-      router.push("/403");
-    }
-  }, [loading, modulo, accion, hasPermiso, router, pathname]);
-
-  // Mientras carga o aún no hemos evaluado permisos -> no pintamos nada
-  if (loading || allowed === null) return null;
-
-  // Si no tiene permiso, ya hemos hecho push en el efecto, aquí no renderizamos nada
-  if (!allowed) return null;
-
+  if (loading) return null; // o spinner
+  if (!hasPermiso(modulo, accion)) return null; // evita flash
   return <>{children}</>;
+}
+
+export function usePerms() {
+  const ctx = useContext(PermsContext);
+  if (!ctx) throw new Error("usePerms debe usarse dentro de PermisosProvider");
+  return ctx;
 }
