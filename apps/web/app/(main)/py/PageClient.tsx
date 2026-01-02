@@ -1,32 +1,59 @@
 "use client";
 
-import { RequirePermiso } from "@/lib/perms";
-import {ListView} from "@repo/ui"; // ruta donde lo hayas guardado
+import { ListView } from "@repo/ui";
 import type { ModuleSchema } from "@repo/types";
+import { useRouter } from "next/navigation";
+import { RequirePerms, usePerms } from "@/lib/perms";
+import { createClient } from "@/lib/supabase/client"; // 👈 tu supabase client de navegador
 
-type Customer = {
-  id: string;
-  name?: string;
-  email?: string;
-};
+export default function CustomersPageClient({
+  customers,
+  schema,
+}: {
+  customers: any[];
+  schema: ModuleSchema;
+}) {
+  const router = useRouter();
+  const { loading, hasPermiso } = usePerms();
 
-type CustomersPageClientProps = {
-  customers: Customer[];
-  schema: ModuleSchema; // ⬅️ añadimos el schema del módulo
-};
+  const handleDelete = async (row: any) => {
+    // 1) permiso (UX)
+    if (!hasPermiso("py", "eliminar")) {
+      router.replace("/403");
+      return;
+    }
 
-export default function CustomersPageClient({ customers, schema }: CustomersPageClientProps) {
+    // 2) confirm (cámbialo por tu modal)
+    const ok = window.confirm(
+      `¿Eliminar este cliente?\n\nID: ${row.id}\n\nEsta acción no se puede deshacer.`
+    );
+    if (!ok) return;
+
+    // 3) delete Supabase (cliente)
+    const supabase = createClient();
+    const { error } = await supabase.from("customers").delete().eq("id", row.id);
+
+    if (error) {
+      // Si pones RLS bien, aquí verás "permission denied" si no tiene permiso real
+      alert(`No se pudo eliminar: ${error.message}`);
+      return;
+    }
+
+    router.refresh();
+  };
+
+  if (loading) return null;
+
   return (
-    <RequirePermiso modulo="customers" accion="ver">
-
+    <RequirePerms modulo="py" accion="ver">
       <ListView
         schema={schema}
         data={customers}
-        onViewRow={(row) => (window.location.href = `/py/${row.id}`)}
-        onEditRow={(row) => (window.location.href = `/py/${row.id}?edit=true`)}
-        onDeleteRow={(row) => alert("Aquí pondrás tu modal para borrar: " + row.id)}
-        onCreate={() => (window.location.href = "/py/new")}
+        onViewRow={(row) => router.push(`/py/${row.id}`)}
+        onEditRow={(row) => router.push(`/py/${row.id}?edit=true`)}
+        onDeleteRow={handleDelete}
+        onCreate={() => router.push("/py/new")}
       />
-    </RequirePermiso>
+    </RequirePerms>
   );
 }

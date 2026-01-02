@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -23,10 +22,11 @@ export default function LoginPage() {
     }
     router.replace("/");
   };
+  
 
   return (
     
-    <main className="login-bg container d-flex align-items-center justify-content-center min-vh-100">
+    <main className="login-bg d-flex align-items-center justify-content-center min-vh-100">
       <div className="card shadow-sm login-card" style={{ maxWidth: '400px', width: '100%' }}>
         <div className="card-body p-4">
           <form onSubmit={onSubmit} className="form-signin">

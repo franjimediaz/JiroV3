@@ -5,6 +5,7 @@ import { useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Form } from "@repo/ui";
 import type { ModuleSchema } from "@repo/types";
+import { RequirePerms } from "@/lib/perms";
 
 function sanitize(values: any, schema: ModuleSchema) {
   const { meta, ...rest } = values || {};
@@ -112,6 +113,7 @@ export default function NewFormClient({
   };
 
   return (
+    <RequirePerms modulo={table} accion="crear">
     <div style={{ opacity: pending ? 0.7 : 1 }}>
       <Form
         schema={schema}
@@ -120,5 +122,6 @@ export default function NewFormClient({
         onSubmit={onSubmit}
       />
     </div>
+    </RequirePerms>
   );
 }

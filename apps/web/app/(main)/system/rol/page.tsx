@@ -1,5 +1,5 @@
 // app/Rol/page.tsx   (server)
-import RolPageClient from "./RolPageClient";
+import PageClient from "./PageClient";
 import { fetchModuloBySlug } from "@/lib/modulos/modulos";
 import { createClient } from "@/lib/supabase/server";
 
@@ -13,7 +13,7 @@ export default async function RolPage() {
   const modulo = await fetchModuloBySlug("rol");
 
   return (
-    <RolPageClient
+    <PageClient
       Rol={Rol ?? []}
       schema={modulo.props} // <- esto es tu ModuleSchema real
     />

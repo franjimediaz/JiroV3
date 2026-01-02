@@ -22,6 +22,7 @@ body {
   max-width: 100vw;
   overflow-x: hidden;
 }
+
 .title {
   font-size: 28px;
   font-weight: 700;
@@ -71,24 +72,27 @@ a {
 .login-bg {
   position: relative;
   min-height: 100vh;
-  background-image: url('/login_background.png'); 
-  background-size: cover;
-  background-position: center center;
-  background-repeat: no-repeat;
+  width: 100%;
+  background-color: #0b1220; /* el color que sí ves */
   
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-.login-bg::after {
+.login-bg::before {
   content: "";
-  position: absolute;
+  position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.35); /* dark overlay to improve contrast */
-  pointer-events: none;
+  background-image: url("/login_background.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: 0;
+  
 }
 
+.login-bg > * {
+  position: relative;
+  z-index: 1;
+}
 .login-card {
   position: relative;
   z-index: 1; /* bring the card above overlay */
