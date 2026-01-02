@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { ModuleSchema } from "@repo/types";
-import NewUserClientForm from "./UserCreateFormClient";
+import NewUserClientForm from "./NewFormClient";
 
 export const dynamic = "force-dynamic";
 
