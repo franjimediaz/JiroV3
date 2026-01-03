@@ -5,9 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Form } from "@repo/ui";
+import  TreeServices  from "./TreeServices";
 import type { ModuleSchema } from "@repo/types";
 import { RequirePerms } from "@/lib/perms";
-type TabKey = "proyecto" | "arbol";
+type TabKey = "proyecto" | "arbol"| "calendario";
 
 function sanitize(values: any, schema: any) {
   const { meta, ...rest } = values || {};
@@ -110,18 +111,35 @@ export default function FormClient({
             Árbol servicios
           </button>
         </li>
+                <li className="nav-item">
+          <button
+            type="button"
+            className={`nav-link ${activeTab === "calendario" ? "active" : ""}`}
+            onClick={() => setActiveTab("calendario")}
+          >
+            Calendario
+          </button>
+        </li>
       </ul>
     <div style={{ opacity: pending ? 0.7 : 1 }}>
       <div className={`tab-pane fade ${activeTab === "proyecto" ? "show active" : ""}`}>
-      
+      {activeTab === "proyecto" && (
       <Form schema={schema} initialData={initialData} mode={mode} onSubmit={onSubmit} />
-
+        )}
       </div>
     
     <div className={`tab-pane fade ${activeTab === "arbol" ? "show active" : ""}`}>
           {activeTab === "arbol" && (
+            
+              <TreeServices proyectoId={id} />
+            
+          )}
+        </div>
+
+            <div className={`tab-pane fade ${activeTab === "calendario" ? "show active" : ""}`}>
+          {activeTab === "calendario" && (
             <div className="alert alert-secondary mb-0">
-              Árbol de servicios (pendiente de implementar)
+              Calendario (pendiente de implementar)
             </div>
           )}
         </div>
