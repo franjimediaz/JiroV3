@@ -5,7 +5,7 @@ import { Sidebar, SidebarItem } from "@repo/ui";
 type ModuloRow = {
   id: string;
   nombre: string;
-  route: string | null;
+  route: string;
   activo: boolean;
   orden: number | null;
   parent_id: string | null;
@@ -17,7 +17,7 @@ function buildTree(rows: ModuloRow[]): SidebarItem[] {
   const roots: SidebarItem[] = [];
 
   for (const r of rows) {
-    nodesById.set(r.id, { id: r.id, nombre: r.nombre, route: r.route ?? undefined, hijos: [] });
+    nodesById.set(r.id, { id: r.id, nombre: r.nombre, route: r.route, hijos: [] });
   }
 
   for (const r of rows) {
