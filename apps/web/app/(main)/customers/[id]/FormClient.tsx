@@ -37,6 +37,28 @@ function sanitize(values: any, schema: any) {
 
   return out;
 }
+function pickPersistablePayload(values: any, schema: ModuleSchema) {
+  const allowed = new Set(
+    (schema.fields || [])
+      .filter((f) => f.virtual !== true)
+      // opcional: si tienes compute y NO quieres persistir algunos:
+      .filter((f) => !(f.compute && (f.compute as any).persist === "none"))
+      .map((f) => f.name)
+  );
+
+  // Construye payload solo con campos permitidos
+  const out: Record<string, any> = {};
+  for (const k of allowed) out[k] = values?.[k];
+
+  // Nunca mandes meta al update
+  delete out.meta;
+
+  // Si por seguridad quieres borrar campos de sistema:
+  delete out.created_at;
+  delete out.updated_at;
+
+  return out;
+}
 
 export default function FormClient({
   schema,
@@ -58,30 +80,35 @@ export default function FormClient({
   const [pending, start] = useTransition();
 
   const onSubmit = (values: any) => {
-    start(async () => {
-      try {
-        if (mode !== "edit") return;
+  start(async () => {
+    try {
+      if (mode !== "edit") return;
 
-        const supabase = createClient();
-        const payload = sanitize(values, schema);
+      const supabase = createClient();
 
-        const { error } = await supabase
-          .from(table)
-          .update(payload)
-          .eq(primaryKey, id);
+      // 1) tu sanitize (convierte "" a null, quita arrays vacíos, etc.)
+      const sanitized = sanitize(values, schema);
 
-        if (error) throw error;
+      // 2) filtro final por schema: SOLO virtual=false
+      const payload = pickPersistablePayload(sanitized, schema);
 
-        const qs = new URLSearchParams(searchParams.toString());
-        qs.delete("edit");
-        router.replace(`?${qs.toString()}`);
-        router.refresh();
-      } catch (err: any) {
-        console.error("Submit error:", err?.message ?? err, err);
-        alert(err?.message ?? "Error guardando");
-      }
-    });
-  };
+      const { error } = await supabase
+        .from(table)
+        .update(payload)
+        .eq(primaryKey, id);
+
+      if (error) throw error;
+
+      const qs = new URLSearchParams(searchParams.toString());
+      qs.delete("edit");
+      router.replace(`?${qs.toString()}`);
+      router.refresh();
+    } catch (err: any) {
+      console.error("Submit error:", err?.message ?? err, err);
+      alert(err?.message ?? "Error guardando");
+    }
+  });
+};
 
   return (
     <RequirePerms modulo={table} accion="actualizar">

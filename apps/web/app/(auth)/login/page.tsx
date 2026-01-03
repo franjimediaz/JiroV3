@@ -27,7 +27,7 @@ export default function LoginPage() {
   return (
     
     <main className="login-bg d-flex align-items-center justify-content-center min-vh-100">
-      <div className="card shadow-sm login-card" style={{ maxWidth: '400px', width: '100%' }}>
+      <div className="shadow-sm login-card" style={{ maxWidth: '400px', width: '100%' }}>
         <div className="card-body p-4">
           <form onSubmit={onSubmit} className="form-signin">
             <div className="text-center mb-4">
@@ -63,7 +63,7 @@ export default function LoginPage() {
               <label htmlFor="floatingPassword">Contraseña</label>
             </div>
 
-            <button disabled={loading} type="submit" className="btn btn-lg btn-primary btn-block">
+            <button disabled={loading} type="submit" className="btn btn-lg btn-primary btn-block align-self-center w-100">
               {loading ? "Entrando..." : "Entrar"}
             </button>
           </form>

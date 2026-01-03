@@ -2,6 +2,7 @@
   --background: #ffffff;
   --foreground: #171717;
   --bg-primary: #0066cc;
+  --bg-card:  linear-gradient(145deg, #162c53, #162c53 40%, #162c53 100%);
   --bg-success: #28a745;
   --text: #ffffff;
   --card:#000000de;
@@ -95,6 +96,7 @@ a {
 }
 .login-card {
   position: relative;
+  background-color: #c1cee9ce;
   z-index: 1; /* bring the card above overlay */
 }
 
@@ -106,7 +108,7 @@ a {
 ============================ */
 
 .card {
-  background: linear-gradient(145deg, #171a1f, #171a1f 40%, #171a1ff3 100%);
+  background: linear-gradient(145deg, #162c53, #162c53 40%, #162c53 100%);
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(8px);

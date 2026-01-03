@@ -40,6 +40,28 @@ function sanitize(values: any, schema: any) {
 
   return out;
 }
+function pickPersistablePayload(values: any, schema: ModuleSchema) {
+  const allowed = new Set(
+    (schema.fields || [])
+      .filter((f) => f.virtual !== true)
+      // opcional: si tienes compute y NO quieres persistir algunos:
+      .filter((f) => !(f.compute && (f.compute as any).persist === "none"))
+      .map((f) => f.name)
+  );
+
+  // Construye payload solo con campos permitidos
+  const out: Record<string, any> = {};
+  for (const k of allowed) out[k] = values?.[k];
+
+  // Nunca mandes meta al update
+  delete out.meta;
+
+  // Si por seguridad quieres borrar campos de sistema:
+  delete out.created_at;
+  delete out.updated_at;
+
+  return out;
+}
 
 export default function FormClient({
   schema,
@@ -65,17 +87,22 @@ export default function FormClient({
     start(async () => {
       try {
         if (mode !== "edit") return;
-
+  
         const supabase = createClient();
-        const payload = sanitize(values, schema);
-
+  
+        // 1) tu sanitize (convierte "" a null, quita arrays vacíos, etc.)
+        const sanitized = sanitize(values, schema);
+  
+        // 2) filtro final por schema: SOLO virtual=false
+        const payload = pickPersistablePayload(sanitized, schema);
+  
         const { error } = await supabase
           .from(table)
           .update(payload)
           .eq(primaryKey, id);
-
+  
         if (error) throw error;
-
+  
         const qs = new URLSearchParams(searchParams.toString());
         qs.delete("edit");
         router.replace(`?${qs.toString()}`);
@@ -95,7 +122,7 @@ export default function FormClient({
         <li className="nav-item">
           <button
             type="button"
-            className={`nav-link ${activeTab === "proyecto" ? "active" : ""}`}
+            className={`nav-link bg-secondary  text-light ${activeTab === "proyecto" ? "active" : ""}`}
             onClick={() => setActiveTab("proyecto")}
           >
             Proyecto
@@ -105,16 +132,16 @@ export default function FormClient({
         <li className="nav-item">
           <button
             type="button"
-            className={`nav-link ${activeTab === "arbol" ? "active" : ""}`}
+            className={`nav-link bg-secondary  text-light ${activeTab === "arbol" ? "active" : ""}`}
             onClick={() => setActiveTab("arbol")}
           >
-            Árbol servicios
+            Tareas
           </button>
         </li>
                 <li className="nav-item">
           <button
             type="button"
-            className={`nav-link ${activeTab === "calendario" ? "active" : ""}`}
+            className={`nav-link bg-secondary text-light ${activeTab === "calendario" ? "active" : ""}`}
             onClick={() => setActiveTab("calendario")}
           >
             Calendario
@@ -122,13 +149,13 @@ export default function FormClient({
         </li>
       </ul>
     <div style={{ opacity: pending ? 0.7 : 1 }}>
-      <div className={`tab-pane fade ${activeTab === "proyecto" ? "show active" : ""}`}>
+      <div className={`tab-pane fade mt-3 ${activeTab === "proyecto" ? "show active" : ""}`}>
       {activeTab === "proyecto" && (
       <Form schema={schema} initialData={initialData} mode={mode} onSubmit={onSubmit} />
         )}
       </div>
     
-    <div className={`tab-pane fade ${activeTab === "arbol" ? "show active" : ""}`}>
+    <div className={`tab-pane fade  mt-3 ${activeTab === "arbol" ? "show active" : ""}`}>
           {activeTab === "arbol" && (
             
               <TreeServices proyectoId={id} />
