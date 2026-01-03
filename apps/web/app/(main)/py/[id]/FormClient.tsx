@@ -1,12 +1,13 @@
 "use client";
 
-import React from "react";
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Form } from "@repo/ui";
 import type { ModuleSchema } from "@repo/types";
 import { RequirePerms } from "@/lib/perms";
+type TabKey = "proyecto" | "arbol";
 
 function sanitize(values: any, schema: any) {
   const { meta, ...rest } = values || {};
@@ -57,6 +58,7 @@ export default function FormClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [pending, start] = useTransition();
+  
 
   const onSubmit = (values: any) => {
     start(async () => {
@@ -83,11 +85,46 @@ export default function FormClient({
       }
     });
   };
+   const [activeTab, setActiveTab] = useState<TabKey>("proyecto");
 
   return (
     <RequirePerms modulo={table} accion="actualizar">
+      {/* Tabs Bootstrap */}
+      <ul className="nav nav-tabs mt-3">
+        <li className="nav-item">
+          <button
+            type="button"
+            className={`nav-link ${activeTab === "proyecto" ? "active" : ""}`}
+            onClick={() => setActiveTab("proyecto")}
+          >
+            Proyecto
+          </button>
+        </li>
+
+        <li className="nav-item">
+          <button
+            type="button"
+            className={`nav-link ${activeTab === "arbol" ? "active" : ""}`}
+            onClick={() => setActiveTab("arbol")}
+          >
+            Árbol servicios
+          </button>
+        </li>
+      </ul>
     <div style={{ opacity: pending ? 0.7 : 1 }}>
+      <div className={`tab-pane fade ${activeTab === "proyecto" ? "show active" : ""}`}>
+      
       <Form schema={schema} initialData={initialData} mode={mode} onSubmit={onSubmit} />
+
+      </div>
+    
+    <div className={`tab-pane fade ${activeTab === "arbol" ? "show active" : ""}`}>
+          {activeTab === "arbol" && (
+            <div className="alert alert-secondary mb-0">
+              Árbol de servicios (pendiente de implementar)
+            </div>
+          )}
+        </div>
     </div>
     </RequirePerms>
   );

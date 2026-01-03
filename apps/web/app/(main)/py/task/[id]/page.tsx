@@ -5,11 +5,9 @@ import FormClient from "./FormClient";
 
 export const dynamic = "force-dynamic";
 
-type TabKey = "proyecto" | "arbol";
-
 const CFG = {
-  moduleSlug: "py",
-  titleSingular: "Proyectos",
+  moduleSlug: "task",
+  titleSingular: "Tarea",
   displayField: "title",
 } as const;
 
@@ -93,16 +91,12 @@ export default async function EntityPage({
 
   const display = (row as any)?.[CFG.displayField] ?? id;
 console.log("FormClient props:", { schema, isEdit, table, primaryKey, id });
-
-
   return (
     <main className="container py-4 bg-secondary bg-opacity-10 rounded">
       <header className="d-flex align-items-center mb-4">
         <h1 className="me-auto">
           {CFG.titleSingular}: {String(display)}
         </h1>
-
-
       </header>
       
       <FormClient

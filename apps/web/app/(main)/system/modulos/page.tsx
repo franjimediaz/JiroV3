@@ -5,6 +5,7 @@ import ModulosTree from "./ModulosTree";
 
 import styles from "./modulos.module.css";
 import SeedButton from "./SeedButton";
+import { RequirePerms, usePerms } from "@/lib/perms";
 
 type ModuloRow = {
   id: string;
@@ -65,6 +66,7 @@ async function fetchModulosTree(): Promise<ModuloNode[]> {
 export default async function ModulosAdminPage() {
   const tree = await fetchModulosTree();
   return (
+    <RequirePerms modulo="modulos" accion="ver">
     <main className={styles.container}>
       <header className={styles.header}>
         <div>
@@ -85,5 +87,6 @@ export default async function ModulosAdminPage() {
         )}
       </section>
     </main>
+    </RequirePerms>
   );
 }

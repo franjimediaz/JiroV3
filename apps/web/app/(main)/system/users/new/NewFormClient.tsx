@@ -2,12 +2,14 @@
 
 import { Form } from "@repo/ui";
 import { useRouter } from "next/navigation";
+import { RequirePerms } from "@/lib/perms";
 
 export default function NewUserClientForm({ schema }: { schema: any }) {
   const router = useRouter();
   
 
   return (
+    <RequirePerms modulo='users' accion="crear">
     <Form
       schema={schema}
       initialData={{ meta: { overrides: {} } }}
@@ -29,5 +31,6 @@ export default function NewUserClientForm({ schema }: { schema: any }) {
         router.push("/users");
       }}
     />
+    </RequirePerms>
   );
 }

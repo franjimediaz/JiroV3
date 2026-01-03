@@ -7,6 +7,7 @@ import {IconPicker} from "@repo/ui";
 import { upsertModuloAction } from "@/actions/modulos";
 import type { Field as FieldSchema, FieldType, ModuleSchema, Field, Appareance, Compute, FormSection} from "@repo/types";
 import {VALID_FIELD_TYPES,Appareance_Valid_Types} from "@repo/types";
+import { RequirePerms, usePerms } from "@/lib/perms";
 
 
 
@@ -1199,6 +1200,7 @@ export default function ModuloForm({
 
 
   return (
+    <RequirePerms modulo="modulos" accion="actualizar">
     <form className={styles.card} onSubmit={onSubmit}>
       {/* Cabecera módulo */}
       <div className={styles.card}>
@@ -1561,5 +1563,6 @@ export default function ModuloForm({
         {msg && <span className={msg.ok ? styles.msgOk : styles.msgErr}>{msg.text}</span>}
       </div>
     </form>
+    </RequirePerms>
   );
 }

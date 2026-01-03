@@ -41,7 +41,7 @@ function buildTree(rows: ModuloRow[]): SidebarItem[] {
     byId.set(r.id, {
       id: r.id,
       nombre: r.nombre,
-      route: r.route ?? undefined,
+      route: r.route || `/${r.id}`,
       hijos: [],
       icon: r.props?.ui?.icon ?? undefined,
     });

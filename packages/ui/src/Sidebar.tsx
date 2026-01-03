@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { SidebarItem } from "./types";
-import { isActive } from "./utils";
+import { isActive, isBranchActive,isExactActive } from "./utils";
 
 export type SidebarVariant = "fixed" | "offcanvas";
 
@@ -134,6 +134,8 @@ function NavTree({
   );
 }
 
+
+
 function NavItem({
   node,
   openSet,
@@ -149,14 +151,20 @@ function NavItem({
   offcanvasDismiss: boolean;
   level: number;
 }) {
+  
   const pathname = usePathname();
   const hasChildren = (node.hijos?.length ?? 0) > 0;
+  const exact = isExactActive(pathname, node.route);
+  const branch = isBranchActive(pathname, node.route);
   const isNodeActive = isActive(pathname, node.route);
-  const expanded = openSet.has(node.id);
   const itemClass = [
-    "nav-link",
-    isNodeActive ? "active bg-secondary" : "text-body-secondary",
-  ].join(" ");
+  "nav-link",
+  exact ? "active bg-secondary" : "text-body-secondary",
+].join(" ");
+
+const isOpen = branch;
+  const expanded = openSet.has(node.id);
+  
   const indent = { paddingLeft: `${level * 12}px` };
 
   if (hasChildren) {
