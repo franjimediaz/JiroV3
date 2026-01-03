@@ -418,6 +418,15 @@ function FieldRow({
                   disabled={readOnly}
                 />
               </div>
+              <div className={styles.switchRow}>
+                <label className={styles.label}>virtual</label>
+                <input
+                  type="checkbox"
+                  checked={!!field.virtual}
+                  onChange={(e) => onChange({ ...field, virtual: e.target.checked })}
+                  disabled={readOnly}
+                />
+              </div>
 
               <div className={styles.switchRow}>
                 <label className={styles.label}>visible</label>
@@ -1033,6 +1042,7 @@ export default function ModuloForm({
   const [tipo, setTipo] = useState(initialData?.tipo ?? "tabla");
   const [orden, setOrden] = useState<number>(initialData?.orden ?? 0);
   const [activo, setActivo] = useState<boolean>(!!initialData?.activo);
+  const [sidebar, setSidebar] = useState<boolean>(!!initialData?.sidebar);
   const [parentId, setParentId] = useState<string | null>(initialData?.parent_id ?? null);
 
   // Estado visual de props
@@ -1098,7 +1108,7 @@ export default function ModuloForm({
       const err = validatePropsClient(toSave);
       if (err) return setMsg({ ok: false, text: `Props inválidos: ${err}` });
     }
-
+    toSave = { ...toSave, ui: { ...(toSave.ui || {}), sidebar } };
     start(async () => {
       const fd = new FormData();
       if (initialData?.id) fd.set("id", initialData.id);
@@ -1109,6 +1119,7 @@ export default function ModuloForm({
       fd.set("tipo", tipo);
       fd.set("orden", String(orden));
       fd.set("activo", String(activo));
+      
       fd.set("props", JSON.stringify(toSave));
 
       const res = await upsertModuloAction(fd);
@@ -1235,6 +1246,10 @@ export default function ModuloForm({
         <div className={styles.switchRow}>
           <label className={styles.label}>Activo</label>
           <input type="checkbox" checked={activo} onChange={(e)=>setActivo(e.target.checked)} {...readOnlyAttr}/>
+        </div>
+        <div className={styles.switchRow}>
+          <label className={styles.label}>Sidebar</label>
+          <input type="checkbox" checked={sidebar} onChange={(e)=>setSidebar(e.target.checked)} {...readOnlyAttr}/>
         </div>
         <div>
           <label className={styles.label}>Parent ID (opcional)</label>

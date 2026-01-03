@@ -72,6 +72,7 @@ export type BaseField = {
   name: string;
   label: string;
   required?: boolean;
+  virtual?: boolean;
 
   compute?: Compute;
   allowOverride?: boolean;
@@ -151,6 +152,7 @@ export type ModuleSchema = {
   ui?: {
     icon?: string;
     color?: string;
+    sidebar?: boolean;
   };
 };
 export type ListViewProps = {
