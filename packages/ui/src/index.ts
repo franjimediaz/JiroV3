@@ -1,5 +1,6 @@
 export type { SidebarItem } from "./types";
 export { Sidebar } from "./Sidebar";
+export { ActionMenu } from "./ActionMenu";
 export { PopupSelector } from "./PopUpSelector";
 export { IconPicker } from "./IconPicker";
 export { isActive } from "./utils";

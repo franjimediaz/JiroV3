@@ -115,7 +115,7 @@ export default function NewFormClient({
         const newId = (data as any)?.[primaryKey] ?? (data as any)?.id;
         if (newId) {
           // ✅ redirige al detalle en modo view
-          router.push(`/py/${table}/${newId}`);
+          router.push(`/system/${table}/${newId}`);
           router.refresh();
         } else {
           // si no devuelve id por RLS o select, al menos vuelve
