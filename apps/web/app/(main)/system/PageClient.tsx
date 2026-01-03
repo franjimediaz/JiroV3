@@ -18,7 +18,7 @@ export default function CustomersPageClient({
 
   const handleDelete = async (row: any) => {
     // 1) permiso (UX)
-    if (!hasPermiso("task", "eliminar")) {
+    if (!hasPermiso("py", "eliminar")) {
       router.replace("/403");
       return;
     }
@@ -31,7 +31,7 @@ export default function CustomersPageClient({
 
     // 3) delete Supabase (cliente)
     const supabase = createClient();
-    const { error } = await supabase.from("task").delete().eq("id", row.id);
+    const { error } = await supabase.from("customers").delete().eq("id", row.id);
 
     if (error) {
       // Si pones RLS bien, aquí verás "permission denied" si no tiene permiso real
@@ -45,14 +45,14 @@ export default function CustomersPageClient({
   if (loading) return null;
 
   return (
-    <RequirePerms modulo="task" accion="ver">
+    <RequirePerms modulo="py" accion="ver">
       <ListView
         schema={schema}
         data={customers}
-        onViewRow={(row) => router.push(`/py/task/${row.id}`)}
-        onEditRow={(row) => router.push(`/py/task/${row.id}?edit=true`)}
+        onViewRow={(row) => router.push(`/py/${row.id}`)}
+        onEditRow={(row) => router.push(`/py/${row.id}?edit=true`)}
         onDeleteRow={handleDelete}
-        onCreate={() => router.push("/py/task/new")}
+        onCreate={() => router.push("/py/new")}
       />
     </RequirePerms>
   );
