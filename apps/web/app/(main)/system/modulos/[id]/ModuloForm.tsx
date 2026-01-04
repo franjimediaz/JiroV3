@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useTransition, useEffect  } from "react";
+import { useRouter, useSearchParams} from "next/navigation";
 import styles from "./modulo-detalle.module.css";
 import {IconPicker} from "@repo/ui";
 import { upsertModuloAction } from "@/actions/modulos";
@@ -267,6 +267,59 @@ function FieldRow({
     };
     onChange(copy);
   };
+
+  // arriba del return de FieldRow (o dentro, antes del return)
+const [whereText, setWhereText] = useState(() =>
+  JSON.stringify(ensureAggregate(field).where ?? [], null, 2)
+);
+const [whereErr, setWhereErr] = useState<string | null>(null);
+
+// si cambia el field desde fuera (p.ej. cambias compute kind / cambias de campo)
+useEffect(() => {
+  setWhereText(JSON.stringify(ensureAggregate(field).where ?? [], null, 2));
+  setWhereErr(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [field.name, field.compute?.type]);
+
+const commitWhereIfValid = (text: string) => {
+  try {
+    const parsed = JSON.parse(text || "[]");
+    if (!Array.isArray(parsed)) {
+      setWhereErr("El where debe ser un ARRAY. Ejemplo: [{...}]");
+      return;
+    }
+
+    // Validación suave: estructura mínima
+    for (let i = 0; i < parsed.length; i++) {
+      const c = parsed[i];
+      if (!c || typeof c !== "object") {
+        setWhereErr(`Condición [${i}] debe ser un objeto`);
+        return;
+      }
+      if (typeof c.field !== "string" || !c.field.trim()) {
+        setWhereErr(`Condición [${i}] => "field" (string) es requerido`);
+        return;
+      }
+      if (typeof c.op !== "string" || !c.op.trim()) {
+        setWhereErr(`Condición [${i}] => "op" (string) es requerido`);
+        return;
+      }
+      // value puede ser string/number/boolean/null/array, pero debe existir la clave
+      if (!("value" in c)) {
+        setWhereErr(`Condición [${i}] => falta "value"`);
+        return;
+      }
+    }
+
+    setWhereErr(null);
+
+    const base = ensureAggregate(field);
+    onChange({ ...field, compute: { ...base, where: parsed } });
+  } catch (e: any) {
+    setWhereErr(e?.message || "JSON inválido");
+  }
+};
+
 
   return (
     <div className={styles.fieldformcard} style={{ marginBottom: 12 }}>
@@ -956,22 +1009,48 @@ function FieldRow({
               </div>
 
               <label className={styles.label}>where (JSON)</label>
-              <textarea
-                className={styles.textarea}
-                rows={5}
-                value={JSON.stringify(ensureAggregate(field).where, null, 2)}
-                onChange={(e) => {
-                  try {
-                    const where = JSON.parse(e.target.value || "[]");
-                    const base = ensureAggregate(field);
-                    onChange({ ...field, compute: { ...base, where } });
-                  } catch {
-                    // opcional: error visual
-                  }
-                }}
-                spellCheck={false}
-                disabled={readOnly}
-              />
+                <textarea
+                  className={styles.textarea}
+                  rows={6}
+                  value={whereText}
+                  placeholder={`[
+                  { "field": "obraId", "op": "=", "value": "{{id}}" }
+                ]`}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setWhereText(next);
+
+                    // Si el usuario lo deja válido mientras escribe, lo aplicamos al vuelo.
+                    // Si no, no rompemos el estado del campo: solo mostramos error.
+                    commitWhereIfValid(next);
+                  }}
+                  onBlur={() => {
+                    // En blur, intentamos consolidar (por si quedó medio escrito)
+                    commitWhereIfValid(whereText);
+                  }}
+                  spellCheck={false}
+                  disabled={readOnly}
+                />
+
+                <div className={styles.hint} style={{ marginTop: 6 }}>
+                  
+                  Ejemplo referencia formulario actual: <code>{"{{id}}"}</code>, <code>{"{{obraId}}"}</code>, <code>{"{{clienteId}}"}</code>.
+                  Ejemplo consulta: <code>{ '[{"op": "=",'+
+                          ' "field": "task",'+
+                          '"value": "{{id}}"}]'
+                            
+                          
+                          }
+                          </code>
+                  
+                </div>
+
+                {whereErr && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: "#b42318" }}>
+                    {whereErr}
+                  </div>
+                )}
+
 
               <label className={styles.label}>persist</label>
               <select

@@ -6,6 +6,7 @@ import { useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Form } from "@repo/ui";
 import  TreeServices  from "./TreeServices";
+import  Calendar  from "./Calendar";
 import type { ModuleSchema } from "@repo/types";
 import { RequirePerms } from "@/lib/perms";
 type TabKey = "proyecto" | "arbol"| "calendario";
@@ -166,7 +167,7 @@ export default function FormClient({
             <div className={`tab-pane fade ${activeTab === "calendario" ? "show active" : ""}`}>
           {activeTab === "calendario" && (
             <div className="alert alert-secondary mb-0">
-              Calendario (pendiente de implementar)
+              <Calendar proyectoId={id} />
             </div>
           )}
         </div>

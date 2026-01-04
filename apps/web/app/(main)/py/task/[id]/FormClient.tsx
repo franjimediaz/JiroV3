@@ -116,7 +116,7 @@ export default function FormClient({
   return (
     <RequirePerms modulo={table} accion="actualizar">
     <div style={{ opacity: pending ? 0.7 : 1 }}>
-      <button className="btn btn-success" onClick={() => setOpen(true)}>
+      <button className="btn btn-success mb-3" onClick={() => setOpen(true)}>
         + Añadir material
       </button>
       <MaterialTaskModal

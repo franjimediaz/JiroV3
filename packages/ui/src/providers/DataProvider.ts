@@ -1,5 +1,5 @@
 import type { DataProvider, AggregateInput } from "../engines/computeEngine";
-import type { ModuleSchema } from "@repo/types"; // ajusta si tu path real difiere
+import type { ModuleSchema } from "@repo/types";
 
 type ModuloRow = {
   id: string;
@@ -11,7 +11,6 @@ let schemaCache: Record<string, ModuleSchema> | null = null;
 let schemaCacheAt = 0;
 
 async function loadSchemas(): Promise<Record<string, ModuleSchema>> {
-  // cache 60s (ajusta si quieres)
   const now = Date.now();
   if (schemaCache && now - schemaCacheAt < 60_000) return schemaCache;
 
@@ -26,7 +25,6 @@ async function loadSchemas(): Promise<Record<string, ModuleSchema>> {
 
   const map: Record<string, ModuleSchema> = {};
   for (const m of json.data as ModuloRow[]) {
-    // props debería ser ModuleSchema
     if (m?.slug && m?.props && typeof m.props === "object") {
       map[m.slug] = m.props as ModuleSchema;
     }
@@ -37,39 +35,87 @@ async function loadSchemas(): Promise<Record<string, ModuleSchema>> {
   return map;
 }
 
+function resolveTpl(v: any, record: any) {
+  if (typeof v !== "string") return v;
+  return v.replace(/\{\{\s*([\w]+)\s*\}\}/g, (_, key) => {
+    const val = record?.[key];
+    // IMPORTANTE: si falta el valor, devuelve null para que el where no compare con "id" literal
+    return val === undefined || val === null ? "" : String(val);
+  });
+}
+
 export const dataProvider: DataProvider & {
   getSchema: (moduleSlug: string) => Promise<ModuleSchema>;
 } = {
   async aggregate(input: AggregateInput, record: any, _context?: Record<string, any>) {
-    console.warn("[@repo/ui] aggregate STUB → reemplazar por implementación real", { input, record });
-    return 0;
+    
+    // 1) Resolver where usando el record actual
+    const whereResolved = (input.where || []).map((c: any) => ({
+      ...c,
+      value: resolveTpl(c.value, record),
+    }));
+    console.log("[dataProvider.aggregate] sending:", {
+      sourceTable: input.sourceTable,
+      field: input.field,
+      op: input.op,
+      where: whereResolved,
+    });
+    // 2) Llamar al endpoint
+    const res = await fetch("/api/aggregate", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    sourceTable: input.sourceTable, // ej: "materialstask"
+    field: input.field,             // ej: "total"
+    op: input.op,                   // ej: "sum"
+    where: (input.where || []).map((c) => ({
+      field: c.field,
+      op: c.op,
+      // 🔑 resolver placeholders ANTES de enviar
+      value: typeof c.value === "string"
+        ? c.value.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => record?.[k] ?? null)
+        : c.value,
+    })),
+  }),
+});
+
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`dataProvider.aggregate error (${res.status}): ${txt}`);
+    }
+
+    const json = await res.json();
+    if (!json?.ok) {
+      throw new Error(json?.detail || "dataProvider.aggregate error");
+    }
+
+    return Number(json.value ?? 0);
   },
 
-async list(input) {
-  const res = await fetch("/api/list", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      moduleSlug: input.moduleSlug,
-      filters: input.filters,
-      sort: input.sort,
-      limit: input.limit,
-    
-    }),
-  });
+  async list(input) {
+    const res = await fetch("/api/list", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        moduleSlug: input.moduleSlug,
+        filters: input.filters,
+        sort: input.sort,
+        limit: input.limit,
+      }),
+    });
 
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`dataProvider.list error (${res.status}): ${txt}`);
-  }
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`dataProvider.list error (${res.status}): ${txt}`);
+    }
 
-  const json = await res.json();
-  if (!json?.ok) {
-    throw new Error(json?.detail || "dataProvider.list error");
-  }
+    const json = await res.json();
+    if (!json?.ok) {
+      throw new Error(json?.detail || "dataProvider.list error");
+    }
 
-  return { data: Array.isArray(json.data) ? json.data : [] };
-},
+    return { data: Array.isArray(json.data) ? json.data : [] };
+  },
 
   async getSchema(moduleSlug: string): Promise<ModuleSchema> {
     const map = await loadSchemas();

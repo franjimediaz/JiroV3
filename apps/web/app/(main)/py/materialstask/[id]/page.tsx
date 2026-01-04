@@ -6,7 +6,7 @@ import FormClient from "./FormClient";
 export const dynamic = "force-dynamic";
 
 const CFG = {
-  moduleSlug: "materials-task",
+  moduleSlug: "materialstask",
   titleSingular: "Material",
   displayField: "title",
 } as const;

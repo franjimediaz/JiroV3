@@ -32,7 +32,8 @@ export default function MaterialTaskModal({
   const [materialTitle, setMaterialTitle] = useState<string>("");
 
   const [ud, setUd] = useState<number>(1);     // campo "ud"
-  const [pu, setPu] = useState<number>(0);     // campo "pu"
+  const [pu, setPu] = useState<number>(0);
+  const [description, setDescription] = useState<string>("");     // campo "description"
 
   const total = useMemo(() => {
     const u = Number.isFinite(ud) ? ud : 0;
@@ -107,10 +108,11 @@ export default function MaterialTaskModal({
         material: materialId,
         ud,
         pu,
+        description,
         total, // snapshot
       };
       
-      const { error } = await supabase.from("materials-task").insert(payload);
+      const { error } = await supabase.from("materialstask").insert(payload);
 
       if (error) throw error;
       console.log("payload", payload);
@@ -188,10 +190,10 @@ export default function MaterialTaskModal({
 
               <div className="row g-3">
                 <div className="col-6">
-                  <label className="form-label">Cantidad (ud)</label>
+                  <label className="form-label text-dark">Cantidad (ud)</label>
                   <input
                     type="number"
-                    className="form-control"
+                    className="form-control "
                     min={0}
                     step={1}
                     value={ud}
@@ -201,7 +203,7 @@ export default function MaterialTaskModal({
                 </div>
 
                 <div className="col-6">
-                  <label className="form-label">Precio unidad (pu)</label>
+                  <label className="form-label text-dark">Precio unidad (pu)</label>
                   <input
                     type="number"
                     className="form-control"
@@ -214,16 +216,29 @@ export default function MaterialTaskModal({
                 </div>
 
                 <div className="col-12">
-                  <label className="form-label">Total</label>
+                  <label className="form-label text-dark">Total</label>
                   <input
                     type="number"
                     className="form-control"
                     value={total}
                     readOnly
                   />
-                  <div className="form-text">
+                  <div className="form-text text-dark">
                     total = ud × pu
                   </div>
+
+                  <div className="col-14">
+                  <label className="form-label text-dark">Descripción</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    min={0}
+                    step={0.01}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    disabled={saving}
+                  />
+                </div>
                 </div>
               </div>
             </div>

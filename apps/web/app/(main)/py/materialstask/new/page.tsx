@@ -5,7 +5,7 @@ import NewFormClient from "./NewFormClient";
 export const dynamic = "force-dynamic";
 
 const CFG = {
-  moduleSlug: "materials-task",
+  moduleSlug: "materialstask",
   titleNew: "Nuevo material",
 } as const;
 
