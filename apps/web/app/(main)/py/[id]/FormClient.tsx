@@ -164,11 +164,11 @@ export default function FormClient({
           )}
         </div>
 
-            <div className={`tab-pane fade ${activeTab === "calendario" ? "show active" : ""}`}>
+            <div className={`tab-pane fade mt-3 ${activeTab === "calendario" ? "show active" : ""}`}>
           {activeTab === "calendario" && (
-            <div className="alert alert-secondary mb-0">
+            
               <Calendar proyectoId={id} />
-            </div>
+            
           )}
         </div>
     </div>
