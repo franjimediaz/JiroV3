@@ -235,7 +235,7 @@ export default function TreeServices({ proyectoId }: { proyectoId: string }) {
                 <h2 className="accordion-header">
                   <button
                     type="button"
-                    className={`accordion-button ${isOpen ? "disabled" : "collapsed"}`}
+                    className={`accordion-button accordion-button-custom ${isOpen ? "" : "collapsed"}`}
                     onClick={() => toggleService(g.servicio.id)}
                   >
                     <div className="d-flex w-100 align-items-center justify-content-between">
@@ -260,13 +260,7 @@ export default function TreeServices({ proyectoId }: { proyectoId: string }) {
                 <div className={`accordion-collapse collapse ${isOpen ? "show" : ""}`}>
                   <div className="accordion-body">
                     <div className="d-flex justify-content-end mb-2">
-                      <button
-                        className="btn btn-sm btn-outline-primary"
-                        onClick={() => openCreate(g.servicio.id)}
-                      >
-                        <i className="bi bi-plus-lg me-2" />
-                        Crear tarea en {g.servicio.title}
-                      </button>
+                      
                     </div>
 
                     {g.tareas.length === 0 ? (
@@ -276,10 +270,10 @@ export default function TreeServices({ proyectoId }: { proyectoId: string }) {
                         <table className="table table-hover align-middle mb-0">
                           <thead>
                             <tr className="text-muted small">
-                              <th style={{ width: "25%" }}>Tarea (title)</th>
-                              <th style={{ width: "25%" }}>Duración</th>
-                              <th style={{ width: "20%" }}>Coste (total)</th>
-                              <th style={{ width: "25%" }} className="text-end">
+                              <th className="table-header-gradient text-light" style={{ width: "25%" }}>Título tarea</th>
+                              <th className="table-header-gradient text-light" style={{ width: "25%" }}>Periodo</th>
+                              <th className="table-header-gradient text-light" style={{ width: "20%" }}>Coste total</th>
+                              <th className="table-header-gradient text-end text-light" style={{ width: "25%" }}>
                                 Acciones
                               </th>
                             </tr>

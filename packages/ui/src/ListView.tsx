@@ -354,7 +354,7 @@ function renderCell(value: any, field: Field, labelCache: Record<string, string>
               backgroundColor: String(value),
             }}
           />
-          <span>{String(value)}</span>
+          
         </div>
       );
 
@@ -394,6 +394,16 @@ function renderCell(value: any, field: Field, labelCache: Record<string, string>
     case "formula":
       // El valor ya debería venir calculado
       return String(value);
+
+      case "iconpicker":
+  if (!value) return "—";
+
+  return (
+    <span className="d-inline-flex align-items-center gap-2">
+      <i className={`bi ${value}`} aria-hidden />
+      <small className="text-muted"></small>
+    </span>
+  );
 
     default:
       return String(value);

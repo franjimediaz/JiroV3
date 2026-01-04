@@ -2,11 +2,13 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { Field, ModuleSchema, FieldType } from "@repo/types";
+import { useRouter } from "next/navigation";
 import { applyCompute } from "./engines/computeEngine";
 import type { DataProvider } from "./engines/computeEngine";
 import { dataProvider as defaultDataProvider } from "./providers/DataProvider";
 import { IconPicker } from "./IconPicker";
 import  Selector from "./Selector";
+import {ActionMenu} from "./ActionMenu";
 
 type Mode = "view" | "edit" | "create";
 
@@ -482,7 +484,11 @@ async function handleSearch(q: string) {
   setPopupLoading(false);
 }
 }
-
+function toInputDateTime(value?: string) {
+  if (!value) return "";
+  const d = new Date(value);
+  return d.toISOString().slice(0, 16);
+}
 //-------------------------
 async function openSelectorTablaPopup() {
   if (readOnly) return;
@@ -522,17 +528,26 @@ async function openSelectorTablaPopup() {
     );
   }
 
-  if (type === "date" || type === "datetime") {
-    return (
-      <input
-        type={type === "datetime" ? "datetime-local" : "date"}
-        className="form-control"
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={readOnly}
-      />
-    );
-  }
+  if (type === "date" || type === "datetime" || type === "timestamp") {
+  const inputType =
+    type === "date" ? "date" : "datetime-local";
+
+  const inputValue =
+    type === "timestamp"
+      ? toInputDateTime(value)
+      : value ?? "";
+
+  return (
+    <input
+      type={inputType}
+      className="form-control"
+      value={inputValue}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={readOnly}
+    />
+  );
+}
+
 
   if (type === "color") {
     return (
@@ -729,6 +744,7 @@ function ReverseLinkTable({
   const ref = field.ref; // ReverseLinkRef
 
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
   const [rows, setRows] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [targetSchema, setTargetSchema] = useState<ModuleSchema | null>(null);
@@ -954,7 +970,7 @@ function ReverseLinkTable({
         <div>
           <div className="fw-semibold">{field.label || field.name}</div>
           <div className="small text-muted">
-            {ref.moduleSlug} · {rows.length} registros
+            {rows.length} registros
           </div>
         </div>
       </div>
@@ -984,9 +1000,24 @@ function ReverseLinkTable({
                   <thead>
                     <tr>
                       {columnsFull.map((c) => (
-                        <th key={c.name}>{c.label || c.name}</th>
+                        <th style={{
+                         width: 180,
+                         background: "linear-gradient(90deg, #0c1f49ab, #1f407546, #4d648aaf)", 
+                         color: "white",
+                        fontWeight: 600,
+                        padding: "12px 16px",
+                        borderBottom: "2px solid #1e40af"
+                         }} key={c.name}>{c.label || c.name}</th>
                       ))}
-                      <th style={{ width: 180 }}>Acciones</th>
+                      <th 
+                        style={{
+                         width: 180,
+                         background: "linear-gradient(90deg, #0c1f49ff, #1f407546)",
+                         color: "white",
+                        fontWeight: 600,
+                        padding: "12px 16px",
+                        borderBottom: "2px solid #1e40af"
+                         }} >Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -996,25 +1027,27 @@ function ReverseLinkTable({
                           <td key={c.name}>{renderCellValue(r, c)}</td>
                         ))}
                         <td>
-                          <div className="d-flex gap-2">
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-primary"
-                              onClick={() => goView(r)}
-                              disabled={!r?.id}
-                            >
-                              Ver
-                            </button>
-
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-warning"
-                              onClick={() => goEdit(r)}
-                              disabled={!r?.id}
-                            >
-                              Editar
-                            </button>
-                          </div>
+                        
+                          <ActionMenu
+                              items={[
+                                  {
+                                  label: "Ver",
+                                  icon: <i className="bi bi-eye" />,
+                                  onClick: () => goView(r),
+                                  },
+                                  {
+                                  label: "Editar",
+                                  icon: <i className="bi bi-pencil" />,
+                                  onClick: () => goEdit(r),
+                                  },
+                                  /**  {
+                                  label: "Eliminar",
+                                  icon: <i className="bi bi-trash" />,
+                                  variant: "danger",
+                                  onClick: () => goEdit(r),
+                                  },*/
+                              ]}
+                              />
                         </td>
                       </tr>
                     ))}
