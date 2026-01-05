@@ -139,7 +139,7 @@ export default function FormClient({
             Tareas
           </button>
         </li>
-                <li className="nav-item">
+        <li className="nav-item">
           <button
             type="button"
             className={`nav-link bg-secondary text-light ${activeTab === "calendario" ? "active" : ""}`}
@@ -149,6 +149,8 @@ export default function FormClient({
           </button>
         </li>
       </ul>
+
+      
     <div style={{ opacity: pending ? 0.7 : 1 }}>
       <div className={`tab-pane fade mt-3 ${activeTab === "proyecto" ? "show active" : ""}`}>
       {activeTab === "proyecto" && (

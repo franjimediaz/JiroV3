@@ -26,7 +26,7 @@ type Tarea = {
 
 type ModalMode = "create" | "view" | "edit";
 
-export default function TreeServices({ proyectoId }: { proyectoId: string }) {
+export default function TreeServices({ proyectoId, sTable }: { proyectoId: string, sTable?: string }) {
   const supabase = createClient();
   const router = useRouter();
 
@@ -65,7 +65,7 @@ export default function TreeServices({ proyectoId }: { proyectoId: string }) {
 
     try {
       const { data: t, error: te } = await supabase
-            .from("task")
+            .from(sTable || "task")
             .select("id,title,service,obraId,total,from,dateto")
             .eq("obraId", proyectoId)
             .order("title", { ascending: true });
@@ -143,6 +143,28 @@ export default function TreeServices({ proyectoId }: { proyectoId: string }) {
     () => tareas.reduce((acc, t) => acc + Number(t.total || 0), 0),
     [tareas]
   );
+  function formatTs(value: string | null | undefined) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+
+  // igual idea que listview: mostrarlo legible en local
+  return new Intl.DateTimeFormat("es-ES", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+}
+
+function renderPeriodo(from: string | null, dateto: string | null) {
+  const a = formatTs(from);
+  const b = formatTs(dateto);
+  if (a === "—" && b === "—") return "—";
+  return `${a} → ${b}`;
+}
+
 
   function toggleService(id: string) {
     setOpenServiceId((prev) => (prev === id ? null : id));
@@ -282,7 +304,7 @@ export default function TreeServices({ proyectoId }: { proyectoId: string }) {
                             {g.tareas.map((t) => (
                               <tr key={t.id}>
                                 <td className="fw-bold">{t.title}</td>
-                                <td className="fw-semibold">{t.from} → {t.dateto}</td>
+                                <td className="fw-semibold">{renderPeriodo(t.from, t.dateto)}</td>
                                 <td>{money(Number(t.total || 0))}</td>
 
                                 <td className="text-end text-nowrap">

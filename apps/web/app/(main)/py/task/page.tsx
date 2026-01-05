@@ -1,5 +1,5 @@
 
-import CustomersPageClient from "./PageClient";
+import PageClient from "./PageClient";
 import { fetchModuloBySlug } from "@/lib/modulos/modulos";
 import { createClient } from "@/lib/supabase/server";
 
@@ -13,7 +13,7 @@ export default async function CustomersPage() {
   const modulo = await fetchModuloBySlug("task");
 
   return (
-    <CustomersPageClient
+    <PageClient
       customers={customers ?? []}
       schema={modulo.props} // <- esto es tu ModuleSchema real
     />

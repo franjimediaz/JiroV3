@@ -18,26 +18,31 @@ type CustomersPageClientProps = {
 };
 
 export default function PageClient({ customers, schema }: CustomersPageClientProps) {
+  const CFG = {
+  moduleSlug: "users",
+  titleSingular: "Usuario",
+  displayField: "name",
+} as const;
 
 const router = useRouter();
 const { loading, hasPermiso } = usePerms();
 
 const handleDelete = async (row: any) => {
     // 1) permiso (UX)
-    if (!hasPermiso("py", "eliminar")) {
+    if (!hasPermiso(CFG.moduleSlug, "eliminar")) {
       router.replace("/403");
       return;
     }
 
     // 2) confirm (cámbialo por tu modal)
     const ok = window.confirm(
-      `¿Eliminar este cliente?\n\nID: ${row.id}\n\nEsta acción no se puede deshacer.`
+      `¿Eliminar este usuario?\n\nID: ${row.id}\n\nEsta acción no se puede deshacer.`
     );
     if (!ok) return;
 
     // 3) delete Supabase (cliente)
     const supabase = createClient();
-    const { error } = await supabase.from("customers").delete().eq("id", row.id);
+    const { error } = await supabase.from(CFG.moduleSlug).delete().eq("id", row.id);
 
     if (error) {
       // Si pones RLS bien, aquí verás "permission denied" si no tiene permiso real
@@ -51,15 +56,15 @@ const handleDelete = async (row: any) => {
     if (loading) return null;
 
   return (
-    <RequirePerms modulo="users" accion="ver">
+    <RequirePerms modulo={CFG.moduleSlug} accion="ver">
 
       <ListView
         schema={schema}
         data={customers}
-        onViewRow={(row) => (window.location.href = `/system/users/${row.uid}`)}
-        onEditRow={(row) => (window.location.href = `/system/users/${row.uid}?edit=true`)}
+        onViewRow={(row) => (window.location.href = `/system/${CFG.moduleSlug}/${row.uid}`)}
+        onEditRow={(row) => (window.location.href = `/system/${CFG.moduleSlug}/${row.uid}?edit=true`)}
         onDeleteRow={handleDelete}
-        onCreate={() => (window.location.href = "/system/users/new")}
+        onCreate={() => (window.location.href = `/system/${CFG.moduleSlug}/new`)}
       />
     </RequirePerms>
   );

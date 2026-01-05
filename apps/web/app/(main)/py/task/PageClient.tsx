@@ -6,32 +6,37 @@ import { useRouter } from "next/navigation";
 import { RequirePerms, usePerms } from "@/lib/perms";
 import { createClient } from "@/lib/supabase/client"; // 👈 tu supabase client de navegador
 
-export default function CustomersPageClient({
+export default function PageClient({
   customers,
   schema,
 }: {
   customers: any[];
   schema: ModuleSchema;
 }) {
+  const CFG = {
+  moduleSlug: "task",
+  titleSingular: "Tarea",
+  displayField: "title",
+} as const;
   const router = useRouter();
   const { loading, hasPermiso } = usePerms();
 
   const handleDelete = async (row: any) => {
     // 1) permiso (UX)
-    if (!hasPermiso("task", "eliminar")) {
+    if (!hasPermiso(CFG.moduleSlug, "eliminar")) {
       router.replace("/403");
       return;
     }
 
     // 2) confirm (cámbialo por tu modal)
     const ok = window.confirm(
-      `¿Eliminar este cliente?\n\nID: ${row.id}\n\nEsta acción no se puede deshacer.`
+      `¿Eliminar esta tarea?\n\nID: ${row.id}\n\nEsta acción no se puede deshacer.`
     );
     if (!ok) return;
 
     // 3) delete Supabase (cliente)
     const supabase = createClient();
-    const { error } = await supabase.from("task").delete().eq("id", row.id);
+    const { error } = await supabase.from(CFG.moduleSlug).delete().eq("id", row.id);
 
     if (error) {
       // Si pones RLS bien, aquí verás "permission denied" si no tiene permiso real
@@ -45,14 +50,14 @@ export default function CustomersPageClient({
   if (loading) return null;
 
   return (
-    <RequirePerms modulo="task" accion="ver">
+    <RequirePerms modulo={CFG.moduleSlug} accion="ver">
       <ListView
         schema={schema}
         data={customers}
-        onViewRow={(row) => router.push(`/py/task/${row.id}`)}
-        onEditRow={(row) => router.push(`/py/task/${row.id}?edit=true`)}
+        onViewRow={(row) => router.push(`/py/${CFG.moduleSlug}/${row.id}`)}
+        onEditRow={(row) => router.push(`/py/${CFG.moduleSlug}/${row.id}?edit=true`)}
         onDeleteRow={handleDelete}
-        onCreate={() => router.push("/py/task/new")}
+        onCreate={() => router.push(`/py/${CFG.moduleSlug}/new`)}
       />
     </RequirePerms>
   );

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { RequirePerms, usePerms } from "@/lib/perms";
 import { createClient } from "@/lib/supabase/client"; // 👈 tu supabase client de navegador
 
-export default function CustomersPageClient({
+export default function PageClient({
   customers,
   schema,
 }: {
