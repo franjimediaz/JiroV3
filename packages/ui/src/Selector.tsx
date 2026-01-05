@@ -25,6 +25,9 @@ type Props = {
   label?: string; // para title del popup
   placeholder?: string;
   limit?: number; // cantidad por búsqueda
+  hasStyle?: boolean;
+  styleIconField?: string;  // default "icon"
+  styleColorField?: string;
 };
 
 function ensureList() {
@@ -51,33 +54,43 @@ export default function SelectorTabla({
   label,
   placeholder = "— Seleccionar —",
   limit = 20,
+  hasStyle = false,
+  styleIconField = "icon",
+  styleColorField = "color",
 }: Props) {
   const [popupOpen, setPopupOpen] = useState(false);
   const [popupItems, setPopupItems] = useState<PopupItem[]>([]);
   const [popupLoading, setPopupLoading] = useState(false);
 
   // Cache: id -> label (para mostrar en el botón aunque el popup no esté abierto)
-  const [labelCache, setLabelCache] = useState<Record<string, string>>({});
+  type CacheEntry = { label: string; icon?: string; color?: string };
+
+  const [labelCache, setLabelCache] = useState<Record<string, CacheEntry>>({});
+
 
   const normalizedValue = useMemo(() => {
     if (multiple) return Array.isArray(value) ? value.map(toStr) : [];
     return value ? toStr(value) : "";
   }, [value, multiple]);
 
-  const summary = useMemo(() => {
-    if (multiple) {
-      const arr = normalizedValue as string[];
-      if (!arr.length) return placeholder;
 
-      const labels = arr.map((v) => labelCache[v] || v);
-      if (labels.length > 3) return `${labels.length} seleccionados`;
-      return labels.join(", ");
-    }
+  const summaryText = useMemo(() => {
+  if (multiple) {
+    const arr = normalizedValue as string[];
+    if (!arr.length) return placeholder;
 
-    const v = normalizedValue as string;
-    if (!v) return placeholder;
-    return labelCache[v] || v;
-  }, [normalizedValue, multiple, labelCache, placeholder]);
+    const labels = arr.map((id) => labelCache[id]?.label || id);
+    if (labels.length > 3) return `${labels.length} seleccionados`;
+    return labels.join(", ");
+  }
+
+  const id = normalizedValue as string;
+  if (!id) return placeholder;
+  return labelCache[id]?.label || id;
+}, [multiple, normalizedValue, labelCache, placeholder]);
+
+
+
 
   // --- Cargar items para el popup (con búsqueda) ---
   const fetchItems = useCallback(
@@ -100,15 +113,19 @@ export default function SelectorTabla({
           });
         }
 
-        // Tu list() recibe un único objeto tipo ListInput (por lo que me dijiste)
+        
         const res = await list({
           moduleSlug,
           filters: nextFilters,
           sort,
           limit,
+          hasStyle,
+          styleIconField,
+          styleColorField,
         } as any);
 
         const rows = Array.isArray(res?.data) ? res.data : [];
+        
 
         const items: PopupItem[] = rows.map((r: any) => ({
           value: toStr(r[valueField]),
@@ -119,15 +136,23 @@ export default function SelectorTabla({
         setPopupItems(items);
 
         // Alimenta cache con lo que venga (sirve para pintar summary)
-        const newCache: Record<string, string> = {};
-        items.forEach((it) => (newCache[it.value] = it.label));
+        const newCache: Record<string, CacheEntry> = {};
+        items.forEach((it) => {
+          const raw = it.raw || {};
+          newCache[it.value] = {
+            label: it.label,
+            icon: raw?.[styleIconField],
+            color: raw?.[styleColorField],
+          };
+        });
         setLabelCache((prev) => ({ ...prev, ...newCache }));
       } finally {
         setPopupLoading(false);
       }
     },
-    [moduleSlug, displayField, valueField, filters, sort, limit]
+    [moduleSlug, displayField, valueField, filters, sort, limit, styleIconField, styleColorField]
   );
+  
 
   // Pre-resolver labels del value actual si no están en caché
   useEffect(() => {
@@ -159,7 +184,11 @@ export default function SelectorTabla({
 
           const row = Array.isArray(res?.data) ? res.data[0] : null;
           const lbl = row ? toStr(row[displayField]) : id;
-          setLabelCache((prev) => ({ ...prev, [id]: lbl }));
+          setLabelCache((prev) => ({ ...prev, [id]: {
+                                label: lbl,
+                                icon: row?.[styleIconField],
+                                color: row?.[styleColorField],
+                              },}));
         }
       } catch {
         // si falla, al menos mostramos el id (ya lo hace summary)
@@ -182,10 +211,14 @@ export default function SelectorTabla({
   const handleApply = (next: any) => {
     // next puede ser string o string[]
     if (Array.isArray(next)) {
-      const newCache: Record<string, string> = {};
+      const newCache: Record<string, CacheEntry> = {};
       popupItems.forEach((item) => {
         if (next.includes(item.value)) {
-          newCache[item.value] = item.label;
+          newCache[item.value] = {
+          label: item.label,
+          icon: item.raw?.[styleIconField],
+          color: item.raw?.[styleColorField],
+        };
         }
       });
       setLabelCache((prev) => ({ ...prev, ...newCache }));
@@ -194,13 +227,49 @@ export default function SelectorTabla({
       const id = toStr(next);
       const found = popupItems.find((i) => i.value === id);
       if (found) {
-        setLabelCache((prev) => ({ ...prev, [id]: found.label }));
+        setLabelCache((prev) => ({ ...prev, [id]: {
+      label: found.label,
+      icon: found.raw?.[styleIconField],
+      color: found.raw?.[styleColorField],
+    }, }));
       }
       onChange(id);
     }
 
     setPopupOpen(false);
   };
+
+const renderStyled = (label: string, icon?: string, color?: string) => (
+  <span className="d-inline-flex align-items-center gap-2">
+    {icon ? (
+      // Si tu icono ya viene como "bi bi-gear", úsalo tal cual
+      <i className={icon.includes(" ") ? icon : `bi ${icon}`} style={{ color: color || "inherit" }} />
+    ) : null}
+    <span>{label}</span>
+  </span>
+);
+
+const summaryNode = useMemo(() => {
+  if (!hasStyle) return summaryText;
+
+  // multi: mejor contador salvo que haya 1 seleccionado
+  if (multiple) {
+    const arr = normalizedValue as string[];
+    if (!arr.length) return placeholder;
+    if (arr.length > 1) return `${arr.length} seleccionados`;
+
+    const id = arr[0];
+    const entry = labelCache[id];
+    return renderStyled(entry?.label || id, entry?.icon, entry?.color);
+  }
+
+  const id = normalizedValue as string;
+  if (!id) return placeholder;
+  const entry = labelCache[id];
+  return renderStyled(entry?.label || id, entry?.icon, entry?.color);
+}, [hasStyle, multiple, normalizedValue, labelCache, summaryText, placeholder]);
+
+
 
   return (
     <>
@@ -209,12 +278,17 @@ export default function SelectorTabla({
         className="form-control d-flex justify-content-between align-items-center"
         onClick={openSelectorTablaPopup}
         disabled={readOnly}
-        title={summary}
+        title={summaryText}
       >
+        
         <span style={{ opacity: (multiple ? (normalizedValue as string[]).length : !!(normalizedValue as string)) ? 1 : 0.75 }}>
-          {summary}
+          {summaryNode}
         </span>
-        <span style={{ opacity: 0.7 }}>🔎</span>
+        <i
+          className="bi bi-search ms-2"
+          style={{ opacity: 0.7, fontSize: "0.9rem" }}
+          aria-hidden="true"
+        />
       </button>
 
       <PopupSelector

@@ -179,9 +179,9 @@ async function main() {
 
   const nodes = normalizeSeed(parsed);
 
-  console.log(`🌱 Importando ${nodes.length} módulos raíz desde ${SEED_FILE}...`);
+  
   await walk(nodes, null);
-  console.log("✅ Seed de módulos completado correctamente.");
+  
 }
 
 main().catch((err) => {

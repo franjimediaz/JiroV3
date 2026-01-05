@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
-import type {Field, FieldType, ListViewProps } from "@repo/types";
+import type {Field, FieldType, ListViewProps, CacheEntry  } from "@repo/types";
 import { ActionMenu } from "./ActionMenu";
 import { dataProvider } from "./providers/DataProvider";
 
@@ -43,7 +43,7 @@ export default function ListView({
   const [filters, setFilters] = useState<Record<string, string>>({});
 
   // Cache para resolver selectorTabla (id -> displayField) en la lista
-  const [labelCache, setLabelCache] = useState<Record<string, string>>({});
+  const [labelCache, setLabelCache] = useState<Record<string, CacheEntry>>({});
 
   useEffect(() => {
     if (!filteredData?.length) return;
@@ -238,20 +238,27 @@ function getSelectorRef(ref: any): { moduleSlug?: string; displayField?: string;
 function cacheKey(moduleSlug: string, id: string) {
   return `${moduleSlug}::${id}`;
 }
-
 async function preloadSelectorLabels(params: {
   rows: any[];
   fields: Field[];
   dataProvider: any;
-  cache: Record<string, string>;
-  setCache: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  cache: Record<string, CacheEntry>;
+  setCache: React.Dispatch<React.SetStateAction<Record<string, CacheEntry>>>;
 }) {
   const { rows, fields, dataProvider, cache, setCache } = params;
 
-  // Agrupamos por referencia (mismo moduleSlug/valueField/displayField)
+  // Agrupamos por referencia (mismo moduleSlug/valueField/displayField + estilo)
   const pending = new Map<
     string,
-    { moduleSlug: string; valueField: string; displayField: string; ids: Set<string> }
+    {
+      moduleSlug: string;
+      valueField: string;
+      displayField: string;
+      hasStyle: boolean;
+      styleIconField: string;
+      styleColorField: string;
+      ids: Set<string>;
+    }
   >();
 
   for (const f of fields) {
@@ -263,9 +270,26 @@ async function preloadSelectorLabels(params: {
     const displayField = ref?.displayField ? String(ref.displayField) : "id";
     if (!moduleSlug) continue;
 
-    const k = `${moduleSlug}|${valueField}|${displayField}`;
+    const hasStyle = !!((f as any).hasStyle ?? (ref as any)?.hasStyle);
+    const styleIconField =
+      ((f as any).styleIconField ?? (ref as any)?.styleIconField) || "icon";
+    const styleColorField =
+      ((f as any).styleColorField ?? (ref as any)?.styleColorField) || "color";
+
+    const k = `${moduleSlug}|${valueField}|${displayField}|${
+      hasStyle ? 1 : 0
+    }|${styleIconField}|${styleColorField}`;
+
     if (!pending.has(k)) {
-      pending.set(k, { moduleSlug, valueField, displayField, ids: new Set() });
+      pending.set(k, {
+        moduleSlug,
+        valueField,
+        displayField,
+        hasStyle,
+        styleIconField,
+        styleColorField,
+        ids: new Set(),
+      });
     }
 
     const bucket = pending.get(k)!;
@@ -273,9 +297,12 @@ async function preloadSelectorLabels(params: {
     for (const r of rows) {
       const id = r?.[f.name];
       if (!id) continue;
+
       const idStr = String(id);
       const ck = cacheKey(moduleSlug, idStr);
-      if (!cache[ck]) bucket.ids.add(idStr);
+
+      // Si no tenemos label en cache, lo pedimos
+      if (!cache[ck]?.label) bucket.ids.add(idStr);
     }
   }
 
@@ -283,20 +310,28 @@ async function preloadSelectorLabels(params: {
     const ids = Array.from(b.ids);
     if (!ids.length) continue;
 
-    // Ideal: backend soporta op "in".
+    // Ideal: backend soporta op "in"
     const res = await dataProvider.list({
       moduleSlug: b.moduleSlug,
       filters: [{ field: b.valueField, op: "in", value: ids }],
       limit: Math.min(ids.length, 500),
+      hasStyle: b.hasStyle,
+      styleIconField: b.styleIconField,
+      styleColorField: b.styleColorField,
     });
 
     const rowsRes = Array.isArray(res?.data) ? res.data : [];
-    const patch: Record<string, string> = {};
+    const patch: Record<string, CacheEntry> = {};
 
     for (const r of rowsRes) {
       const id = String(r?.[b.valueField]);
       const label = String(r?.[b.displayField] ?? id);
-      patch[cacheKey(b.moduleSlug, id)] = label;
+
+      patch[cacheKey(b.moduleSlug, id)] = {
+        label,
+        icon: b.hasStyle ? r?.[b.styleIconField] : undefined,
+        color: b.hasStyle ? r?.[b.styleColorField] : undefined,
+      };
     }
 
     if (Object.keys(patch).length) {
@@ -306,8 +341,29 @@ async function preloadSelectorLabels(params: {
 }
 
 
-function renderCell(value: any, field: Field, labelCache: Record<string, string>) {
+
+function renderCell(value: any, field: Field, labelCache: Record<string, CacheEntry>) {
   if (value === null || value === undefined || value === "") return "—";
+
+  const isBi = (s?: string) => !!s && (s.includes("bi-") || s.startsWith("bi "));
+
+  const renderStyled = (label: string, icon?: string, color?: string) => (
+    <span className="d-inline-flex align-items-center gap-2">
+      {icon ? (
+        isBi(icon) ? (
+          <i
+            className={icon.includes(" ") ? icon : `bi ${icon}`}
+            style={{ color: color || "inherit" }}
+            aria-hidden="true"
+          />
+        ) : (
+          // emoji / texto
+          <span style={{ color: color || "inherit" }}>{icon}</span>
+        )
+      ) : null}
+      <span>{label}</span>
+    </span>
+  );
 
   switch (field.type as FieldType) {
     case "boolean":
@@ -323,9 +379,7 @@ function renderCell(value: any, field: Field, labelCache: Record<string, string>
         const d = new Date(value);
         if (Number.isNaN(d.getTime())) return String(value);
 
-        if (field.type === "date") {
-          return d.toISOString().slice(0, 10);
-        }
+        if (field.type === "date") return d.toISOString().slice(0, 10);
         return d.toLocaleString();
       } catch {
         return String(value);
@@ -354,7 +408,6 @@ function renderCell(value: any, field: Field, labelCache: Record<string, string>
               backgroundColor: String(value),
             }}
           />
-          
         </div>
       );
 
@@ -376,36 +429,54 @@ function renderCell(value: any, field: Field, labelCache: Record<string, string>
       const moduleSlug = ref?.moduleSlug ? String(ref.moduleSlug) : "";
       const df = ref?.displayField ? String(ref.displayField) : "id";
 
-      // Si ya viene el objeto relacionado, intenta pintar displayField directamente
+      // Si ya viene el objeto relacionado:
       if (typeof value === "object" && value !== null) {
         const v: any = value;
-        return String(v[df] ?? v.id ?? JSON.stringify(v));
+        const label = String(v[df] ?? v.id ?? JSON.stringify(v));
+
+        // Si quieres estilo también aquí, necesita que el objeto traiga icon/color
+        const hasStyle = !!((field as any).hasStyle ?? (ref as any)?.hasStyle);
+        const styleIconField =
+          ((field as any).styleIconField ?? (ref as any)?.styleIconField) || "icon";
+        const styleColorField =
+          ((field as any).styleColorField ?? (ref as any)?.styleColorField) || "color";
+
+        if (hasStyle) {
+          return renderStyled(label, v?.[styleIconField], v?.[styleColorField]);
+        }
+        return label;
       }
 
-      // Normal: guardamos el ID. Lo resolvemos contra caché.
+      // Normal: viene el ID
       const id = String(value ?? "");
       if (moduleSlug && id) {
-        const lbl = labelCache[cacheKey(moduleSlug, id)];
-        if (lbl) return lbl;
+        const entry = labelCache[cacheKey(moduleSlug, id)];
+        const label = entry?.label || id;
+
+        const hasStyle = !!((field as any).hasStyle ?? (ref as any)?.hasStyle);
+        if (hasStyle) {
+          return renderStyled(label, entry?.icon, entry?.color);
+        }
+
+        return label;
       }
+
       return id;
     }
 
     case "formula":
-      // El valor ya debería venir calculado
       return String(value);
 
-      case "iconpicker":
-  if (!value) return "—";
-
-  return (
-    <span className="d-inline-flex align-items-center gap-2">
-      <i className={`bi ${value}`} aria-hidden />
-      <small className="text-muted"></small>
-    </span>
-  );
+    case "iconpicker":
+      if (!value) return "—";
+      return (
+        <span className="d-inline-flex align-items-center gap-2">
+          <i className={`bi ${value}`} aria-hidden="true" />
+        </span>
+      );
 
     default:
       return String(value);
   }
 }
+

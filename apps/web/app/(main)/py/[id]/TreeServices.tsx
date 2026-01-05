@@ -55,7 +55,7 @@ export default function TreeServices({ proyectoId }: { proyectoId: string }) {
   const serviciosById = useMemo(() => {
     const map = new Map<string, Servicio>();
     for (const s of allServicios) map.set(s.id, s);
-    console.log("serviciosById", map);
+    
     return map;
   }, [allServicios]);
 

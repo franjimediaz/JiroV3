@@ -665,8 +665,16 @@ async function openSelectorTablaPopup() {
 
   const sort =
     ref && "sort" in ref ? (ref as any).sort : [];
+  const hasStyle = 
+  ref && "hasStyle" in ref ? (ref as any).hasStyle : false;
 
-  return (
+  const styleIconField = 
+    ref && "styleIconField" in ref ? (ref as any).styleIconField : "icon";
+
+  const styleColorField = 
+    ref && "styleColorField" in ref ? (ref as any).styleColorField : "color";
+
+return (
     <>
 
           <Selector
@@ -678,7 +686,12 @@ async function openSelectorTablaPopup() {
             readOnly={readOnly}
             filters={filters}
             sort={sort}
+            multiple={isMultiple}
             placeholder={field.placeholder || "Selecciona un registro"}
+            hasStyle={hasStyle}                    
+            styleIconField={styleIconField}        
+            styleColorField={styleColorField} 
+
           />
  
 
@@ -812,10 +825,10 @@ function ReverseLinkTable({
           sort,
           limit: ref.limit ?? 20,
         });
-        console.log("[ReverseLink] result raw", result);
+        
 
         const data = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
-        console.log("[ReverseLink] rows length", data.length, data[0]);
+        
 
         if (!cancelled) setRows(data);
       } catch (e: any) {

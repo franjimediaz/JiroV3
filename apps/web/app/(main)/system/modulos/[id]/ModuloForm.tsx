@@ -26,11 +26,10 @@ function validatePropsClient(props: any): string | null {
       return `fields[${i}].name requerido`;
     if (!f.label || typeof f.label !== "string")
       return `fields[${i}].label requerido`;
-    console.log("VALID TYPES", VALID_FIELD_TYPES);
-    console.log("CHECK TYPE", i, JSON.stringify(f.type), "includes?", VALID_FIELD_TYPES.includes(f.type));
+
     if (!VALID_FIELD_TYPES.includes(f.type))
       return `fields[${i}].type inválido`;
-    console.log("VALIDATE FIELD", i, "type=", f.type, "ref=", f.ref);
+    
     if (f.type === "selectorTabla") {
       const r = f.ref;
       if (
@@ -410,7 +409,9 @@ const commitWhereIfValid = (text: string) => {
         <>
           {/* BLOQUE PRINCIPAL (tu grid 1 + grid 2) */}
           <div className={styles.card} style={{ marginTop: 12 }}>
+            <h4 style={{ marginTop: 0 }}>Opciones Generales</h4>
             <div className={styles.grid}>
+              
               <div>
                 <label className={styles.label}>name</label>
                 <input
@@ -462,35 +463,6 @@ const commitWhereIfValid = (text: string) => {
                 </select>
               </div>
 
-              <div className={styles.switchRow}>
-                <label className={styles.label}>required</label>
-                <input
-                  type="checkbox"
-                  checked={!!field.required}
-                  onChange={(e) => onChange({ ...field, required: e.target.checked })}
-                  disabled={readOnly}
-                />
-              </div>
-              <div className={styles.switchRow}>
-                <label className={styles.label}>virtual</label>
-                <input
-                  type="checkbox"
-                  checked={!!field.virtual}
-                  onChange={(e) => onChange({ ...field, virtual: e.target.checked })}
-                  disabled={readOnly}
-                />
-              </div>
-
-              <div className={styles.switchRow}>
-                <label className={styles.label}>visible</label>
-                <input
-                  type="checkbox"
-                  checked={field.visible ?? true}
-                  onChange={(e) => onChange({ ...field, visible: e.target.checked })}
-                  disabled={readOnly}
-                />
-              </div>
-
               <div>
                   <label className={styles.label}>visible when</label>
                   <select
@@ -509,26 +481,6 @@ const commitWhereIfValid = (text: string) => {
                   </select>
                 </div>
 
-              <div className={styles.switchRow}>
-                <label className={styles.label}>readOnly</label>
-                <input
-                  type="checkbox"
-                  checked={!!field.readOnly}
-                  onChange={(e) => onChange({ ...field, readOnly: e.target.checked })}
-                  disabled={readOnly}
-                />
-              </div>
-
-              <div className={styles.switchRow}>
-                <label className={styles.label}>allowOverride (forzar valor)</label>
-                <input
-                  type="checkbox"
-                  checked={!!field.allowOverride}
-                  onChange={(e) => onChange({ ...field, allowOverride: e.target.checked })}
-                  disabled={readOnly}
-                />
-              </div>
-
               <div>
                 <label className={styles.label}>appareance</label>
                 <select
@@ -546,7 +498,7 @@ const commitWhereIfValid = (text: string) => {
               </div>
             </div>
 
-            <div className={styles.grid}>
+                        <div className={styles.grid}>
               <div>
                 <label className={styles.label}>placeholder</label>
                 <input
@@ -582,6 +534,55 @@ const commitWhereIfValid = (text: string) => {
                   disabled={readOnly}
                 />
               </div>
+
+              <div className={styles.switchRow}>
+                <label className={styles.label}>required</label>
+                <input
+                  type="checkbox"
+                  checked={!!field.required}
+                  onChange={(e) => onChange({ ...field, required: e.target.checked })}
+                  disabled={readOnly}
+                />
+              </div>
+              <div className={styles.switchRow}>
+                <label className={styles.label}>virtual</label>
+                <input
+                  type="checkbox"
+                  checked={!!field.virtual}
+                  onChange={(e) => onChange({ ...field, virtual: e.target.checked })}
+                  disabled={readOnly}
+                />
+              </div>
+
+              <div className={styles.switchRow}>
+                <label className={styles.label}>visible</label>
+                <input
+                  type="checkbox"
+                  checked={field.visible ?? true}
+                  onChange={(e) => onChange({ ...field, visible: e.target.checked })}
+                  disabled={readOnly}
+                />
+              </div>
+
+              
+
+              
+
+              <div className={styles.switchRow}>
+                <label className={styles.label}>allowOverride (forzar valor)</label>
+                <input
+                  type="checkbox"
+                  checked={!!field.allowOverride}
+                  onChange={(e) => onChange({ ...field, allowOverride: e.target.checked })}
+                  disabled={readOnly}
+                />
+              </div>
+
+              
+
+
+
+
             </div>
           </div>
 
@@ -630,6 +631,15 @@ const commitWhereIfValid = (text: string) => {
                   <option value="richtext">richtext</option>
                 </select>
               </div>
+              <div className={styles.switchRow}>
+                <label className={styles.label}>readOnly</label>
+                <input
+                  type="checkbox"
+                  checked={!!field.readOnly}
+                  onChange={(e) => onChange({ ...field, readOnly: e.target.checked })}
+                  disabled={readOnly}
+                />
+              </div>
             </div>
           </div>
 
@@ -642,7 +652,6 @@ const commitWhereIfValid = (text: string) => {
               />
             </Labeled>
           )}
-
           {field.type === "selectorTabla" && (
             <div className={styles.card} style={{ marginTop: 12 }}>
               <h4 style={{ marginTop: 0 }}>Selector Tabla</h4>
@@ -701,7 +710,7 @@ const commitWhereIfValid = (text: string) => {
                     disabled={readOnly}
                   />
                 </div>
-
+              <div>
                 <div>
                   <label className={styles.label}>ref.multiple</label>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -722,7 +731,27 @@ const commitWhereIfValid = (text: string) => {
                     <span style={{ fontSize: 13, opacity: 0.85 }}>Permitir multiselección</span>
                   </div>
                 </div>
-
+                <div>
+                  <label className={styles.label}>ref.hasStyle (aplica estilo en tablas con campos icon y color)</label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!field.ref?.hasStyle}
+                      onChange={(e) =>
+                        onChange({
+                          ...field,
+                          ref: {
+                            ...(field.ref || { moduleSlug: "", displayField: "" }),
+                            hasStyle: e.target.checked,
+                          },
+                        })
+                      }
+                      disabled={readOnly}
+                    />
+                    <span style={{ fontSize: 13, opacity: 0.85 }}>Tiene estilo</span>
+                  </div>
+                </div>
+                </div>
                 <div className="full">
                   <label className={styles.label}>ref.filters (JSON)</label>
                   <textarea
@@ -1211,7 +1240,7 @@ export default function ModuloForm({
         router.refresh();
       }
     });
-    console.log("FIELDS[0] DEBUG", propsObj.fields?.[0]);
+    
   };
 
   // Helpers de fields

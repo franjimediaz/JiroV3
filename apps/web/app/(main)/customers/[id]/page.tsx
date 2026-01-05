@@ -90,7 +90,7 @@ export default async function EntityPage({
   if (!row) notFound();
 
   const display = (row as any)?.[CFG.displayField] ?? id;
-console.log("FormClient props:", { schema, isEdit, table, primaryKey, id });
+
   return (
     <main className="container py-4 bg-secondary bg-opacity-10 rounded">
       <header className="d-flex align-items-center mb-4">

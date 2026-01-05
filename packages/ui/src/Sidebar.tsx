@@ -187,12 +187,7 @@ function NavItem({
   canView?: (slug: string) => boolean; // devuelve true si puede VER en sidebar
 }) {
 
-   console.log("SIDEBAR NODE", {
-    nombre: node.nombre,
-    tipo: node.tipo,
-    route: node.route,
-    hasChildren: (node.hijos?.length ?? 0) > 0,
-  });
+
   const pathname = usePathname();
 
   //  Permisos: si no puede "ver", fuera

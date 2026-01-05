@@ -53,6 +53,9 @@ export type SelectorTablaRef = {
   table?: string;
   displayField: string; // obligatorio SOLO aquí
   valueField?: string;
+  hasStyle?: boolean;
+  styleIconField?: string;  
+  styleColorField?: string;
   filters?: QueryFilter[];
   sort?: QuerySort[];
 };
@@ -103,6 +106,7 @@ export type SelectorTablaField = BaseField & {
   type: "selectorTabla";
   ref: SelectorTablaRef; // requerido y displayField obligatorio
 };
+
 
 export type ReverseLinkField = BaseField & {
   type: "ReverseLink";
@@ -209,4 +213,5 @@ export type QuerySort = {
   field: string;
   direction: "asc" | "desc";
 };
+export type CacheEntry = { label: string; icon?: string; color?: string };
 

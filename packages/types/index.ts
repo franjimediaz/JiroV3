@@ -13,7 +13,8 @@ export type {
     SeedNode,
     ReverseLinkRef,
     QueryFilter,
-    QuerySort} from "./fields";
+    QuerySort,
+    CacheEntry} from "./fields";
 export type { AccionModulo, MapaAcciones, PermisosPorModulo, RolePermisosSchema } from "./perms";
 export { VALID_FIELD_TYPES, Appareance_Valid_Types} from "./fields";
 

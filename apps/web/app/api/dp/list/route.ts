@@ -75,7 +75,7 @@ if (!/^[a-z0-9_]+$/i.test(tableName)) {
 }
 
 // DEBUG temporal (para ver exactamente qué llega)
-console.log("[dp/list] resolved tableName:", JSON.stringify(tableName));
+
 
   // 2) Consultar registros de la tabla real
   let query = supabase.from(tableName).select("*").limit(limit);
@@ -85,7 +85,7 @@ console.log("[dp/list] resolved tableName:", JSON.stringify(tableName));
   }
 
   const { data, error } = await query;
-    console.log("[dp/list] moduleSlug:", moduleSlug, "=> tableName:", tableName);
+
   if (error) {
     return NextResponse.json({tableName, error }, { status: 500 });
   }

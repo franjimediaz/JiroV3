@@ -54,12 +54,7 @@ export const dataProvider: DataProvider & {
       ...c,
       value: resolveTpl(c.value, record),
     }));
-    console.log("[dataProvider.aggregate] sending:", {
-      sourceTable: input.sourceTable,
-      field: input.field,
-      op: input.op,
-      where: whereResolved,
-    });
+
     // 2) Llamar al endpoint
     const res = await fetch("/api/aggregate", {
   method: "POST",
@@ -101,6 +96,9 @@ export const dataProvider: DataProvider & {
         filters: input.filters,
         sort: input.sort,
         limit: input.limit,
+        hasStyle: input.hasStyle,
+        styleIconField: input.styleIconField,
+        styleColorField: input.styleColorField,
       }),
     });
 

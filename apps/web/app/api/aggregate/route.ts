@@ -9,7 +9,7 @@ type WhereCond = { field: string; op: string; value: any };
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    console.log("[/api/aggregate] body:", body);
+    
 
     const sourceTable = body?.sourceTable;
     const field = body?.field;

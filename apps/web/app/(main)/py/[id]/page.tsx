@@ -92,7 +92,7 @@ export default async function EntityPage({
   if (!row) notFound();
 
   const display = (row as any)?.[CFG.displayField] ?? id;
-console.log("FormClient props:", { schema, isEdit, table, primaryKey, id });
+
 
 
   return (

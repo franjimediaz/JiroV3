@@ -13,6 +13,9 @@ export type ListInput = {
   limit?: number;
   filters?: { field: string; op: "=" | "!=" | ">" | "<" | "in"; value: any }[];
   sort?: { field: string; dir: "asc" | "desc" }[];
+  hasStyle?: boolean;
+  styleIconField?: string;
+  styleColorField?: string;
 };
 export type ListResult = { data: any[]; error?: any };
 

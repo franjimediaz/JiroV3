@@ -115,7 +115,7 @@ export default function MaterialTaskModal({
       const { error } = await supabase.from("materialstask").insert(payload);
 
       if (error) throw error;
-      console.log("payload", payload);
+      
       onCreated?.();
       onClose();
     } catch (e: any) {

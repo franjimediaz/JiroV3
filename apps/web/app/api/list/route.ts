@@ -66,9 +66,9 @@ export async function POST(req: Request) {
     }
 
     const props = parseProps((modRow as any).props);
-    console.log("[/api/list] props.db=", props?.db);
+    
     const tableName = String(props?.db?.slug || "").trim() || moduleSlug;
-        
+        console.log("🧱 /api/list tableName =", tableName);
     if (!tableName) {
         
       return NextResponse.json(
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
       );
       
     }
-    console.log("[/api/list] moduleSlug=", moduleSlug, "tableName=", tableName);
+    
 
     // 2) Construir query base
     let q = supabase.from(tableName).select("*");

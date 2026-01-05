@@ -72,7 +72,7 @@ export async function PUT(req: Request) {
   const body = await req.json();
 
   const id = getIdFromUrl(req);
-  console.log("🔎 PUT /api/roles/[id] id from url =", id);
+  
 
   if (!id) {
     return NextResponse.json(
