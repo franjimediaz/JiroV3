@@ -7,54 +7,76 @@ import { Form } from "@repo/ui";
 import type { ModuleSchema } from "@repo/types";
 import { RequirePerms } from "@/lib/perms";
 
-function sanitize(values: any, schema: ModuleSchema) {
+function isUuid(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+export function sanitize(values: any, schema: ModuleSchema) {
   const { meta, ...rest } = values || {};
   const out: any = { ...rest };
 
+  // 1) Normalización global (una sola vez, fuera del loop)
+  for (const k of Object.keys(out)) {
+    const v = out[k];
+    if (typeof v === "string") {
+      const s = v.trim();
+      if (s === "" || s === "null" || s === "undefined") out[k] = null;
+    } else if (v === "") {
+      out[k] = null;
+    }
+  }
+
+  // 2) Elimina timestamps gestionados por DB (para que default now() aplique)
+  delete out.created_at;
+  delete out.updated_at;
+
+  // 3) Reglas por campo según schema
   for (const f of schema.fields || []) {
     const v = out[f.name];
 
-    // ✅ Fechas: Postgres no acepta "" en timestamp/date
-    if ((f.type === "date" || f.type === "datetime" ||  f.type === "text") && v === "") {
+    // Fechas: si llega string vacío ya sería null por arriba, pero por seguridad:
+    if ((f.type === "date" || f.type === "datetime") && v === "") {
       out[f.name] = null;
     }
-if (f.name === "created_at" || f.name === "updated_at") {
-      delete out[f.name];
-      continue;
-    }
-    // ✅ Multiselect: nunca ""
-    if (f.type === "multiselect") {
-      if (v === "" || v == null) out[f.name] = [];
-    }
+
+    // Arrays
     const isArrayLikeType =
       f.type === "multiselect" ||
-      f.type === "ReverseLink" ||          
-      (f as any).ui?.variant === "chips";  
+      f.type === "ReverseLink" ||
+      (f as any).ui?.variant === "chips";
 
     if (isArrayLikeType) {
-      if (v === "" || v == null) {
-        out[f.name] = [];
-        continue;
-      }
-      if (typeof v === "string") {
+      if (v == null) out[f.name] = [];
+      else if (typeof v === "string") {
         const s = v.trim();
-        if (s === "" || s === "[]") {
-          out[f.name] = [];
-          continue;
-        }
-        // opcional: permitir "a,b,c" como input
-        out[f.name] = s.split(",").map((x) => x.trim()).filter(Boolean);
-        continue;
-      }
-      if (!Array.isArray(v)) {
-        // si llega algo raro, evita romper Postgres
+        out[f.name] = s ? s.split(",").map(x => x.trim()).filter(Boolean) : [];
+      } else if (!Array.isArray(v)) {
         out[f.name] = [];
-        continue;
       }
     }
+
+    // Números
     if ((f.type === "number" || f.type === "money" || f.type === "percent") && v === "") {
+      out[f.name] = null;
+    }
+
+    // ✅ UUIDs típicos: selectorTabla suele ser uuid. Si no es uuid válido, lo anulamos
+    // (Esto es lo que te evita el error de Postgres)
+    const looksLikeUuidField =
+       // si existe en tu FieldType
+      f.type === "selectorTabla" ||
+      /(^id$|_id$|Id$)/.test(f.name); // heurística útil (clienteId, obra_id, etc.)
+
+    if (looksLikeUuidField) {
+      if (v == null) {
+        // ok
+      } else if (typeof v === "string") {
+        const s = v.trim();
+        out[f.name] = isUuid(s) ? s : null; // o delete out[f.name]
+      } else {
         out[f.name] = null;
-        }
+      }
+    }
   }
 
   return out;
@@ -93,7 +115,7 @@ export default function NewFormClient({
         const newId = (data as any)?.[primaryKey] ?? (data as any)?.id;
         if (newId) {
           // ✅ redirige al detalle en modo view
-          router.push(`system/${table}/${newId}`);
+          router.push(`/system/${table}/${newId}`);
           router.refresh();
         } else {
           // si no devuelve id por RLS o select, al menos vuelve
