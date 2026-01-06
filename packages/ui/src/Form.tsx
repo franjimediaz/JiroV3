@@ -1,14 +1,13 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState} from "react";
 import type { Field, ModuleSchema, FieldType, CacheEntry } from "@repo/types";
-import { useRouter } from "next/navigation";
 import { applyCompute } from "./engines/computeEngine";
 import type { DataProvider } from "./engines/computeEngine";
 import { dataProvider as defaultDataProvider } from "./providers/DataProvider";
 import { IconPicker } from "./IconPicker";
 import  Selector from "./Selector";
-import {ActionMenu} from "./ActionMenu";
+import ReverseLinkTable from "./ReverseLinkTable";
 
 type Mode = "view" | "edit" | "create";
 
@@ -52,6 +51,20 @@ export default function Form({
 
   // Para evitar llamadas excesivas a aggregate
   const aggTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reverseLinkFields = useMemo(
+    () => (schema.fields || []).filter((f) => f.type === "ReverseLink"),
+    [schema.fields]
+  );
+
+  // Reverse Links activos
+
+  const [activeReverseLink, setActiveReverseLink] = useState<string | null>(null);
+
+  useEffect(() => {
+  if (!activeReverseLink && reverseLinkFields.length > 0) {
+    setActiveReverseLink(reverseLinkFields[0].name);
+  }
+}, [activeReverseLink, reverseLinkFields]);
 
   // Recalcular fórmulas (inmediato) y aggregates (debounced) cuando cambian valores
   useEffect(() => {
@@ -119,13 +132,31 @@ export default function Form({
 
   // --------- SECCIONES DE FORMULARIO (layout) ---------
 
-  const formSections =
-    ((schema.ui as any)?.formSections as {
-      id: string;
-      label: string;
-      description?: string;
-      fields: string[];
-    }[]) || [];
+  // --------- SECCIONES DE FORMULARIO (layout) ---------
+
+const formSections =
+  ((schema.ui as any)?.formSections as {
+    id: string;
+    label: string;
+    description?: string;
+    fields: string[];
+  }[]) || [];
+
+// ✅ NUEVO: acordeón (qué secciones están abiertas)
+const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
+  // Por defecto: abre la primera sección (si existe)
+  const firstId = formSections[0]?.id;
+  return firstId ? { [firstId]: true } : {};
+});
+
+
+const toggleSection = (id: string) => {
+  setOpenSections((prev) => ({
+    ...prev,
+    [id]: !prev[id],
+  }));
+};
+
 
   // mapa rápido para buscar campos por name
   const fieldsByName = useMemo(() => {
@@ -139,7 +170,7 @@ export default function Form({
   // Campos que no están en ninguna sección
   const fieldsInSections = new Set(formSections.flatMap((s) => s.fields));
   const unsectionedFields = (schema.fields || []).filter(
-    (f) => !fieldsInSections.has(f.name)
+    (f) => f.type !== "ReverseLink" && !fieldsInSections.has(f.name)
   );
 
   // Helper: clases de columna Bootstrap según ui.width
@@ -196,10 +227,7 @@ function datetimeLocalToDb(value?: string) {
       effectiveMode === "view" ||
       (!!f.readOnly && !isOverride) ||
       (!!f.compute && !f.allowOverride && f.type !== "selectorTabla");
-    const reverseLinkFields = useMemo(
-  () => (schema.fields || []).filter((f) => f.type === "ReverseLink"),
-  [schema.fields]
-);
+    
     return (
       <div key={f.name} className={colClass(f)}>
         <div className="field-box">
@@ -337,79 +365,132 @@ function datetimeLocalToDb(value?: string) {
       </>
     );
   };
-  const reverseLinkFields = useMemo(
-    () => (schema.fields || []).filter((f) => f.type === "ReverseLink"),
-    [schema.fields]
-  );
+  
   // --------- RENDER PRINCIPAL ---------
 
   return (
     <form
-      className="d-flex flex-column gap-4"
-      onSubmit={handleSubmit}
-    >
-      {/* Formulario principal (secciones o plano) */}
-      {formSections.length > 0 ? (
-        <div className="d-flex flex-column gap-3">
-          {formSections.map((section) => (
-            <div key={section.id} className="card">
-              <div className="card-header">
-                <div className="fw-semibold">{section.label}</div>
-                {section.description && (
-                  <div className="small text-muted">
-                    {section.description}
-                  </div>
-                )}
-              </div>
-              <div className="card-body">
-                <div className="row g-3">
-                  {section.fields.map((fieldName) => {
-                    const f = fieldsByName[fieldName];
-                    if (!f) return null;
-                    return renderField(f);
-                  })}
-                </div>
-              </div>
-            </div>
-          ))}
+    className="d-flex flex-column gap-4"
+    onSubmit={handleSubmit}
+  >
+    {/* Formulario principal */}
+    {formSections.length > 0 ? (
+      <div className="d-flex flex-column gap-3">
+        {formSections.map((section) => {
+          const isOpen = !!openSections[section.id];
 
-          {/* Campos sin sección */}
-          {unsectionedFields.length > 0 && (
-            <div className="card border border-dashed">
-              <div className="card-header">
-                <div className="fw-semibold">Otros campos</div>
-                <div className="small text-muted">
-                  Campos sin sección asignada
+          return (
+            <div key={section.id} className="card">
+              {/* HEADER CLICABLE */}
+              <button
+                type="button"
+                className="card-header d-flex justify-content-between align-items-center w-100"
+                onClick={() => toggleSection(section.id)}
+                style={{
+                  cursor: "pointer",
+                  background: "transparent",
+                  border: "none",
+                  textAlign: "left",
+                }}
+              >
+                <div>
+                  <div className="fw-semibold">{section.label}</div>
+                  {section.description && (
+                    <div className="small text-muted">
+                      {section.description}
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="card-body">
-                <div className="row g-3">
-                  {unsectionedFields.map((f) => renderField(f))}
+
+                <span className="text-muted">
+                  {isOpen ? "▾" : "▸"}
+                </span>
+              </button>
+
+              {/* BODY COLAPSABLE */}
+              {isOpen && (
+                <div className="card-body">
+                  <div className="row g-3">
+                    {section.fields.map((fieldName) => {
+                      const f = fieldsByName[fieldName];
+                      if (!f) return null;
+                      return renderField(f);
+                    })}
+                  </div>
                 </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Campos sin sección */}
+        {unsectionedFields.length > 0 && (
+          <div className="card border border-dashed">
+            <div className="card-header">
+              <div className="fw-semibold">Otros campos</div>
+              <div className="small text-muted">
+                Campos sin sección asignada
               </div>
             </div>
-          )}
-        </div>
-      ) : (
-        <div className="row g-3">
-          {schema.fields.map((f) => renderField(f))}
-        </div>
-      )}
-      {/* ReverseLink (tablas relacionadas) */}
-        {reverseLinkFields.length > 0 && (
-          <div className="d-flex flex-column gap-3">
-            {reverseLinkFields.map((f) => (
-              <ReverseLinkTable
-                key={f.name}
-                field={f}
-                parentRecord={values}
-                mode={effectiveMode}
-              />
-            ))}
+            <div className="card-body">
+              <div className="row g-3">
+                {unsectionedFields.map((f) => renderField(f))}
+              </div>
+            </div>
           </div>
         )}
+      </div>
+    ) : (
+      <div className="row g-3">
+        {schema.fields.map((f) => renderField(f))}
+      </div>
+    )}
 
+    {/* ReverseLink */}
+    {reverseLinkFields.length > 0 && (
+        <div className="d-flex flex-column gap-3">
+          {/* Tabs */}
+          <div className="card">
+            <div className="card-header pb-0">
+              <ul className="nav nav-tabs  card-header-tabs">
+                {reverseLinkFields.map((f) => {
+                  const tabId = f.name;
+                  const label = (f.label as string) || f.name;
+                  const isActive = activeReverseLink === tabId;
 
+                  return (
+                    <li className="nav-item" key={tabId}>
+                      <button
+                        type="button"
+                        className={`nav-link bg-primary text-light  ${isActive ? "active" : ""}`}
+                        onClick={() => setActiveReverseLink(tabId)}
+                      >
+                        {label}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+
+            {/* Tab content */}
+            <div className="card-body">
+              {reverseLinkFields.map((f) => {
+                if (activeReverseLink !== f.name) return null;
+
+                return (
+                  <ReverseLinkTable
+                    key={f.name}
+                    field={f}
+                    parentRecord={values}
+                    mode={effectiveMode}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Acciones */}
       <div className="d-flex justify-content-end gap-2 mt-3">
         {renderActions()}
@@ -529,17 +610,6 @@ function toInputDateTimeLocal(value?: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-
-
-
-//-------------------------
-async function openSelectorTablaPopup() {
-  if (readOnly) return;
-  setPopupOpen(true);
-  // primera carga
-  await handleSearch("");
-}
-
 //-------------------------
   
   if (type === "boolean") {
@@ -587,12 +657,6 @@ async function openSelectorTablaPopup() {
     />
   );
 }
-
-
-  
-
-  
-
 
   if (type === "color") {
     return (
@@ -671,84 +735,84 @@ async function openSelectorTablaPopup() {
   }
 
   if (type === "selectorTabla") {
-  const summary = (() => {
-  if (!value) return "— Seleccionar —";
+      const summary = (() => {
+      if (!value) return "— Seleccionar —";
 
-  if (isMultiple) {
-    if (!Array.isArray(value) || value.length === 0) {
-      return "— Seleccionar —";
+      if (isMultiple) {
+        if (!Array.isArray(value) || value.length === 0) {
+          return "— Seleccionar —";
+        }
+
+        const labels = value.map(
+          (v) => labelCache[v] || String(v)
+        );
+
+        // si hay muchos, no ensuciamos el input
+        if (labels.length > 3) {
+          return `${labels.length} seleccionados`;
+        }
+
+        return labels.join(", ");
+      }
+
+      // single
+      return labelCache[value] || String(value);
+    })();
+    const ref = field.ref;
+
+      const moduleSlug =
+        ref && "moduleSlug" in ref ? (ref as any).moduleSlug : "";
+
+      const displayField =
+        ref && "displayField" in ref ? (ref as any).displayField : "id";
+
+      const valueField =
+        ref && "valueField" in ref ? (ref as any).valueField : "id";
+
+      const filters =
+        ref && "filters" in ref ? (ref as any).filters : [];
+
+      const sort =
+        ref && "sort" in ref ? (ref as any).sort : [];
+      const hasStyle = 
+      ref && "hasStyle" in ref ? (ref as any).hasStyle : false;
+
+      const styleIconField = 
+        ref && "styleIconField" in ref ? (ref as any).styleIconField : "icon";
+
+      const styleColorField = 
+        ref && "styleColorField" in ref ? (ref as any).styleColorField : "color";
+
+    return (
+        <>
+
+              <Selector
+                moduleSlug={moduleSlug}
+                displayField={displayField}
+                valueField={valueField}
+                value={value ?? ""}
+                onChange={onChange}
+                readOnly={readOnly}
+                filters={filters}
+                sort={sort}
+                multiple={isMultiple}
+                placeholder={field.placeholder || "Selecciona un registro"}
+                hasStyle={hasStyle}                    
+                styleIconField={styleIconField}        
+                styleColorField={styleColorField} 
+
+              />
+    
+
+        </>
+      );
     }
-
-    const labels = value.map(
-      (v) => labelCache[v] || String(v)
-    );
-
-    // si hay muchos, no ensuciamos el input
-    if (labels.length > 3) {
-      return `${labels.length} seleccionados`;
-    }
-
-    return labels.join(", ");
-  }
-
-  // single
-  return labelCache[value] || String(value);
-})();
- const ref = field.ref;
-
-  const moduleSlug =
-    ref && "moduleSlug" in ref ? (ref as any).moduleSlug : "";
-
-  const displayField =
-    ref && "displayField" in ref ? (ref as any).displayField : "id";
-
-  const valueField =
-    ref && "valueField" in ref ? (ref as any).valueField : "id";
-
-  const filters =
-    ref && "filters" in ref ? (ref as any).filters : [];
-
-  const sort =
-    ref && "sort" in ref ? (ref as any).sort : [];
-  const hasStyle = 
-  ref && "hasStyle" in ref ? (ref as any).hasStyle : false;
-
-  const styleIconField = 
-    ref && "styleIconField" in ref ? (ref as any).styleIconField : "icon";
-
-  const styleColorField = 
-    ref && "styleColorField" in ref ? (ref as any).styleColorField : "color";
-
-return (
-    <>
-
-          <Selector
-            moduleSlug={moduleSlug}
-            displayField={displayField}
-            valueField={valueField}
-            value={value ?? ""}
-            onChange={onChange}
-            readOnly={readOnly}
-            filters={filters}
-            sort={sort}
-            multiple={isMultiple}
-            placeholder={field.placeholder || "Selecciona un registro"}
-            hasStyle={hasStyle}                    
-            styleIconField={styleIconField}        
-            styleColorField={styleColorField} 
-
-          />
- 
-
-    </>
-  );
-}
 if (type === "iconpicker") {
-  return (
-    <IconPicker
-     value={value || ""}
-     onChange={(v) => onChange(v)} />
-  );
+      return (
+        <IconPicker
+        value={value || ""}
+        onChange={(v) => onChange(v)} />
+      );
 }
 
 
@@ -779,492 +843,7 @@ if (type === "iconpicker") {
 
 }
 
-function ReverseLinkTable({
-  field,
-  parentRecord,
-  mode,
-}: {
-  field: Field; // viene tipado como Field, pero lo estrechamos dentro
-  parentRecord: any;
-  mode: "view" | "edit" | "create";
-}) {
-  if (field.type !== "ReverseLink") return null;
 
-  type ListFilterOp = "=" | "!=" | ">" | "<" | "in";
-  type ListFilter = { field: string; op: ListFilterOp; value: any };
-  type ListSort = { field: string; dir: "asc" | "desc" };
-
-  type CacheEntry = { label: string; icon?: string; color?: string };
-
-  function toListOp(op: any): ListFilterOp {
-    if (op === "=" || op === "!=" || op === ">" || op === "<" || op === "in") return op;
-    return "=";
-  }
-
-  const ref = field.ref; // ReverseLinkRef
-
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
-  const [rows, setRows] = useState<any[]>([]);
-  const [err, setErr] = useState<string | null>(null);
-  const [targetSchema, setTargetSchema] = useState<ModuleSchema | null>(null);
-
-  // ✅ cache: moduleSlug:id -> { label, icon, color }
-  const [labelCache, setLabelCache] = useState<Record<string, CacheEntry>>({});
-
-  const parentKey = ref.parentKey || "id";
-  const parentId = parentRecord?.[parentKey];
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-      setErr(null);
-
-      if (mode === "create" || !parentId) {
-        setRows([]);
-        return;
-      }
-
-      if (!ref.moduleSlug?.trim()) {
-        setErr("ReverseLink: falta ref.moduleSlug");
-        return;
-      }
-      if (!ref.foreignKey?.trim()) {
-        setErr("ReverseLink: falta ref.foreignKey");
-        return;
-      }
-
-      // dataProvider necesario
-      if (!defaultDataProvider?.list || !defaultDataProvider?.getSchema) {
-        setErr("dataProvider no implementa list/getSchema");
-        return;
-      }
-
-      setLoading(true);
-      try {
-        // 1) Schema destino (para columnas list/always)
-        const sch = await defaultDataProvider.getSchema(ref.moduleSlug);
-        if (!cancelled) setTargetSchema(sch);
-
-        // 2) Query de relacionados
-        const extraFilters = Array.isArray(ref.filters) ? ref.filters : [];
-
-        const filters: ListFilter[] = [
-          ...extraFilters.map((f): ListFilter => ({
-            field: String(f.field),
-            op: toListOp(f.op),
-            value: f.value,
-          })),
-          { field: ref.foreignKey, op: "=", value: parentId },
-        ];
-
-        const sort: ListSort[] = Array.isArray(ref.sort)
-          ? ref.sort.map((s): ListSort => ({
-              field: String(s.field),
-              dir: s.direction === "desc" ? "desc" : "asc",
-            }))
-          : [];
-
-        const result = await defaultDataProvider.list({
-          moduleSlug: ref.moduleSlug,
-          filters,
-          sort,
-          limit: ref.limit ?? 20,
-        });
-
-        const data = Array.isArray(result?.data) ? result.data : Array.isArray(result) ? result : [];
-
-        if (!cancelled) setRows(data);
-      } catch (e: any) {
-        if (!cancelled) setErr(e?.message || "Error cargando ReverseLink");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    mode,
-    parentId,
-    ref.moduleSlug,
-    ref.foreignKey,
-    ref.limit,
-    JSON.stringify(ref.filters || []),
-    JSON.stringify(ref.sort || []),
-  ]);
-
-  // columnas visibles
-  const columns =
-    (targetSchema?.fields || []).filter((f) => ["List", "Always"].includes(f.appareance || "Zoom"));
-
-  // ✅ aseguramos “fields completos” (con type/ref de selectorTabla)
-  const columnsFull = useMemo(() => {
-    const byName = new Map((targetSchema?.fields || []).map((f) => [f.name, f] as const));
-    return columns.map((c) => byName.get(c.name) ?? c) as Field[];
-  }, [columns, targetSchema]);
-
-  const getRowId = (r: any) => r?.id;
-
-  // Ruta base del módulo relacionado.
-  const baseRoute = `/${ref.route}`;
-
-  const goView = (r: any) => {
-    const id = getRowId(r);
-    if (!id) return;
-    window.location.href = `${baseRoute}/${id}`;
-  };
-
-  const goEdit = (r: any) => {
-    const id = getRowId(r);
-    if (!id) return;
-    window.location.href = `${baseRoute}/${id}?edit=true`;
-  };
-
-  // ---------------------------
-  // ✅ Precarga labels (y estilo) para columnas selectorTabla
-  // ---------------------------
-  const selectorCols = useMemo(() => {
-    return columnsFull.filter((c) => {
-      if (c.type !== "selectorTabla") return false;
-      const moduleSlug = (c as any)?.ref?.moduleSlug;
-      const displayField = (c as any)?.ref?.displayField;
-      return !!moduleSlug && !!displayField;
-    });
-  }, [columnsFull]);
-
-  const preloadSelectorLabels = useCallback(async () => {
-    if (!defaultDataProvider?.list) return;
-    if (rows.length === 0) return;
-    if (selectorCols.length === 0) return;
-
-    const buckets = new Map<
-      string,
-      {
-        moduleSlug: string;
-        ids: Set<any>;
-        valueField: string;
-        displayField: string;
-        hasStyle: boolean;
-        styleIconField: string;
-        styleColorField: string;
-      }
-    >();
-
-    for (const col of selectorCols) {
-      const refc = (col as any)?.ref || {};
-      const moduleSlug = String(refc.moduleSlug || "");
-      const valueField = String(refc.valueField || "id");
-      const displayField = String(refc.displayField || "id");
-      if (!moduleSlug) continue;
-
-      const hasStyle = !!((col as any).hasStyle ?? refc.hasStyle);
-      const styleIconField = ((col as any).styleIconField ?? refc.styleIconField) || "icon";
-      const styleColorField = ((col as any).styleColorField ?? refc.styleColorField) || "color";
-
-      const bucketKey = `${moduleSlug}|${valueField}|${displayField}|${hasStyle ? 1 : 0}|${styleIconField}|${styleColorField}`;
-
-      let b = buckets.get(bucketKey);
-      if (!b) {
-        b = {
-          moduleSlug,
-          ids: new Set<any>(),
-          valueField,
-          displayField,
-          hasStyle,
-          styleIconField,
-          styleColorField,
-        };
-        buckets.set(bucketKey, b);
-      }
-
-      for (const r of rows) {
-        const raw = r?.[col.name];
-        if (raw === null || raw === undefined || raw === "") continue;
-
-        const ck = `${moduleSlug}:${String(raw)}`;
-        if (labelCache[ck]?.label) continue;
-
-        b.ids.add(raw);
-      }
-    }
-
-    for (const b of buckets.values()) {
-      const ids = Array.from(b.ids);
-      if (ids.length === 0) continue;
-
-      try {
-        const res = await defaultDataProvider.list({
-          moduleSlug: b.moduleSlug,
-          filters: [{ field: b.valueField, op: "in", value: ids }],
-          limit: Math.max(ids.length, 50),
-
-          // opcional, pero coherente con tu provider
-          hasStyle: b.hasStyle,
-          styleIconField: b.styleIconField,
-          styleColorField: b.styleColorField,
-        });
-
-        const data = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-
-        const patch: Record<string, CacheEntry> = {};
-        for (const row of data) {
-          const idVal = row?.[b.valueField];
-          if (idVal === null || idVal === undefined) continue;
-
-          const idStr = String(idVal);
-          patch[`${b.moduleSlug}:${idStr}`] = {
-            label: String(row?.[b.displayField] ?? idStr),
-            icon: b.hasStyle ? row?.[b.styleIconField] : undefined,
-            color: b.hasStyle ? row?.[b.styleColorField] : undefined,
-          };
-        }
-
-        if (Object.keys(patch).length) {
-          setLabelCache((prev) => ({ ...prev, ...patch }));
-        }
-      } catch {
-        // degradamos mostrando id si falla
-      }
-    }
-  }, [rows, selectorCols, labelCache]);
-
-  useEffect(() => {
-    preloadSelectorLabels();
-  }, [preloadSelectorLabels]);
-
-  // ---------------------------
-  // ✅ Render helpers estilo
-  // ---------------------------
-const isBi = (s?: string) => !!s && (s.includes("bi-") || s.startsWith("bi "));
-
-const renderStyled = (label: string, icon?: string, color?: string) => (
-  <span className="d-inline-flex align-items-center gap-2">
-    {icon ? (
-      isBi(icon) ? (
-        <i
-          className={icon.includes(" ") ? icon : `bi ${icon}`}
-          style={{ color: color || "inherit" }}
-          aria-hidden="true"
-        />
-      ) : (
-        <span style={{ color: color || "inherit" }}>{icon}</span>
-      )
-    ) : null}
-    <span>{label}</span>
-  </span>
-);
-
-const renderCellValue = (r: any, c: Field) => {
-  const raw = r?.[c.name];
-  if (raw === null || raw === undefined || raw === "") return "—";
-
-  switch (c.type as FieldType) {
-    case "boolean":
-      return raw ? (
-        <span className="badge bg-success-subtle text-success">Sí</span>
-      ) : (
-        <span className="badge bg-secondary-subtle text-muted">No</span>
-      );
-
-    case "date":
-    case "datetime": {
-      try {
-        const d = new Date(raw);
-        if (Number.isNaN(d.getTime())) return String(raw);
-
-        if (c.type === "date") return d.toISOString().slice(0, 10);
-        return d.toLocaleString();
-      } catch {
-        return String(raw);
-      }
-    }
-    
-
-    case "number":
-    case "money":
-    case "percent":
-      return String(raw);
-
-    case "multiselect":
-      return Array.isArray(raw) ? raw.join(", ") : String(raw);
-
-    case "color":
-      return (
-        <div className="d-flex align-items-center gap-2">
-          <span
-            style={{
-              display: "inline-block",
-              width: 14,
-              height: 14,
-              borderRadius: 999,
-              border: "1px solid rgba(0,0,0,0.1)",
-              backgroundColor: String(raw),
-            }}
-          />
-          <span className="small text-muted">{String(raw)}</span>
-        </div>
-      );
-
-    case "file":
-    case "image":
-      return (
-        <a
-          href={String(raw)}
-          target="_blank"
-          rel="noreferrer"
-          style={{ textDecoration: "underline" }}
-        >
-          Ver
-        </a>
-      );
-
-    case "iconpicker":
-      if (!raw) return "—";
-      return (
-        <span className="d-inline-flex align-items-center gap-2">
-          <i className={`bi ${String(raw)}`} aria-hidden="true" />
-        </span>
-      );
-
-    case "selectorTabla": {
-      const refc = (c as any)?.ref || {};
-      const moduleSlug = refc?.moduleSlug ? String(refc.moduleSlug) : "";
-      const displayField = refc?.displayField ? String(refc.displayField) : "id";
-
-      const hasStyle = !!((c as any).hasStyle ?? refc.hasStyle);
-      const styleIconField = ((c as any).styleIconField ?? refc.styleIconField) || "icon";
-      const styleColorField = ((c as any).styleColorField ?? refc.styleColorField) || "color";
-
-      // Si por cualquier motivo viene objeto relacionado
-      if (typeof raw === "object" && raw !== null) {
-        const v: any = raw;
-        const label = String(v?.[displayField] ?? v?.id ?? "");
-        if (hasStyle) return renderStyled(label, v?.[styleIconField], v?.[styleColorField]);
-        return label || "—";
-      }
-
-      // Normal: ID con cache
-      const id = String(raw);
-      if (moduleSlug && id) {
-        const key = `${moduleSlug}:${id}`;
-        const entry = labelCache[key];
-        const label = entry?.label ?? id;
-
-        if (hasStyle) return renderStyled(label, entry?.icon, entry?.color);
-        return label;
-      }
-
-      return id;
-    }
-
-    default:
-      return String(raw);
-  }
-};
-
-
-  return (
-    <div className="card">
-      <div className="card-header d-flex align-items-start justify-content-between gap-3">
-        <div>
-          <div className="fw-semibold">{field.label || field.name}</div>
-          <div className="small text-muted">{rows.length} registros</div>
-        </div>
-      </div>
-
-      <div className="card-body">
-        {mode === "create" && (
-          <div className="text-muted small">Guarda el registro para ver elementos relacionados.</div>
-        )}
-
-        {err && <div className="alert alert-danger py-2 mb-0">{err}</div>}
-
-        {!err && loading && <div className="text-muted">Cargando…</div>}
-
-        {!err && !loading && rows.length === 0 && (
-          <div className="text-muted small">No hay registros relacionados.</div>
-        )}
-
-        {!err && !loading && rows.length > 0 && (
-          <>
-            {columnsFull.length === 0 ? (
-              <div className="text-muted small">
-                No hay campos con appareance List/Always en {ref.moduleSlug}.
-              </div>
-            ) : (
-              <div className="table-responsive">
-                <table className="table table-sm align-middle mb-0">
-                  <thead>
-                    <tr>
-                      {columnsFull.map((c) => (
-                        <th
-                          key={c.name}
-                          style={{
-                            width: 180,
-                            background:
-                              "linear-gradient(90deg, #0c1f49ab, #1f407546, #4d648aaf)",
-                            color: "white",
-                            fontWeight: 600,
-                            padding: "12px 16px",
-                            borderBottom: "2px solid #1e40af",
-                          }}
-                        >
-                          {c.label || c.name}
-                        </th>
-                      ))}
-                      <th
-                        style={{
-                          width: 180,
-                          background: "linear-gradient(90deg, #0c1f49ff, #1f407546)",
-                          color: "white",
-                          fontWeight: 600,
-                          padding: "12px 16px",
-                          borderBottom: "2px solid #1e40af",
-                        }}
-                      >
-                        Acciones
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {rows.map((r, idx) => (
-                      <tr key={r?.id || idx}>
-                        {columnsFull.map((c) => (
-                          <td key={c.name}>{renderCellValue(r, c)}</td>
-                        ))}
-                        <td>
-                          <ActionMenu
-                            items={[
-                              {
-                                label: "Ver",
-                                icon: <i className="bi bi-eye" />,
-                                onClick: () => goView(r),
-                              },
-                              {
-                                label: "Editar",
-                                icon: <i className="bi bi-pencil" />,
-                                onClick: () => goEdit(r),
-                              },
-                            ]}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
 
 
 

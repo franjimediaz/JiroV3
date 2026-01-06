@@ -17,6 +17,7 @@ export default function ListView({
   onCreate,
 }: ListViewProps) {
   const primaryKey = schema.db.primaryKey || "id";
+  const [showFilters, setShowFilters] = useState(false);
 
   // Columnas de la lista
   const listFields = useMemo(() => {
@@ -93,7 +94,7 @@ export default function ListView({
       {/* HEADER */}
       <div className="card-header d-flex justify-content-between  align-items-center">
         <div className="d-flex align-items-center gap-2">
-          {icon && <i className={icon} style={{ color, fontSize: 18 }} />}
+          {icon && <i className={icon} style={{ color, fontSize: 40 }} />}
           <div>
             <div className="fw-semibold " style={{ fontSize: 14 }}>
               {capitalize(tableName)}
@@ -106,32 +107,39 @@ export default function ListView({
           {loading && (
             <span className="small text-muted">Cargando…</span>
           )}
+          
 
           {onCreate && (
             <button
               type="button"
-              className="btn btn-sm btn-primary"
+              className="btn btn-sm btn-success"
               onClick={onCreate}
-              style={{
-                background: "linear-gradient(90deg, #35eb25ff, #27b61aff",
-                border: "none",
-                borderRadius: 950,
-              }}
             >
               <i className="bi bi-plus-lg me-1" />
               Nuevo
+            </button>
+          )}
+          {filterFields.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              title="Mostrar filtros"
+              onClick={() => setShowFilters(v => !v)}
+            >
+              <i className={`bi ${showFilters ? "bi-x-lg" : "bi-search"}`} />
             </button>
           )}
         </div>
       </div>
 
       {/* FILTROS */}
-      {filterFields.length > 0 && (
+      
+      {filterFields.length > 0 && showFilters &&(
         <div className="card-body border-bottom">
           <div className="row g-2">
             {filterFields.map((f) => (
               <div key={f.name} className="col-12 col-md-3">
-                <label className="form-label mb-1" style={{ fontSize: 12 }}>
+                <label className="formsearch-label mb-1" style={{ fontSize: 12 }}>
                   {f.label}
                 </label>
                 <input

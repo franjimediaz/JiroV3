@@ -1,7 +1,7 @@
 export type { SidebarItem } from "./types";
 export { Sidebar } from "./Sidebar";
 export { ActionMenu } from "./ActionMenu";
-export { PopupSelector } from "./PopUpSelector";
+export { PopupSelector } from "./modals/PopUpSelector";
 export { default as SelectorTabla } from "./Selector";
 export { IconPicker } from "./IconPicker";
 export { isActive } from "./utils";
