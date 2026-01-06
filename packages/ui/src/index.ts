@@ -5,6 +5,7 @@ export { PopupSelector } from "./PopUpSelector";
 export { default as SelectorTabla } from "./Selector";
 export { IconPicker } from "./IconPicker";
 export { isActive } from "./utils";
+export {default as ModalConfirm } from "./modals/ModalConfirm";
 export { default as Form } from "./Form";
 export * from "./engines/safeEval";
 export * from "./engines/computeEngine";

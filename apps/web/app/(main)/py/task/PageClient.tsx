@@ -1,10 +1,22 @@
 "use client";
 
-import { ListView } from "@repo/ui";
+import { ListView} from "@repo/ui";
+import { useConfirm } from "@/lib/hooks/useConfirm";
 import type { ModuleSchema } from "@repo/types";
 import { useRouter } from "next/navigation";
 import { RequirePerms, usePerms } from "@/lib/perms";
-import { createClient } from "@/lib/supabase/client"; // 👈 tu supabase client de navegador
+import { createClient } from "@/lib/supabase/client";
+
+
+
+const CFG = {
+  moduleSlug: "task",
+  titleSingular: "Tarea",
+  displayField: "title",
+  route:"/py/task/"
+} as const;
+
+
 
 export default function PageClient({
   customers,
@@ -13,30 +25,50 @@ export default function PageClient({
   customers: any[];
   schema: ModuleSchema;
 }) {
-  const CFG = {
-  moduleSlug: "task",
-  titleSingular: "Tarea",
-  displayField: "title",
-} as const;
+
+
   const router = useRouter();
   const { loading, hasPermiso } = usePerms();
+  const { confirm, modal, inform  } = useConfirm();
 
   const handleDelete = async (row: any) => {
     // 1) permiso (UX)
     if (!hasPermiso(CFG.moduleSlug, "eliminar")) {
-      router.replace("/403");
-      return;
-    }
+    await inform({
+    title: "Acción no permitida",
+    message: `No tienes permisos para eliminar este ${CFG.titleSingular}. `,
+    details: [
+      { label: "Acción", value: "Eliminar" },
+      { label: "Módulo", value: CFG.titleSingular }, 
+    ],
+    mode: "info",
+    confirmText: "Aceptar",
+  });
 
-    // 2) confirm (cámbialo por tu modal)
-    const ok = window.confirm(
-      `¿Eliminar esta tarea?\n\nID: ${row.id}\n\nEsta acción no se puede deshacer.`
-    );
-    if (!ok) return;
+  return;
+}
+
+    // 2) confirm 
+
+    const ok = await confirm({
+    title: `Eliminar ${CFG.titleSingular}`,
+    message: "Esta acción no se puede deshacer.",
+    details: [{ label: "ID", value: row.id }],
+    confirmText: "Eliminar",
+    cancelText: "Cancelar",
+    danger: true,
+    
+    
+  });
+
+  if (!ok) return;;
 
     // 3) delete Supabase (cliente)
     const supabase = createClient();
-    const { error } = await supabase.from(CFG.moduleSlug).delete().eq("id", row.id);
+    const { error } = await supabase
+      .from(CFG.moduleSlug)
+      .delete()
+      .eq("id", row.id);
 
     if (error) {
       // Si pones RLS bien, aquí verás "permission denied" si no tiene permiso real
@@ -46,19 +78,75 @@ export default function PageClient({
 
     router.refresh();
   };
+  const handleView = async (row: any) => {
+    if (!hasPermiso(CFG.moduleSlug, "ver")) {
+      await inform({
+        title: "Acción no permitida",
+        message: `No tienes permisos para ver este ${CFG.titleSingular}.`,
+        details: [
+          { label: "Acción", value: "Ver" },
+          { label: "ID", value: row.id },
+        ],
+        mode: "info",
+        confirmText: "Aceptar",
+      });
+      return;
+    }
+
+    router.push(`${CFG.route}${row.id}`);
+  };
+  const handleEdit = async (row: any) => {
+    if (!hasPermiso(CFG.moduleSlug, "actualizar")) {
+      await inform({
+        title: "Acción no permitida",
+        message: `No tienes permisos para editar este ${CFG.titleSingular}.`,
+        details: [
+          { label: "Acción", value: "Editar" },
+          { label: "ID", value: row.id },
+        ],
+        mode: "info",
+        confirmText: "Aceptar",
+      });
+      return;
+    }
+
+    router.push(`${CFG.route}${row.id}?edit=true`);
+  };
+  const handleCreate = async () => {
+  if (!hasPermiso(CFG.moduleSlug, "crear")) {
+    await inform({
+      title: "Acción no permitida",
+      message: `No tienes permisos para crear un nuevo ${CFG.titleSingular}.`,
+      details: [
+        { label: "Acción", value: "Crear" },
+        { label: "Módulo", value: CFG.titleSingular },
+      ],
+      mode: "info",
+      confirmText: "Aceptar",
+    });
+    return;
+  }
+
+  router.push(`${CFG.route}new`);
+};
+
+
 
   if (loading) return null;
 
   return (
     <RequirePerms modulo={CFG.moduleSlug} accion="ver">
+      <>
+      {modal}
       <ListView
         schema={schema}
         data={customers}
-        onViewRow={(row) => router.push(`/py/${CFG.moduleSlug}/${row.id}`)}
-        onEditRow={(row) => router.push(`/py/${CFG.moduleSlug}/${row.id}?edit=true`)}
+        onViewRow={handleView}
+        onEditRow={handleEdit}
         onDeleteRow={handleDelete}
-        onCreate={() => router.push(`/py/${CFG.moduleSlug}/new`)}
+        onCreate={handleCreate}
       />
+      </>
     </RequirePerms>
   );
 }
