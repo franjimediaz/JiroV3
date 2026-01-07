@@ -2,8 +2,8 @@
 import { isUUID } from "@/lib/utils/isUUID";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import ModuloForm from "./ModuloForm";
-import styles from "./modulo-detalle.module.css";
+import ModuloForm from "./FormModule";
+
 
 export const dynamic = "force-dynamic";
 
@@ -39,11 +39,15 @@ export default async function ModuloUnifiedPage(props: {
       props: { db: { table: "", softDelete: false }, fields: [], ui: {} },
     };
     return (
-      <main className={styles.wrap}>
-        <header className={styles.header}>
-          <div><h1 className={styles.title}>Crear módulo</h1></div>
-          <nav className={styles.actions}>
-            <a className={styles.btnLight} href="/system/modulos">← Volver</a>
+      <main className="container-fluid py-4">
+        <header className="d-flex justify-content-between align-items-center mb-4">
+          <div>
+            <h1 className="h4 mb-0">Crear módulo</h1>
+          </div>
+          <nav className="d-flex gap-2">
+            <a className="btn btn-outline-secondary btn-sm" href="/system/modulos">
+              ← Volver
+            </a>
           </nav>
         </header>
         <ModuloForm initialData={initial} mode="create" />
@@ -53,21 +57,27 @@ export default async function ModuloUnifiedPage(props: {
 
   if (!isUUID(id)) {
     return (
-      <main className={styles.wrap}>
-        <h1 className={styles.title}>ID inválido</h1>
-        <p className={styles.msgErr}>El parámetro no es un UUID válido.</p>
-        <a className={styles.btnLight} href="/system/modulos">← Volver</a>
-      </main>
-    );
-  }
+          <main className="container py-5">
+            <h1 className="h4 text-danger mb-2">ID inválido</h1>
+            <p className="text-danger mb-4">
+              El parámetro no es un UUID válido.
+            </p>
+            <a className="btn btn-outline-secondary btn-sm" href="/system/modulos">
+              ← Volver
+            </a>
+          </main>
+              );
+     }
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return (
-      <main className={styles.wrap}>
-        <h1 className={styles.title}>No autenticado</h1>
-        <a className={styles.btnLight} href="/login">Ir a login</a>
+      <main className="container py-5">
+        <h1 className="h4 mb-3">No autenticado</h1>
+        <a className="btn btn-primary btn-sm" href="/login">
+          Ir a login
+        </a>
       </main>
     );
   }
@@ -75,25 +85,27 @@ export default async function ModuloUnifiedPage(props: {
   const { data: modulo, error } = await getModuloById(id);
   if (!modulo) {
     return (
-      <main className={styles.wrap}>
-        <h1 className={styles.title}>Módulo no encontrado</h1>
-        {error && <p className={styles.msgErr}>Detalle: {error}</p>}
-        <a className={styles.btnLight} href="/system/modulos">← Volver</a>
-      </main>
-    );
-  }
+            <main className="container py-5">
+              <h1 className="h4 text-danger mb-2">Módulo no encontrado</h1>
+
+              {error && (
+                <p className="text-danger small mb-3">
+                  Detalle: {error}
+                </p>
+              )}
+
+              <a className="btn btn-outline-secondary btn-sm" href="/system/modulos">
+                ← Volver
+              </a>
+            </main>
+
+          );
+    }
 
   const mode = isEdit ? "edit" : "view" as const;
 
   return (
-    <main className={styles.wrap}>
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>{modulo.nombre}</h1>
-        </div>
-
-      </header>
-
+<main className="container-fluid py-4">
       <ModuloForm initialData={modulo} mode={mode} />
     </main>
   );

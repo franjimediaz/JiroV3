@@ -1,24 +1,10 @@
 // /apps/web/app/system/modulos/page.tsx
-import { seedModulosAction } from "@/actions/seed-modulos";
 import { createClient } from "@/lib/supabase/server";
-import ModulosTree from "./ModulosTree";
+import { RequirePerms } from "@/lib/perms";
+import PageClient from "./PageClient";
+import type { ModuloNode, ModuloRow } from "@repo/types";
 
-import styles from "./modulos.module.css";
-import SeedButton from "./SeedButton";
-import { RequirePerms, usePerms } from "@/lib/perms";
 
-type ModuloRow = {
-  id: string;
-  parent_id: string | null;
-  nombre: string;
-  slug: string;
-  tipo: "carpeta" | "tabla" | "subtabla" | "vista";
-  orden: number;
-  activo: boolean;
-  props: any;
-};
-
-export type ModuloNode = ModuloRow & { children: ModuloNode[] };
 
 async function fetchModulosTree(): Promise<ModuloNode[]> {
   const supabase = await createClient();
@@ -36,9 +22,8 @@ async function fetchModulosTree(): Promise<ModuloNode[]> {
   }
 
   const rows = (data ?? []) as ModuloRow[];
- 
 
-  // Construir árbol en memoria
+  // Construir árbol
   const byId = new Map<string, ModuloNode>();
   const roots: ModuloNode[] = [];
 
@@ -51,7 +36,6 @@ async function fetchModulosTree(): Promise<ModuloNode[]> {
     }
   }
 
-  // Opcional: asegurar orden en cada nivel
   const sortLevel = (nodes: ModuloNode[]) => {
     nodes.sort((a, b) => (a.orden - b.orden) || a.nombre.localeCompare(b.nombre));
     nodes.forEach((c) => sortLevel(c.children));
@@ -61,32 +45,23 @@ async function fetchModulosTree(): Promise<ModuloNode[]> {
   return roots;
 }
 
-
-
 export default async function ModulosAdminPage() {
   const tree = await fetchModulosTree();
+
   return (
     <RequirePerms modulo="modulos" accion="ver">
-    <main className={styles.container}>
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Editor de Módulos</h1>
-          <p className={styles.subtitle}>Configuración de módulos y tablas</p>
-        </div>
-        <SeedButton />
-
-        
-      </header>
-      <section className={styles.treeSection}>
-        {tree.length === 0 ? (
-          <div className={styles.empty}>
-            <p>No hay módulos aún. Pulsa el botón para sembrarlos.</p>
+      <main className="container-fluid p-4">
+        <header className="header mb-4 d-flex align-items-center justify-content-between">
+          <div>
+            <h1 className="titlem">Editor de Módulos</h1>
+            <p className="subtitle">Configuración de módulos y tablas</p>
           </div>
-        ) : (
-          <ModulosTree nodes={tree} />
-        )}
-      </section>
-    </main>
+        </header>
+
+        <section className="treeSection">
+          <PageClient nodes={tree} />
+        </section>
+      </main>
     </RequirePerms>
   );
 }

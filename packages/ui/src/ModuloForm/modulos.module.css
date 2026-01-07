@@ -12,10 +12,11 @@
   margin-bottom: 16px;
 }
 
-.title {
+.titlem {
   font-size: 24px;
   font-weight: 700;
   margin: 0;
+  color: #000000;
 }
 
 .subtitle {

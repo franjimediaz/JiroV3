@@ -2,19 +2,23 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ModuloNode } from "./page";
+import type  {ModuloNode, OpenCreateModuleFn}  from "@repo/types";
 import styles from "./modulos.module.css";
-import Link from "next/link";
 import { exportModuloSeed, seedToClipboardText } from "./exportModuloSeed";
-import  CreateModule  from "./CreateModule";
 
-type Props = { nodes: ModuloNode[] };
 
-function NodeRow({ node }: { node: ModuloNode }) {
+function NodeRow({
+  node,
+  onOpenCreateModule,
+}: {
+  node: ModuloNode;
+  onOpenCreateModule?: OpenCreateModuleFn;
+}) {
   const [open, setOpen] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  
 
   const tipoBadge: Record<ModuloNode["tipo"], string> = {
     carpeta: "Carpeta",
@@ -89,7 +93,7 @@ const actions = [
   },
 ];
 
-const [openModule, setOpenModule] = useState(false);
+
   return (
     <li className={styles.node}>
 
@@ -134,39 +138,38 @@ const [openModule, setOpenModule] = useState(false);
 
           {menuOpen && (
               <div className={styles.menu} role="menu" aria-label="Acciones del módulo">
-                <Link href={`/system/modulos/${node.id}`} className={styles.menuItem} role="menuitem">
+                <a href={`/system/modulos/${node.id}`} className={styles.menuItem} role="menuitem">
                   <i className="bi bi-eye me-2" aria-hidden="true" /> Ver
-                </Link>
-                <Link href={`/system/modulos/${node.id}?edit=true`} className={styles.menuItem} role="menuitem">
+                </a>
+                <a href={`/system/modulos/${node.id}?edit=true`} className={styles.menuItem} role="menuitem">
                   <i className="bi bi-pencil me-2" aria-hidden="true" /> Editar
-                </Link>
+                </a>
                 <button type="button" className={styles.menuItemB} role="menuitem" onClick={handleDownloadSeed}>
                   <i className="bi bi-download me-2" aria-hidden="true" />Exportar seed
                 </button>
                 <button type="button" className={styles.menuItemB} role="menuitem" onClick={handleCopySeed}>
                   <i className="bi bi-copy me-2" aria-hidden="true" /> Copiar seed
                 </button>
-                <button  className={styles.menuItemB} role="menuitem" onClick={() => setOpenModule(true)}>
-                  <i className="bi bi-plus me-2" aria-hidden="true" /> Nueva tabla
-                </button>
+                <button  type="button" className={styles.menuItemB} role="menuitem" onClick={(ev) => {
+                      ev.stopPropagation();
+                      setMenuOpen(false);
+                      onOpenCreateModule?.({ parentId: node.id, defaultTipo: "tabla" });
+                    }}
+                  >
+                    <i className="bi bi-plus me-2" aria-hidden="true" /> Nueva tabla
+                  </button>
                 
               </div>
             )}
 
-              <CreateModule
-                    open={openModule}
-                    onClose={() => setOpenModule(false)}
-                    parentId={node.id /* o null */}
-                    defaultTipo="tabla"
-                  />
-          {/* Aquí podrías añadir acciones: Ver, Editar, Eliminar */}
+              
         </div>
       </div>
 
       {hasChildren && open && (
         <ul className={styles.children}>
           {node.children.map((child) => (
-            <NodeRow key={child.id} node={child} />
+            <NodeRow key={child.id} node={child} onOpenCreateModule={onOpenCreateModule} />
           ))}
         </ul>
       )}
@@ -174,24 +177,28 @@ const [openModule, setOpenModule] = useState(false);
   );
 }
 
-export default function ModulosTree({ nodes }: Props) {
-  const [openModule, setOpenModule] = useState(false);
+export default function ModulosTree({  nodes,
+  onCreateRoot,
+  onOpenCreateModule,
+  ...rest
+}: {
+  nodes: ModuloNode[];
+  onCreateRoot?: () => void;
+  onOpenCreateModule?: OpenCreateModuleFn;
+}) {
+
+
+  
   return (
     <div>
-      <button  className={styles.btn} role="menuitem" onClick={() => setOpenModule(true)}>
-                  <i className="bi bi-plus me-2" aria-hidden="true" /> Nuevo Módulo
-                </button>
+      <button type="button" className={styles.btn} onClick={() => onCreateRoot?.()}>
+        <i className="bi bi-plus me-2" aria-hidden="true" /> Nuevo Módulo
+      </button>
     <ul className={styles.tree}>
       {nodes.map((n) => (
-        <NodeRow key={n.id} node={n} />
+        <NodeRow key={n.id} node={n} onOpenCreateModule={onOpenCreateModule}  />
       ))}
     </ul>
-    <CreateModule
-      open={openModule}
-      onClose={() => setOpenModule(false)}
-      parentId={null}
-      defaultTipo="tabla"
-      />
     </div>
     
   );

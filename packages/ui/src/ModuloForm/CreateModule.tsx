@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import styles from "./[id]/modulo-detalle.module.css";
-import { upsertModuloAction } from "@/actions/modulos";
+import styles from "./modulo-detalle.module.css";
 
 type Tipo = "carpeta" | "tabla" | "subtabla" | "vista";
 
@@ -21,13 +19,17 @@ export default function CreateModule({
   onClose,
   parentId,
   defaultTipo = "tabla",
+  onSave,
+  onAfterSave,
 }: {
   open: boolean;
   onClose: () => void;
   parentId?: string | null;
   defaultTipo?: Tipo;
+  onSave: (fd: FormData) => Promise<{ ok: boolean; detail: string; id?: string }>;
+  onAfterSave?: (res: { ok: boolean; detail: string; id?: string }) => void;
 }) {
-  const router = useRouter();
+
   const [pending, start] = useTransition();
 
   const [nombre, setNombre] = useState("");
@@ -113,16 +115,14 @@ export default function CreateModule({
       fd.set("activo", String(activo));
       fd.set("props", JSON.stringify(propsToSave));
 
-      const res = await upsertModuloAction(fd);
+      const res = await onSave(fd);
       setMsg({ ok: res.ok, text: res.detail });
 
       if (res.ok) {
         onClose();
-        // refresca listado
-        router.refresh();
-        // si quieres llevarlo al detalle directamente:
-        if (res.id) router.push(`/system/modulos/${res.id}?edit=true`);
+        onAfterSave?.(res);
       }
+
     });
   };
 

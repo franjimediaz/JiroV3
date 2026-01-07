@@ -1,13 +1,10 @@
 "use client";
 
 import { useState, useTransition, useEffect  } from "react";
-import { useRouter, useSearchParams} from "next/navigation";
 import styles from "./modulo-detalle.module.css";
 import {IconPicker} from "@repo/ui";
-import { upsertModuloAction } from "@/actions/modulos";
 import type { Field as FieldSchema, FieldType, ModuleSchema, Field, Appareance, Compute, FormSection} from "@repo/types";
 import {VALID_FIELD_TYPES,Appareance_Valid_Types} from "@repo/types";
-import { RequirePerms, usePerms } from "@/lib/perms";
 
 
 
@@ -1128,18 +1125,17 @@ const commitWhereIfValid = (text: string) => {
   );
 }
 
-
 // —— Form principal ————————————————————————————————————————————————
 
 export default function ModuloForm({
   initialData,
   mode,
+  onSave,
 }: {
   initialData: any;
   mode: "view" | "edit" | "create";
+  onSave: (fd: FormData) => Promise<{ ok: boolean; detail: string; id?: string }>;
 }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const [pending, start] = useTransition();
   const readOnly = mode === "view";
 
@@ -1230,15 +1226,10 @@ export default function ModuloForm({
       
       fd.set("props", JSON.stringify(toSave));
 
-      const res = await upsertModuloAction(fd);
+      const res = await onSave(fd);
       setMsg({ ok: res.ok, text: res.detail });
 
-      if (res.ok && res.id) {
-        const sp = new URLSearchParams(searchParams.toString());
-        sp.set("edit", "false");
-        router.replace(`/system/modulos/${res.id}?${sp.toString()}`);
-        router.refresh();
-      }
+      
     });
     
   };
@@ -1319,7 +1310,7 @@ export default function ModuloForm({
 
 
   return (
-    <RequirePerms modulo="modulos" accion="actualizar">
+   // <RequirePerms modulo="modulos" accion="actualizar">
     <form className={styles.card} onSubmit={onSubmit}>
       {/* Cabecera módulo */}
       <div className={styles.card}>
@@ -1686,6 +1677,6 @@ export default function ModuloForm({
         {msg && <span className={msg.ok ? styles.msgOk : styles.msgErr}>{msg.text}</span>}
       </div>
     </form>
-    </RequirePerms>
+   // </RequirePerms>
   );
 }

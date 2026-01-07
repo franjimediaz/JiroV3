@@ -5,6 +5,9 @@ export type {
     Compute,
     FieldType,
     ModuleSchema,
+    ModuloRow,
+    ModuloNode,
+    OpenCreateModuleFn,
     Appareance,
     FormSection,
     ListViewProps,
@@ -14,7 +17,11 @@ export type {
     ReverseLinkRef,
     QueryFilter,
     QuerySort,
-    CacheEntry} from "./fields";
+    CacheEntry
+
+
+
+} from "./fields";
 export type { AccionModulo, MapaAcciones, PermisosPorModulo, RolePermisosSchema } from "./perms";
 export { VALID_FIELD_TYPES, Appareance_Valid_Types} from "./fields";
 

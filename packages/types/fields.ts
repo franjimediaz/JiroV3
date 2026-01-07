@@ -158,6 +158,24 @@ export type ModuleSchema = {
     sidebar?: boolean;
   };
 };
+export type ModuloRow = {
+  id: string;
+  parent_id: string | null;
+  nombre: string;
+  slug: string;
+  tipo: "carpeta" | "tabla" | "subtabla" | "vista";
+  orden: number;
+  activo: boolean;
+  props: any;
+
+};
+export type ModuloNode = ModuloRow & { children: ModuloNode[] };
+
+export type OpenCreateModuleFn = (opts: {
+  parentId: string | null;
+  defaultTipo?: "tabla" | "carpeta" | "subtabla" | "vista";
+}) => void;
+
 export type ListViewProps = {
   schema: ModuleSchema;
   data: any[];
