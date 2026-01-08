@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { dataProvider } from "./providers/DataProvider";
-// AJUSTA ESTA RUTA a donde tengas el componente real
 import { PopupSelector } from "./modals/PopUpSelector";
 
 type RefFilter = { field: string; op: string; value: any };

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { createSupabaseTreeViewProvider } from "@/lib/utils/treeViewProvider";
 import { useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Form } from "@repo/ui";
@@ -115,6 +116,7 @@ export default function FormClient({
     });
   };
    const [activeTab, setActiveTab] = useState<TabKey>("proyecto");
+    const treeViewProvider = useMemo(() => createSupabaseTreeViewProvider(), []);
 
   return (
     <RequirePerms modulo={table} accion="actualizar">
@@ -154,7 +156,17 @@ export default function FormClient({
     <div style={{ opacity: pending ? 0.7 : 1 }}>
       <div className={`tab-pane fade mt-3 ${activeTab === "proyecto" ? "show active" : ""}`}>
       {activeTab === "proyecto" && (
-      <Form schema={schema} initialData={initialData} mode={mode} onSubmit={onSubmit} />
+      <Form schema={schema}
+       initialData={initialData}
+      mode={mode} 
+      onSubmit={onSubmit} 
+      treeViewProvider={treeViewProvider}
+      onTreeViewRowView={(row) => router.push(`${row.id}`)}
+      onTreeViewRowEdit={(row) => router.push(`${row.id}?edit=true`)}
+      
+      
+      
+      />
         )}
       </div>
     

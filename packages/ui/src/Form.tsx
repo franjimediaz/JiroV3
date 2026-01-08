@@ -1,13 +1,16 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState} from "react";
-import type { Field, ModuleSchema, FieldType, CacheEntry } from "@repo/types";
+import type { Field, ModuleSchema, FieldType, CacheEntry, UiTab, FormSection,TreeViewDataProvider } from "@repo/types";
 import { applyCompute } from "./engines/computeEngine";
 import type { DataProvider } from "./engines/computeEngine";
 import { dataProvider as defaultDataProvider } from "./providers/DataProvider";
 import { IconPicker } from "./IconPicker";
 import  Selector from "./Selector";
 import ReverseLinkTable from "./ReverseLinkTable";
+import  TreeView  from "./TreeView";
+
+
 
 type Mode = "view" | "edit" | "create";
 
@@ -26,7 +29,15 @@ type Props = {
   onEdit?: () => void;
 
   dataProvider?: DataProvider;
+  treeViewProvider?: TreeViewDataProvider;
+  treeViewParentRecord?: any; 
+  onTreeViewRowView?: (row: any) => void;
+  onTreeViewRowEdit?: (row: any) => void;
+  confirmTreeViewDelete?: (row: any) => Promise<boolean>;
 };
+
+
+
 export default function Form({
   schema,
   initialData = {},
@@ -37,41 +48,126 @@ export default function Form({
   onBack,
   onEdit,
   dataProvider = defaultDataProvider,
+
+  treeViewProvider,
+  treeViewParentRecord,
+  onTreeViewRowView,
+  onTreeViewRowEdit,
+  confirmTreeViewDelete,
 }: Props) {
   // Derivar modo por defecto si no viene
-  const effectiveMode: Mode =
-    mode || (readOnly ? "view" : "edit");
-    
+  const effectiveMode: Mode = mode || (readOnly ? "view" : "edit");
 
-  // Valores editables + meta para overrides
-  const [values, setValues] = useState<any>(() =>
-    withDefaultValues(schema.fields, initialData)
-  );
+  // ---------------- Tabs (Form / TreeView / Calendar) ----------------
+  // 1) Tabs definidos en schema.ui.tabs (si existen)
+  const tabsDesdeSchema = useMemo<UiTab[]>(() => {
+    const uiAny = (schema.ui || {}) as any;
+    const rawTabs = Array.isArray(uiAny?.tabs) ? uiAny.tabs : [];
+
+    // Normaliza a {id,label,type,config}
+    const normalized: UiTab[] = rawTabs
+      .map((t: any, idx: number) => {
+        const type = (t?.type || t?.kind || "form") as UiTab["type"];
+        const id = String(t?.id || `${type}_${idx + 1}`);
+        const label = String(t?.label || t?.title || (type === "form" ? "Formulario" : type));
+        return { id, label, type, config: t?.config ?? t };
+      })
+      .filter((t: UiTab) => ["form", "treeview", "calendar"].includes(t.type));
+
+    return normalized;
+  }, [schema.ui]);
+
+  // 2) Configs “legacy” por si no hay schema.ui.tabs:
+  //    - schema.ui.formSections
+  //    - schema.ui.treeView
+  //    - schema.ui.calendar
+  const legacyTreeCfg = useMemo(() => {
+    const uiAny = (schema.ui || {}) as any;
+    return uiAny?.treeView ?? null;
+  }, [schema.ui]);
+
+  const legacyCalendarCfg = useMemo(() => {
+    const uiAny = (schema.ui || {}) as any;
+    return uiAny?.calendar ?? null;
+  }, [schema.ui]);
+
+  // 3) Construye uiTabs final:
+  //    - si hay tabs explícitos: úsalo tal cual
+  //    - si NO hay tabs explícitos: NO mostramos barra principal, pero sí podemos “inyectar”
+  //      pestañas TreeView/Calendar solo si tienes config (y así el usuario puede acceder).
+  const uiTabs = useMemo<UiTab[]>(() => {
+    if (tabsDesdeSchema.length > 0) return tabsDesdeSchema;
+
+    const out: UiTab[] = [];
+
+    // Solo añadimos pestañas no-form si existen configs legacy
+    if (legacyTreeCfg) {
+      out.push({
+        id: "__treeview__",
+        label: legacyTreeCfg?.ui?.title || "TreeView",
+        type: "treeview",
+        config: legacyTreeCfg,
+      });
+    }
+
+    if (legacyCalendarCfg) {
+      out.push({
+        id: "__calendar__",
+        label: legacyCalendarCfg?.ui?.title || "Calendario",
+        type: "calendar",
+        config: legacyCalendarCfg,
+      });
+    }
+
+    // Si no hay nada, el Form se renderiza sin tabs (modo clásico)
+    return out;
+  }, [tabsDesdeSchema, legacyTreeCfg, legacyCalendarCfg]);
+
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!uiTabs.length) {
+      setActiveTabId(null);
+      return;
+    }
+    if (!activeTabId || !uiTabs.some((t) => t.id === activeTabId)) {
+      setActiveTabId(uiTabs[0].id);
+    }
+  }, [uiTabs, activeTabId]);
+
+  const activeTab = useMemo(() => {
+    if (!uiTabs.length) return null;
+    return uiTabs.find((t) => t.id === activeTabId) ?? uiTabs[0];
+  }, [uiTabs, activeTabId]);
+
+  // ---------------- Valores editables + overrides ----------------
+  const [values, setValues] = useState<any>(() => withDefaultValues(schema.fields, initialData));
   const [computing, setComputing] = useState(false);
 
-  // Para evitar llamadas excesivas a aggregate
+  // Para evitar llamadas excesivas a compute/aggregate
   const aggTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ReverseLink fields (se renderizan abajo, y solo en pestañas form)
   const reverseLinkFields = useMemo(
     () => (schema.fields || []).filter((f) => f.type === "ReverseLink"),
     [schema.fields]
   );
 
-  // Reverse Links activos
-
   const [activeReverseLink, setActiveReverseLink] = useState<string | null>(null);
 
   useEffect(() => {
-  if (!activeReverseLink && reverseLinkFields.length > 0) {
-    setActiveReverseLink(reverseLinkFields[0].name);
-  }
-}, [activeReverseLink, reverseLinkFields]);
+    if (!activeReverseLink && reverseLinkFields.length > 0) {
+      setActiveReverseLink(reverseLinkFields[0].name);
+    }
+  }, [activeReverseLink, reverseLinkFields]);
 
-  // Recalcular fórmulas (inmediato) y aggregates (debounced) cuando cambian valores
+  // Recalcular fórmulas/aggregates cuando cambian values
   useEffect(() => {
     if (!schema?.fields?.length) return;
 
     if (aggTimer.current) clearTimeout(aggTimer.current);
     setComputing(true);
+
     aggTimer.current = setTimeout(async () => {
       try {
         const computed = await applyCompute({
@@ -93,7 +189,7 @@ export default function Form({
     setValues((prev: any) => ({ ...prev, [name]: normalizeValue(value) }));
   };
 
-  // Toggle de override por campo
+  // Toggle override por campo
   const toggleOverride = (f: Field, enabled: boolean) => {
     setValues((prev: any) => ({
       ...prev,
@@ -103,16 +199,14 @@ export default function Form({
           ...(prev.meta?.overrides || {}),
           [f.name]: {
             enabled,
-            value: enabled
-              ? prev[f.name] ?? null
-              : prev.meta?.overrides?.[f.name]?.value ?? null,
+            value: enabled ? prev[f.name] ?? null : prev.meta?.overrides?.[f.name]?.value ?? null,
           },
         },
       },
     }));
   };
 
-  // Cambio de valor de override manual
+  // Cambio del valor override manual
   const setOverrideValue = (f: Field, value: any) => {
     setValues((prev: any) => ({
       ...prev,
@@ -130,50 +224,46 @@ export default function Form({
     }));
   };
 
-  // --------- SECCIONES DE FORMULARIO (layout) ---------
+  // ---------------- Secciones de formulario (layout) ----------------
+  const formSections = useMemo<FormSection[]>(() => {
+    // Si hay tabs y la activa es "form", usa sus secciones
+    if (activeTab?.type === "form") {
+      return (activeTab.config?.formSections || []) as FormSection[];
+    }
+    // Si NO hay tabs o no es form: fallback a schema.ui.formSections
+    return (((schema.ui as any)?.formSections as FormSection[]) || []) as FormSection[];
+  }, [activeTab, schema.ui]);
 
-  // --------- SECCIONES DE FORMULARIO (layout) ---------
+  // Acordeón: qué secciones están abiertas
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
-const formSections =
-  ((schema.ui as any)?.formSections as {
-    id: string;
-    label: string;
-    description?: string;
-    fields: string[];
-  }[]) || [];
+  useEffect(() => {
+    const firstId = formSections[0]?.id;
+    setOpenSections(firstId ? { [firstId]: true } : {});
+  }, [activeTabId, formSections]);
 
-// ✅ NUEVO: acordeón (qué secciones están abiertas)
-const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
-  // Por defecto: abre la primera sección (si existe)
-  const firstId = formSections[0]?.id;
-  return firstId ? { [firstId]: true } : {};
-});
+  const toggleSection = (id: string) => {
+    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
-
-const toggleSection = (id: string) => {
-  setOpenSections((prev) => ({
-    ...prev,
-    [id]: !prev[id],
-  }));
-};
-
-
-  // mapa rápido para buscar campos por name
+  // Mapa rápido para buscar campos por name
   const fieldsByName = useMemo(() => {
     const map: Record<string, Field> = {};
-    (schema.fields || []).forEach((f) => {
-      map[f.name] = f;
-    });
+    (schema.fields || []).forEach((f) => (map[f.name] = f));
     return map;
   }, [schema.fields]);
 
-  // Campos que no están en ninguna sección
-  const fieldsInSections = new Set(formSections.flatMap((s) => s.fields));
-  const unsectionedFields = (schema.fields || []).filter(
-    (f) => f.type !== "ReverseLink" && !fieldsInSections.has(f.name)
-  );
+  // Campos “en secciones”
+  const fieldsInSections = useMemo(() => {
+    return new Set((formSections || []).flatMap((s) => s.fields || []));
+  }, [formSections]);
 
-  // Helper: clases de columna Bootstrap según ui.width
+  // Campos “sin sección” (excluye ReverseLink)
+  const unsectionedFields = useMemo(() => {
+    return (schema.fields || []).filter((f) => f.type !== "ReverseLink" && !fieldsInSections.has(f.name));
+  }, [schema.fields, fieldsInSections]);
+
+  // Bootstrap col según ui.width
   const colClass = (f: Field): string => {
     const col = f.ui?.width || "1/1";
     switch (col) {
@@ -189,36 +279,29 @@ const toggleSection = (id: string) => {
     }
   };
 
+  function dateToDb(value?: string) {
+    return value || null; // YYYY-MM-DD → date
+  }
 
-function dateToDb(value?: string) {
-  return value || null; // YYYY-MM-DD → date
-}
+  function datetimeLocalToDb(value?: string) {
+    if (!value) return null;
+    return new Date(value).toISOString(); // local → UTC Z
+  }
 
-function datetimeLocalToDb(value?: string) {
-  if (!value) return null;
-  return new Date(value).toISOString(); // local → UTC Z
-}
+  function isFieldVisibleInMode(field: Field, m: Mode) {
+    if (field.visible === false) return false;
 
+    const vw = (field as any).visibleWhen || "add_edit";
+    if (m === "create") return vw === "add" || vw === "add_edit";
+    if (m === "edit") return vw === "edit" || vw === "add_edit";
+    return true; // view
+  }
 
-  function isFieldVisibleInMode(
-  field: Field,
-  mode: "view" | "edit" | "create"
-) {
-  if (field.visible === false) return false;
-
-  const vw = field.visibleWhen || "add_edit";
-
-  if (mode === "create") return vw === "add" || vw === "add_edit";
-  if (mode === "edit") return vw === "edit" || vw === "add_edit";
-
-  // view → respeta visible, pero no el when
-  return true;
-}
-
-  // Render de un campo individual
+  // Render de un campo
   const renderField = (f: Field) => {
     if (!isFieldVisibleInMode(f, effectiveMode)) return null;
     if (f.type === "ReverseLink") return null;
+
     const v = values[f.name] ?? "";
     const isOverride = !!values?.meta?.overrides?.[f.name]?.enabled;
 
@@ -226,8 +309,8 @@ function datetimeLocalToDb(value?: string) {
       !!readOnly ||
       effectiveMode === "view" ||
       (!!f.readOnly && !isOverride) ||
-      (!!f.compute && !f.allowOverride && f.type !== "selectorTabla");
-    
+      (!!(f as any).compute && !(f as any).allowOverride && f.type !== "selectorTabla");
+
     return (
       <div key={f.name} className={colClass(f)}>
         <div className="field-box">
@@ -235,7 +318,7 @@ function datetimeLocalToDb(value?: string) {
             {f.label}
           </label>
 
-          {f.allowOverride && (
+          {(f as any).allowOverride && (
             <div className="d-flex align-items-center gap-2 mb-2">
               <small className="text-muted">Forzar valor</small>
               <input
@@ -251,68 +334,45 @@ function datetimeLocalToDb(value?: string) {
           <FieldInput
             field={f}
             value={v}
-            onChange={(val) =>
-              isOverride
-                ? setOverrideValue(f, val)
-                : handleChange(f.name, val)
-            }
+            onChange={(val: any) => (isOverride ? setOverrideValue(f, val) : handleChange(f.name, val))}
             readOnly={effectiveReadOnlyField}
           />
 
-          {f.ui?.help && (
-            <div className="form-text mt-1">{f.ui.help}</div>
-          )}
+          {(f as any).ui?.help && <div className="form-text mt-1">{(f as any).ui.help}</div>}
 
-          {computing && f.compute && !isOverride && (
+          {computing && (f as any).compute && !isOverride && (
             <div className="small text-muted mt-1">recalculando…</div>
           )}
-
         </div>
-
       </div>
-      
     );
   };
 
-  // --------- ACCIONES (Guardar / Editar / Volver) ---------
-
+  // ---------------- Acciones (Guardar / Editar / Volver) ----------------
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (effectiveMode === "view") return;
+    e.preventDefault();
+    if (effectiveMode === "view") return;
 
-  try {
-    const payload = { ...(values || {}) };
-    delete payload.meta;
+    try {
+      const payload = { ...(values || {}) };
+      delete payload.meta;
 
-    for (const f of schema.fields || []) {
-      const v = payload[f.name];
-
-      if (f.type === "date") {
-        payload[f.name] = dateToDb(v);
+      for (const f of schema.fields || []) {
+        const v = payload[f.name];
+        if (f.type === "date") payload[f.name] = dateToDb(v);
+        if (f.type === "datetime") payload[f.name] = datetimeLocalToDb(v);
       }
 
-      if (f.type === "datetime") {
-        payload[f.name] = datetimeLocalToDb(v);
-      }
+      await onSubmit?.(payload);
+    } catch (err) {
+      console.error("Error en submit:", err);
+      alert((err as any)?.message || "Error guardando");
     }
-
-    console.log("SUBMIT payload:", payload); // debe salir ...Z
-
-    await onSubmit?.(payload);
-  } catch (err) {
-    console.error("Error en submit:", err);
-    alert((err as any)?.message || "Error guardando");
-  }
-};
-
-
-                                                                                                                                                                                                    
+  };
 
   const handleBack = () => {
     if (onBack) return onBack();
-    if (typeof window !== "undefined") {
-      window.history.back();
-    }
+    if (typeof window !== "undefined") window.history.back();
   };
 
   const handleEdit = () => {
@@ -324,135 +384,213 @@ function datetimeLocalToDb(value?: string) {
     }
   };
 
-  const renderActions = () => {
-    return (
-      <>
-        {/* Volver siempre visible */}
-        <button
-          type="button"
-          className="btn btn-secondary px-4"
-          onClick={handleBack}
-        >
-          ← Volver
+  const renderActions = () => (
+    <>
+      <button type="button" className="btn btn-secondary px-4" onClick={handleBack}>
+        ← Volver
+      </button>
+
+      {effectiveMode === "view" && (
+        <button type="button" className="btn btn-warning px-4" onClick={handleEdit}>
+          Editar
         </button>
+      )}
 
-        {/* Editar SOLO en view */}
-        {effectiveMode === "view" && (
-          <button
-            type="button"
-            className="btn btn-warning px-4"
-            onClick={handleEdit}
-          >
-            Editar
-          </button>
-        )}
+      {(effectiveMode === "edit" || effectiveMode === "create") && (
+        <button
+          type="submit"
+          className="btn btn-primary px-5"
+          style={{
+            background: "linear-gradient(90deg, #2563eb, #3b82f6)",
+            border: "none",
+            borderRadius: 10,
+            boxShadow: "0 4px 12px rgba(37, 99, 235, 0.35)",
+          }}
+        >
+          Guardar
+        </button>
+      )}
+    </>
+  );
 
-        {/* Guardar SOLO en edit o create */}
-        {(effectiveMode === "edit" || effectiveMode === "create") && (
-          <button
-            type="submit"
-            className="btn btn-primary px-5"
-            style={{
-              background: "linear-gradient(90deg, #2563eb, #3b82f6)",
-              border: "none",
-              borderRadius: 10,
-              boxShadow: "0 4px 12px rgba(37, 99, 235, 0.35)",
-            }}
-          >
-            Guardar
-          </button>
-        )}
-      </>
-    );
-  };
-  
-  // --------- RENDER PRINCIPAL ---------
+  // ---------------- Flags de render ----------------
+  const showMainTabs = uiTabs.length > 0;
 
+  // Importante:
+  // - si NO hay tabs, activeTab es null → showFormContent = true (modo clásico)
+  // - si hay tabs y activeTab.type=form → render form
+  const showFormContent = !activeTab || activeTab.type === "form";
+  const showReverseLinks = showFormContent;
+
+  // TreeView: dónde sacamos la config real
+  // - si activeTab es treeview: usa su config
+  // - si no hay tabs: usa schema.ui.treeView
+  const treeViewConfig = useMemo(() => {
+    if (activeTab?.type === "treeview") return activeTab.config ?? null;
+    return legacyTreeCfg;
+  }, [activeTab, legacyTreeCfg]);
+
+  // Calendar: idem (placeholder)
+  const calendarConfig = useMemo(() => {
+    if (activeTab?.type === "calendar") return activeTab.config ?? null;
+    return legacyCalendarCfg;
+  }, [activeTab, legacyCalendarCfg]);
+
+  // ---------------- Render principal ----------------
   return (
-    <form
-    className="d-flex flex-column gap-4"
-    onSubmit={handleSubmit}
-  >
-    {/* Formulario principal */}
-    {formSections.length > 0 ? (
-      <div className="d-flex flex-column gap-3">
-        {formSections.map((section) => {
-          const isOpen = !!openSections[section.id];
-
-          return (
-            <div key={section.id} className="card">
-              {/* HEADER CLICABLE */}
+    <form className="d-flex flex-column gap-4" onSubmit={handleSubmit}>
+      {/* Tabs principales */}
+      {showMainTabs && (
+        <div className="d-flex gap-4 mb-3 border-bottom" style={{ borderColor: "#e5e7eb" }}>
+          {uiTabs.map((t) => {
+            const isActive = activeTab?.id === t.id;
+            return (
               <button
+                key={t.id}
                 type="button"
-                className="card-header d-flex justify-content-between align-items-center w-100"
-                onClick={() => toggleSection(section.id)}
+                onClick={() => setActiveTabId(t.id)}
+                className="btn btn-link px-0"
                 style={{
-                  cursor: "pointer",
-                  background: "transparent",
-                  border: "none",
-                  textAlign: "left",
+                  textDecoration: "none",
+                  fontWeight: isActive ? 600 : 500,
+                  color: isActive ? "#2563eb" : "#64748b",
+                  borderBottom: isActive ? "2px solid #2563eb" : "2px solid transparent",
+                  borderRadius: 0,
                 }}
               >
-                <div>
-                  <div className="fw-semibold">{section.label}</div>
-                  {section.description && (
-                    <div className="small text-muted">
-                      {section.description}
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* CONTENIDO SEGÚN TAB */}
+      {showFormContent ? (
+        // ---------------- FORM ----------------
+        formSections.length > 0 ? (
+          <div className="d-flex flex-column gap-3">
+            {formSections.map((section) => {
+              const isOpen = !!openSections[section.id];
+
+              return (
+                <div key={section.id} className="card">
+                  <button
+                    type="button"
+                    className="card-header d-flex justify-content-between align-items-center w-100"
+                    onClick={() => toggleSection(section.id)}
+                    style={{
+                      cursor: "pointer",
+                      background: "transparent",
+                      border: "none",
+                      textAlign: "left",
+                    }}
+                  >
+                    <div>
+                      <div className="fw-semibold">{section.label}</div>
+                      {section.description && <div className="small text-muted">{section.description}</div>}
+                    </div>
+                    <span className="text-muted">{isOpen ? "▾" : "▸"}</span>
+                  </button>
+
+                  {isOpen && (
+                    <div className="card-body">
+                      <div className="row g-3">
+                        {section.fields.map((fieldName) => {
+                          const f = fieldsByName[fieldName];
+                          if (!f) return null;
+                          return renderField(f);
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
+              );
+            })}
 
-                <span className="text-muted">
-                  {isOpen ? "▾" : "▸"}
-                </span>
-              </button>
-
-              {/* BODY COLAPSABLE */}
-              {isOpen && (
-                <div className="card-body">
-                  <div className="row g-3">
-                    {section.fields.map((fieldName) => {
-                      const f = fieldsByName[fieldName];
-                      if (!f) return null;
-                      return renderField(f);
-                    })}
-                  </div>
+            {/* Si quieres volver a mostrar “otros campos”, aquí lo tienes.
+                En tu snippet lo tienes comentado: mantengo el bloque preparado. */}
+            {/*
+            {unsectionedFields.length > 0 && (
+              <div className="card border border-dashed">
+                <div className="card-header">
+                  <div className="fw-semibold">Otros campos</div>
+                  <div className="small text-muted">Campos sin sección asignada</div>
                 </div>
-              )}
-            </div>
-          );
-        })}
-
-        {/* Campos sin sección */}
-        {unsectionedFields.length > 0 && (
-          <div className="card border border-dashed">
-            <div className="card-header">
-              <div className="fw-semibold">Otros campos</div>
-              <div className="small text-muted">
-                Campos sin sección asignada
+                <div className="card-body">
+                  <div className="row g-3">{unsectionedFields.map((f) => renderField(f))}</div>
+                </div>
               </div>
-            </div>
-            <div className="card-body">
-              <div className="row g-3">
-                {unsectionedFields.map((f) => renderField(f))}
-              </div>
+            )}
+            */}
+          </div>
+        ) : (
+          <div className="row g-3">{(schema.fields || []).map((f) => renderField(f))}</div>
+        )
+      ) : activeTab?.type === "treeview" ? (
+        // ---------------- TREEVIEW ----------------
+        <div className="card">
+          <div className="card-header">
+            <div className="fw-semibold">{treeViewConfig?.ui?.title || "TreeView"}</div>
+            <div className="small text-muted">
+              {treeViewConfig?.source?.table
+                ? `Tabla: ${treeViewConfig.source.table}`
+                : "Sin tabla configurada"}
+              {treeViewConfig?.grouping?.groupByField
+                ? ` · groupBy: ${treeViewConfig.grouping.groupByField}`
+                : ""}
             </div>
           </div>
-        )}
-      </div>
-    ) : (
-      <div className="row g-3">
-        {schema.fields.map((f) => renderField(f))}
-      </div>
-    )}
 
-    {/* ReverseLink */}
-    {reverseLinkFields.length > 0 && (
+          <div className="card-body">
+            {!treeViewConfig ? (
+              <div className="alert alert-warning mb-0">
+                No hay configuración de TreeView en el módulo (schema.ui.treeView o tab.config).
+              </div>
+            ) : !treeViewProvider ? (
+              <div className="alert alert-warning mb-0">
+                TreeView está configurado, pero falta <code>treeViewProvider</code> en el Form.
+                <div className="small text-muted mt-2">
+                  Esto es intencional: el componente de UI no debe importar Supabase ni createClient.
+                </div>
+              </div>
+            ) : (
+              <TreeView
+                config={treeViewConfig}
+                dataProvider={treeViewProvider}
+                parentRecord={treeViewParentRecord ?? values}
+                onViewRow={onTreeViewRowView}
+                onEditRow={onTreeViewRowEdit}
+                confirmDelete={confirmTreeViewDelete}
+              />
+            )}
+          </div>
+        </div>
+      ) : (
+        // ---------------- CALENDAR (placeholder) ----------------
+        <div className="card">
+          <div className="card-header">
+            <div className="fw-semibold">{calendarConfig?.ui?.title || "Calendario"}</div>
+            <div className="small text-muted">
+              Tabla: {calendarConfig?.source?.table || calendarConfig?.sourceTable || "—"}
+            </div>
+          </div>
+
+          <div className="card-body">
+            <div className="text-muted small">
+              startField: {calendarConfig?.startField || "—"} · endField: {calendarConfig?.endField || "—"} ·
+              titleField: {calendarConfig?.titleField || "—"} · colorField: {calendarConfig?.colorField || "—"}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ReverseLink (solo en pestañas form) */}
+      {showReverseLinks && reverseLinkFields.length > 0 && (
         <div className="d-flex flex-column gap-3">
-          {/* Tabs */}
           <div className="card">
             <div className="card-header pb-0">
-              <ul className="nav nav-tabs  card-header-tabs">
+              <ul className="nav nav-tabs card-header-tabs">
                 {reverseLinkFields.map((f) => {
                   const tabId = f.name;
                   const label = (f.label as string) || f.name;
@@ -462,7 +600,7 @@ function datetimeLocalToDb(value?: string) {
                     <li className="nav-item" key={tabId}>
                       <button
                         type="button"
-                        className={`nav-link bg-primary text-light  ${isActive ? "active" : ""}`}
+                        className={`nav-link bg-primary text-light ${isActive ? "active" : ""}`}
                         onClick={() => setActiveReverseLink(tabId)}
                       >
                         {label}
@@ -473,33 +611,30 @@ function datetimeLocalToDb(value?: string) {
               </ul>
             </div>
 
-            {/* Tab content */}
             <div className="card-body">
               {reverseLinkFields.map((f) => {
                 if (activeReverseLink !== f.name) return null;
-
-                return (
-                  <ReverseLinkTable
-                    key={f.name}
-                    field={f}
-                    parentRecord={values}
-                    mode={effectiveMode}
-                  />
-                );
+                return <ReverseLinkTable key={f.name} field={f} parentRecord={values} mode={effectiveMode} />;
               })}
             </div>
           </div>
         </div>
       )}
+
       {/* Acciones */}
-      <div className="d-flex justify-content-end gap-2 mt-3">
-        {renderActions()}
-      </div>
+      <div className="d-flex justify-content-end gap-2 mt-3">{renderActions()}</div>
     </form>
   );
 }
 
+
+
+
 /* ---------------- Renderers por tipo ---------------- */
+
+
+
+
 
 function FieldInput({
   field,
@@ -850,7 +985,7 @@ if (type === "iconpicker") {
 
 /* ---------------- Utils ---------------- */
 
-function withDefaultValues(fields: Field[], base: any) {
+/* function withDefaultValues(fields: Field[], base: any) {
   const out = { ...(base || {}) };
   for (const f of fields) {
     if (out[f.name] === undefined) {
@@ -885,6 +1020,49 @@ function labelStyle(): React.CSSProperties {
 }
 
 // minimiza deps para el efecto: ignora meta.snapshots, arrays grandes, etc.
+function lightDeps(v: any) {
+  const { meta, ...rest } = v || {};
+  const ov = meta?.overrides ? Object.keys(meta.overrides).sort() : [];
+  return { ...rest, _ovKeys: ov };
+} */
+
+// ---------------- Utils ----------------
+
+function withDefaultValues(fields: Field[], base: any) {
+  const out = { ...(base || {}) };
+  for (const f of fields || []) {
+    if (out[f.name] === undefined) {
+      out[f.name] = (f as any).defaultValue ?? defaultForType(f.type as FieldType);
+    }
+  }
+  return out;
+}
+
+function defaultForType(t: FieldType): any {
+  switch (t) {
+    case "number":
+    case "money":
+    case "percent":
+      return 0;
+    case "boolean":
+      return false;
+    case "multiselect":
+      return [];
+    default:
+      return "";
+  }
+}
+
+function normalizeValue(v: any) {
+  if (v === "") return "";
+  return v;
+}
+
+function labelStyle(): React.CSSProperties {
+  return { display: "block", marginBottom: 4, fontSize: 12 };
+}
+
+// minimiza deps para el efecto: ignora meta.snapshots y deja meta.overrides “por clave”
 function lightDeps(v: any) {
   const { meta, ...rest } = v || {};
   const ov = meta?.overrides ? Object.keys(meta.overrides).sort() : [];

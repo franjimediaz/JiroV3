@@ -5,6 +5,7 @@ export type {
     Compute,
     FieldType,
     ModuleSchema,
+    UiTab,
     ModuloRow,
     ModuloNode,
     OpenCreateModuleFn,
@@ -17,7 +18,8 @@ export type {
     ReverseLinkRef,
     QueryFilter,
     QuerySort,
-    CacheEntry
+    CacheEntry,
+    TreeViewDataProvider
 
 
 

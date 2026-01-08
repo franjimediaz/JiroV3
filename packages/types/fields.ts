@@ -145,6 +145,25 @@ export const Appareance_Valid_Types: Appareance[] = [
   "Always",
   "Zoom"
 ];
+export type UiTab =
+  | {
+      id: string;
+      label: string;
+      type: "form";
+      config?: { formSections?: FormSection[] };
+    }
+  | {
+      id: string;
+      label: string;
+      type: "treeview";
+      config?: { sourceTable?: string; groupBy?: string[]; columns?: string[] };
+    }
+  | {
+      id: string;
+      label: string;
+      type: "calendar";
+      config?: { sourceTable?: string; startField?: string; endField?: string; titleField?: string; colorField?: string };
+    };
 export type ModuleSchema = {
   db: {
     table: string;
@@ -156,6 +175,7 @@ export type ModuleSchema = {
     icon?: string;
     color?: string;
     sidebar?: boolean;
+    tabs?: UiTab[];
   };
 };
 export type ModuloRow = {
@@ -232,3 +252,88 @@ export type QuerySort = {
 };
 export type CacheEntry = { label: string; icon?: string; color?: string };
 
+type ColumnType = "text" | "money" | "date" | "datetime" | "boolean" | "select";
+
+export type TreeViewFilter =
+  | { kind: "eq"; field: string; value?: any; valueFromParent?: string }
+  | { kind: "in"; field: string; values?: any[]; valuesFromParent?: string };
+
+export type TreeViewLookup = {
+  field: string; // campo en filas (FK o valor)
+  table: string; // tabla lookup
+  valueField?: string; // default "id"
+  labelField: string;
+  iconField?: string;
+  colorField?: string;
+};
+
+export type TreeViewLevel = {
+  levelField: string; // ej "nivel"
+  order?: "asc" | "desc";
+  labelPrefix?: string; // ej "Nivel"
+};
+
+export type TreeViewConfig = {
+  source: {
+    table: string;
+    select?: string[]; // si no, se deduce
+    orderBy?: { field: string; ascending?: boolean };
+    filters?: TreeViewFilter[];
+  };
+
+  grouping: {
+    groupByField: string; // ej "service"
+    groupTitleField?: string; // si groupByField ya es texto (no FK)
+    level?: TreeViewLevel;
+  };
+
+  columns: Array<{
+    field: string;
+    label: string;
+    type?: ColumnType;
+    width?: string;
+    options?: string[]; // para select si quieres
+  }>;
+
+  totals?: {
+    enabled: boolean;
+    sumField: string; // ej "total"
+    currency?: string; // default "EUR"
+    showGroupTotals?: boolean;
+    showGrandTotal?: boolean;
+  };
+
+  lookups?: TreeViewLookup[];
+
+  actions?: {
+    enableDelete?: boolean;
+    deleteTable?: string; // default source.table
+  };
+
+  ui?: {
+    title?: string;
+  };
+};
+
+export type TreeViewQuery = {
+  table: string;
+  select: string[];
+  filters?: Array<
+    | { op: "eq"; field: string; value: any }
+    | { op: "in"; field: string; value: any[] }
+  >;
+  orderBy?: { field: string; ascending?: boolean };
+};
+
+export type LookupQuery = {
+  table: string;
+  valueField: string;
+  ids: string[];
+  select: string[];
+};
+
+export type TreeViewDataProvider = {
+  list: (query: TreeViewQuery) => Promise<any[]>;
+  lookup?: (query: LookupQuery) => Promise<any[]>;
+  remove?: (table: string, id: string) => Promise<void>;
+};
