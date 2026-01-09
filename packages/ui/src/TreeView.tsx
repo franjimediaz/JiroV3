@@ -1,70 +1,31 @@
 "use client";
+
 import React, { useEffect, useMemo, useState } from "react";
+import {ActionMenu} from "./ActionMenu";
 
-type ColumnType = "text" | "money" | "date" | "datetime" | "boolean" | "select";
+type ColumnType = "text" | "money" | "date" | "datetime" | "boolean" | "select" | "percent";
+type LegacyFilter =
+  | { op: "eq" | "in"; field: string; value: any }
+  | { op: "eq"; field: string; valueFromParent: string } // "id" o "cliente.id"
+  | { op: "in"; field: string; valuesFromParent: string };
 
-export type TreeViewFilter =
-  | { kind: "eq"; field: string; value?: any; valueFromParent?: string }
-  | { kind: "in"; field: string; values?: any[]; valuesFromParent?: string };
-
-export type TreeViewLookup = {
-  field: string; // campo en filas (FK o valor)
-  table: string; // tabla lookup
-  valueField?: string; // default "id"
-  labelField: string;
-  iconField?: string;
-  colorField?: string;
-};
-
-export type TreeViewLevel = {
-  levelField: string; // ej "nivel"
-  order?: "asc" | "desc";
-  labelPrefix?: string; // ej "Nivel"
-};
-
-export type TreeViewConfig = {
-  source: {
-    table: string;
-    select?: string[]; // si no, se deduce
-    orderBy?: { field: string; ascending?: boolean };
-    filters?: TreeViewFilter[];
-  };
-
-  grouping: {
-    groupByField: string; // ej "service"
-    groupTitleField?: string; // si groupByField ya es texto (no FK)
-    level?: TreeViewLevel;
-  };
-
-  columns: Array<{
-    field: string;
-    label: string;
-    type?: ColumnType;
-    width?: string;
-    options?: string[]; // para select si quieres
-  }>;
-
+type LegacyConfig = {
+  sourceTable?: string;
+  groupBy?: string[];
+  columns?: any[];
   totals?: {
-    enabled: boolean;
-    sumField: string; // ej "total"
-    currency?: string; // default "EUR"
+    enabled?: boolean;
+    sumField?: string;
+    currency?: string;
     showGroupTotals?: boolean;
     showGrandTotal?: boolean;
   };
-
-  lookups?: TreeViewLookup[];
-
-  actions?: {
-    enableDelete?: boolean;
-    deleteTable?: string; // default source.table
-  };
-
-  ui?: {
-    title?: string;
-  };
+  ui?: { title?: string };
+  orderBy?: { field: string; ascending?: boolean };
+  filters?: LegacyFilter[];
 };
 
-export type TreeViewQuery = {
+type TreeViewQuery = {
   table: string;
   select: string[];
   filters?: Array<
@@ -74,38 +35,102 @@ export type TreeViewQuery = {
   orderBy?: { field: string; ascending?: boolean };
 };
 
-export type LookupQuery = {
+type LookupQuery = {
   table: string;
   valueField: string;
   ids: string[];
   select: string[];
 };
 
-export type TreeViewDataProvider = {
+type TreeViewDataProvider = {
   list: (query: TreeViewQuery) => Promise<any[]>;
   lookup?: (query: LookupQuery) => Promise<any[]>;
   remove?: (table: string, id: string) => Promise<void>;
 };
 
+type ResolveTableFn = (moduleSlug: string) => { table: string; valueField?: string } | null;
+
 type LookupMeta = { label?: string; icon?: string; color?: string };
 
-export type TreeViewProps = {
-  config: TreeViewConfig;
-  dataProvider: TreeViewDataProvider;
-  parentRecord?: any;
-
-  // acciones UI (la app decide qué hace: router.push, modal, etc.)
-  onViewRow?: (row: any) => void;
-  onEditRow?: (row: any) => void;
-
-  // confirmación (si no lo pasas, usa window.confirm)
-  confirmDelete?: (row: any) => Promise<boolean>;
+type NormalizedColumn = {
+  field: string;
+  label: string;
+  type?: ColumnType;
+  width?: string;
+  options?: string[];
 };
+
+type Props = {
+  config?: any;
+  dataProvider?: any;
+  parentRecord?: any;
+  schemaFields?: any;
+
+  onViewRow?: any;
+  onEditRow?: any;
+  confirmDelete?: any;
+  resolveTable?: any;
+};
+
+// ---------------- unwrap helpers ----------------
+
+function unwrapConfig(cfg: any): LegacyConfig | null {
+  if (!cfg) return null;
+  if (cfg.treeViewConfig) return cfg.treeViewConfig as LegacyConfig;
+  return cfg as LegacyConfig;
+}
+function unwrapProvider(p: any): TreeViewDataProvider | null {
+  if (!p) return null;
+  if (p.treeViewProvider) return p.treeViewProvider as TreeViewDataProvider;
+  return p as TreeViewDataProvider;
+}
+function unwrapParentRecord(pr: any): any {
+  if (!pr) return undefined;
+  if (pr.treeViewParentRecord !== undefined) return pr.treeViewParentRecord;
+  return pr;
+}
+function unwrapSchemaFields(sf: any): any[] {
+  if (!sf) return [];
+  if (Array.isArray(sf)) return sf;
+  if (Array.isArray(sf.schemalog)) return sf.schemalog;
+  if (Array.isArray(sf.fields)) return sf.fields;
+  return [];
+}
+function unwrapFn(v: any, key?: string): any {
+  if (!v) return undefined;
+  if (typeof v === "function") return v;
+  if (key && typeof v?.[key] === "function") return v[key];
+  return undefined;
+}
+function unwrapResolveTable(v: any): ResolveTableFn | undefined {
+  if (!v) return undefined;
+  if (typeof v === "function") return v as ResolveTableFn;
+  if (typeof v?.resolveTable === "function") return v.resolveTable as ResolveTableFn;
+  return undefined;
+}
+
+// ---------------- format helpers ----------------
+
+function toBool(v: any) {
+  if (v === true) return true;
+  if (v === false) return false;
+  if (v === 1 || v === "1") return true;
+  if (v === 0 || v === "0") return false;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "true" || s === "yes" || s === "si") return true;
+    if (s === "false" || s === "no") return false;
+  }
+  return false;
+}
+
 
 function moneyFmt(currency = "EUR") {
   return new Intl.NumberFormat("es-ES", { style: "currency", currency });
 }
-
+function percentFmt() {
+  return new Intl.NumberFormat("es-ES", { style: "percent", maximumFractionDigits: 2 });
+}
 function formatDate(value: any, withTime: boolean) {
   if (value === null || value === undefined || value === "") return "—";
   const d = new Date(value);
@@ -117,8 +142,7 @@ function formatDate(value: any, withTime: boolean) {
 
   return new Intl.DateTimeFormat("es-ES", opts).format(d);
 }
-
-function renderValue(value: any, type: ColumnType = "text", currency?: string) {
+function renderPrimitive(value: any, type: ColumnType = "text", currency?: string) {
   if (value === null || value === undefined || value === "") return "—";
 
   switch (type) {
@@ -128,262 +152,470 @@ function renderValue(value: any, type: ColumnType = "text", currency?: string) {
       ) : (
         <span className="badge bg-secondary-subtle text-muted">No</span>
       );
-
     case "money":
       return moneyFmt(currency).format(Number(value || 0));
-
+    case "percent":
+      return percentFmt().format(Number(value || 0) / 100);
     case "date":
       return formatDate(value, false);
-
     case "datetime":
       return formatDate(value, true);
-
-    case "select":
-      return String(value);
-
     default:
       return String(value);
   }
 }
 
-export default function TreeView({
-  config,
-  dataProvider,
-  parentRecord,
-  onViewRow,
-  onEditRow,
-  confirmDelete,
-}: TreeViewProps) {
+// FK normalization: evita `[object Object]`, nulls, etc.
+function normalizeId(v: any): string | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s || s.toLowerCase() === "undefined" || s.toLowerCase() === "null") return null;
+    return s;
+  }
+  if (typeof v === "number") return String(v);
+  if (typeof v === "object") {
+    const maybe = (v as any).id ?? (v as any).value ?? null;
+    return normalizeId(maybe);
+  }
+  return null;
+}
+
+function normalizeColumns(input: any): NormalizedColumn[] {
+  const cols = Array.isArray(input) ? input : [];
+  const out: NormalizedColumn[] = [];
+
+  for (const c of cols) {
+    if (typeof c === "string") {
+      out.push({ field: c, label: "", type: "text" });
+      continue;
+    }
+    if (c && typeof c === "object") {
+      const field =
+        typeof c.field === "string"
+          ? c.field
+          : typeof c.name === "string"
+          ? c.name
+          : null;
+      if (!field) continue;
+
+      out.push({
+        field,
+        label: typeof c.label === "string" ? c.label : field,
+        type: (c.type as ColumnType) || undefined,
+        width: typeof c.width === "string" ? c.width : undefined,
+        options: Array.isArray(c.options) ? c.options : undefined,
+      });
+    }
+  }
+
+  // dedupe por field
+  const seen = new Set<string>();
+  return out.filter((c) => {
+    if (!c.field) return false;
+    if (seen.has(c.field)) return false;
+    seen.add(c.field);
+    return true;
+  });
+}
+
+function buildFieldsByName(schemaFields: any[]) {
+  const map: Record<string, any> = {};
+  for (const f of schemaFields || []) {
+    if (f?.name) map[f.name] = f;
+  }
+  return map;
+}
+
+function getLookupMeta(cache: Record<string, Record<string, LookupMeta>>, field: string, rawValue: any) {
+  const k = normalizeId(rawValue);
+  if (!k) return undefined;
+  return cache?.[field]?.[k];
+}
+
+function dedupeStrings(arr: string[]) {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const s of arr) {
+    if (!s || typeof s !== "string") continue;
+    if (seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+function getByPath(obj: any, path: string) {
+  if (!obj || !path) return undefined;
+  const parts = path.split(".").map((p) => p.trim()).filter(Boolean);
+  let cur = obj;
+  for (const key of parts) {
+    if (cur == null) return undefined;
+    cur = cur[key];
+  }
+  return cur;
+}
+
+
+
+export default function TreeView(p: Props) {
+  // unwrap props as you send them
+  const cfg = useMemo(() => unwrapConfig(p.config), [p.config]);
+  const provider = useMemo(() => unwrapProvider(p.dataProvider), [p.dataProvider]);
+  const parentRecord = useMemo(() => unwrapParentRecord(p.parentRecord), [p.parentRecord]);
+  const schemaFields = useMemo(() => unwrapSchemaFields(p.schemaFields), [p.schemaFields]);
+
+  const onViewRow = useMemo(() => unwrapFn(p.onViewRow, "onTreeViewRowView"), [p.onViewRow]);
+  const onEditRow = useMemo(() => unwrapFn(p.onEditRow, "onTreeViewRowEdit"), [p.onEditRow]);
+  const confirmDelete = useMemo(() => unwrapFn(p.confirmDelete, "confirmTreeViewDelete"), [p.confirmDelete]);
+  const resolveTable = useMemo(() => unwrapResolveTable(p.resolveTable), [p.resolveTable]);
+  const normalizedFilters = useMemo<TreeViewQuery["filters"]>(() => {
+  const raw = (cfg?.filters || []) as any[];
+  const out: TreeViewQuery["filters"] = [];
+
+  for (const f of raw) {
+    if (!f?.field || !f?.op) continue;
+
+    // ✅ valor fijo (legacy)
+    if ("value" in f) {
+      if (f.op === "eq") {
+        if (f.value === undefined) continue;
+        out.push({ op: "eq", field: f.field, value: f.value });
+      } else if (f.op === "in") {
+        if (!Array.isArray(f.value) || f.value.length === 0) continue;
+        out.push({ op: "in", field: f.field, value: f.value });
+      }
+      continue;
+    }
+
+    // ✅ valueFromParent (nuevo)
+    if (f.op === "eq" && typeof f.valueFromParent === "string") {
+      const v = getByPath(parentRecord, f.valueFromParent);
+      if (v === undefined) continue;
+      out.push({ op: "eq", field: f.field, value: v });
+      continue;
+    }
+
+    // ✅ valuesFromParent (nuevo, arrays)
+    if (f.op === "in" && typeof f.valuesFromParent === "string") {
+      const v = getByPath(parentRecord, f.valuesFromParent);
+      if (!Array.isArray(v) || v.length === 0) continue;
+      out.push({ op: "in", field: f.field, value: v });
+      continue;
+    }
+  }
+
+  return out;
+}, [cfg?.filters, parentRecord]);
+
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
-
   const [openGroupKey, setOpenGroupKey] = useState<string | null>(null);
   const [lookupCache, setLookupCache] = useState<Record<string, Record<string, LookupMeta>>>({});
 
-  const currency = config.totals?.currency || "EUR";
-  const sumField = config.totals?.sumField;
+  // legacy config fields
+  const sourceTable = cfg?.sourceTable;
+  const groupByField = Array.isArray(cfg?.groupBy) && cfg!.groupBy!.length ? cfg!.groupBy![0] : undefined;
+  const columns = useMemo(() => normalizeColumns(cfg?.columns), [cfg?.columns]);
+  const totals = cfg?.totals || {};
+  const currency = totals.currency || "EUR";
+  const sumField = totals.sumField;
 
-  const selectFields = useMemo(() => {
-  const source = config?.source;
-  const grouping = config?.grouping;
+  const isReady = !!sourceTable && !!groupByField;
 
-  // Si config no está listo, devolvemos un select mínimo seguro
-  if (!source || !grouping || !grouping.groupByField) return ["id"];
+  const fieldsByName = useMemo(() => buildFieldsByName(schemaFields), [schemaFields]);
 
-  if (Array.isArray(source.select) && source.select.length) return source.select;
-
-  const s = new Set<string>(["id", grouping.groupByField]);
-  if (grouping.groupTitleField) s.add(grouping.groupTitleField);
-
-  if (grouping.level?.levelField) s.add(grouping.level.levelField);
-
-  for (const c of config.columns || []) s.add(c.field);
-
-  if (config.totals?.enabled && config.totals.sumField) s.add(config.totals.sumField);
-
-  return Array.from(s);
-}, [config]);
+  // infer column types from schema if missing
+  const effectiveColumns: NormalizedColumn[] = useMemo(() => {
+    return columns.map((c) => {
+      const f = fieldsByName[c.field];
+      const hasRealLabel = !!c.label && c.label.trim() !== "" && c.label !== c.field;
+      const label = hasRealLabel ? c.label : (f?.label || c.field);
 
 
-  const resolvedFilters = useMemo(() => {
-    const out: Array<{ op: "eq" | "in"; field: string; value: any }> = [];
-    for (const f of config.source.filters || []) {
-      if (f.kind === "eq") {
-        const v = f.valueFromParent ? parentRecord?.[f.valueFromParent] : f.value;
-        if (v !== undefined) out.push({ op: "eq", field: f.field, value: v });
-      } else {
-        const v = f.valuesFromParent ? parentRecord?.[f.valuesFromParent] : f.values;
-        if (Array.isArray(v) && v.length) out.push({ op: "in", field: f.field, value: v });
+      let type = c.type;
+      if (!type && f?.type) {
+        if (f.type === "money") type = "money";
+        else if (f.type === "percent") type = "percent";
+        else if (f.type === "date") type = "date";
+        else if (f.type === "datetime") type = "datetime";
+        else if (f.type === "boolean") type = "boolean";
+        else if (f.type === "select") type = "select";
+        else type = "text";
       }
-    }
-    return out;
-  }, [config.source.filters, parentRecord]);
 
+      const options = c.options || f?.options;
+
+      return { ...c, label, type, options };
+    });
+  }, [columns, fieldsByName]);
+
+  // list select fields
+  const selectFields = useMemo(() => {
+    const s = new Set<string>(["id"]);
+    if (groupByField) s.add(groupByField);
+    for (const c of effectiveColumns) s.add(c.field);
+    if (totals.enabled && sumField) s.add(sumField);
+    return Array.from(s);
+  }, [groupByField, effectiveColumns, totals.enabled, sumField]);
+
+  // ---------------- selectorTabla lookups ----------------
+  // ✅ Regla: TODO selectorTabla intentará traer displayField + icon + color (siempre)
+  const selectorLookups = useMemo(() => {
+  const out: Array<{
+    field: string;
+    table: string;
+    valueField: string;
+    labelField: string;
+    hasStyle: boolean;
+    iconField?: string;
+    colorField?: string;
+  }> = [];
+
+  const addLookup = (fieldName: string) => {
+    const f = fieldsByName[fieldName];
+    if (!f || f.type !== "selectorTabla") return;
+
+    const ref = f.ref || {};
+    const moduleSlug = ref.moduleSlug;
+    const displayField = ref.displayField;
+
+    if (!moduleSlug || !displayField) return;
+    if (!resolveTable) return;
+
+    const resolved = resolveTable(moduleSlug);
+    if (!resolved?.table) return;
+
+    const hasStyle = toBool(ref.hasStyle);
+
+    out.push({
+      field: fieldName,
+      table: resolved.table,
+      valueField: ref.valueField || resolved.valueField || "id",
+      labelField: displayField,
+      hasStyle,
+      iconField: hasStyle ? (ref.styleIconField || "icon") : undefined,
+      colorField: hasStyle ? (ref.styleColorField || "color") : undefined,
+    });
+  };
+
+  for (const c of effectiveColumns) addLookup(c.field);
+  if (groupByField) addLookup(groupByField);
+
+  const by = new Map<string, any>();
+  for (const l of out) by.set(l.field, l);
+  return Array.from(by.values());
+}, [effectiveColumns, groupByField, fieldsByName, resolveTable]);
+
+
+  // ---------------- load rows ----------------
   async function loadRows() {
+    if (!isReady) {
+      setLoading(false);
+      setRows([]);
+      return;
+    }
+    if (!provider?.list) {
+      setLoading(false);
+      setError("TreeView: falta dataProvider.list()");
+      setRows([]);
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    try {
-      const data = await dataProvider.list({
-        table: config.source.table,
-        select: selectFields,
-        filters: resolvedFilters,
-        orderBy: config.source.orderBy,
+    console.log("TREE list query", {
+        table: sourceTable,
+        selectFields,
+        normalizedFilters,
+        parentId: parentRecord?.id,
       });
 
-      setRows(data || []);
+    try {
+      const data = await provider.list({
+        table: sourceTable!,
+        select: selectFields,
+        filters: normalizedFilters || [],
+        orderBy: cfg?.orderBy,
+      });
 
-      if (!openGroupKey && (data?.length || 0) > 0) {
-        const firstKey = String(data[0]?.[config.grouping.groupByField] ?? "");
-        setOpenGroupKey(firstKey || null);
+      const list = Array.isArray(data) ? data : [];
+      setRows(list);
+
+      if (!openGroupKey && list.length > 0) {
+        const k = normalizeId(list[0]?.[groupByField!]);
+        setOpenGroupKey(k || null);
       }
     } catch (e: any) {
       setError(e?.message || "Error cargando datos");
+      setRows([]);
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadLookups(currentRows: any[]) {
-    const lookups = config.lookups || [];
-    if (!lookups.length || !dataProvider.lookup) return;
+  // ---------------- load lookups ----------------
+  async function loadLookups(list: any[]) {
+    if (!provider?.lookup) return;
+    if (!selectorLookups.length) return;
 
-    const next: Record<string, Record<string, LookupMeta>> = {};
+    try {
+      const next: Record<string, Record<string, LookupMeta>> = {};
 
-    for (const l of lookups) {
-      const valueField = l.valueField || "id";
-      const ids = Array.from(
-        new Set(
-          currentRows
-            .map((r) => r?.[l.field])
-            .filter((x) => x !== null && x !== undefined && String(x) !== "")
-            .map((x) => String(x))
-        )
-      );
+      for (const lk of selectorLookups) {
+        const ids = dedupeStrings(
+          (list || [])
+            .map((r) => normalizeId(r?.[lk.field]))
+            .filter(Boolean) as string[]
+        );
 
-      next[l.field] = {};
-      if (!ids.length) continue;
+        next[lk.field] = {};
+        if (!ids.length) continue;
 
-      const select = [valueField, l.labelField, l.iconField, l.colorField].filter(Boolean) as string[];
+        // ✅ siempre pedir: valueField + labelField + icon + color
+        const baseSelect = [lk.valueField, lk.labelField];
 
-      const data = await dataProvider.lookup({
-        table: l.table,
-        valueField,
-        ids,
-        select,
-      });
+        const styleSelect = lk.hasStyle
+          ? [lk.iconField, lk.colorField].filter(Boolean)
+          : [];
 
-      const map: Record<string, LookupMeta> = {};
-      for (const item of data || []) {
-        const key = String(item?.[valueField]);
-        map[key] = {
-          label: item?.[l.labelField],
-          icon: l.iconField ? item?.[l.iconField] : undefined,
-          color: l.colorField ? item?.[l.colorField] : undefined,
-        };
+        const select = dedupeStrings([...baseSelect, ...(styleSelect as string[])]);
+
+
+        const data = await provider.lookup({
+          table: lk.table,
+          valueField: lk.valueField,
+          ids,
+          select,
+        });
+
+        const map: Record<string, LookupMeta> = {};
+        for (const item of data || []) {
+          const key = normalizeId(item?.[lk.valueField]);
+          if (!key) continue;
+
+          map[key] = {
+            label: item?.[lk.labelField],
+            icon: item?.[lk.iconField],
+            color: item?.[lk.colorField],
+          };
+        }
+
+        next[lk.field] = map;
       }
 
-      next[l.field] = map;
+      setLookupCache(next);
+    } catch (e: any) {
+      setError((prev) => prev || e?.message || "Error cargando lookups");
     }
-
-    setLookupCache(next);
   }
 
   useEffect(() => {
     loadRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.source.table, JSON.stringify(selectFields), JSON.stringify(resolvedFilters), JSON.stringify(config.source.orderBy || {})]);
+  }, [
+    isReady,
+    sourceTable,
+    JSON.stringify(selectFields),
+    JSON.stringify(normalizedFilters),
+    JSON.stringify(cfg?.orderBy || {}),
+    provider,
+  ]);
 
   useEffect(() => {
-    if (rows.length) loadLookups(rows);
+    if (!rows.length) return;
+    loadLookups(rows);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows.length]);
+  }, [rows.length, JSON.stringify(selectorLookups), provider?.lookup]);
 
+  // ---------------- group ----------------
   const grouped = useMemo(() => {
-    const groupBy = config.grouping.groupByField;
-    const level = config.grouping.level;
+    if (!isReady) return [];
 
     const groups = new Map<string, any[]>();
     for (const r of rows) {
-      const k = String(r?.[groupBy] ?? "");
+      const k = normalizeId(r?.[groupByField!]) || "";
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k)!.push(r);
     }
 
     const out = Array.from(groups.entries()).map(([key, items]) => {
-      let levels: Array<{ levelKey: string; items: any[] }> | null = null;
-
-      if (level?.levelField) {
-        const lm = new Map<string, any[]>();
-        for (const it of items) {
-          const lk = String(it?.[level.levelField] ?? "—");
-          if (!lm.has(lk)) lm.set(lk, []);
-          lm.get(lk)!.push(it);
-        }
-
-        levels = Array.from(lm.entries())
-          .sort((a, b) => {
-            const na = Number(a[0]);
-            const nb = Number(b[0]);
-            const bothNum = !Number.isNaN(na) && !Number.isNaN(nb);
-            if (bothNum) return (level.order === "desc" ? nb - na : na - nb);
-            return (level.order === "desc" ? b[0].localeCompare(a[0]) : a[0].localeCompare(b[0]));
-          })
-          .map(([levelKey, its]) => ({ levelKey, items: its }));
-      }
-
       const total =
-        config.totals?.enabled && sumField
+        totals.enabled && sumField
           ? items.reduce((acc, it) => acc + Number(it?.[sumField] || 0), 0)
           : 0;
-
-      return { key, items, levels, total };
+      return { key, items, total };
     });
 
-    // Ordenar grupos por label (si lookup) o key
-    const groupLookup = (config.lookups || []).find((l) => l.field === groupBy);
-    out.sort((a, b) => {
-      const la = groupLookup ? (lookupCache?.[groupLookup.field]?.[a.key]?.label || a.key) : a.key;
-      const lb = groupLookup ? (lookupCache?.[groupLookup.field]?.[b.key]?.label || b.key) : b.key;
-      return String(la).localeCompare(String(lb));
-    });
+    const headerFieldDef = groupByField ? fieldsByName[groupByField] : null;
+    if (headerFieldDef?.type === "selectorTabla") {
+      out.sort((a, b) => {
+        const la = getLookupMeta(lookupCache, groupByField!, a.key)?.label || a.key;
+        const lb = getLookupMeta(lookupCache, groupByField!, b.key)?.label || b.key;
+        return String(la).localeCompare(String(lb));
+      });
+    } else {
+      out.sort((a, b) => String(a.key).localeCompare(String(b.key)));
+    }
 
     return out;
-  }, [rows, config, lookupCache, sumField]);
+  }, [isReady, rows, groupByField, totals.enabled, sumField, fieldsByName, lookupCache]);
 
   const grandTotal = useMemo(() => {
-    if (!config.totals?.enabled || !sumField) return 0;
+    if (!totals.enabled || !sumField) return 0;
     return rows.reduce((acc, r) => acc + Number(r?.[sumField] || 0), 0);
-  }, [rows, config.totals?.enabled, sumField]);
+  }, [rows, totals.enabled, sumField]);
 
-  async function handleDelete(row: any) {
-    if (!config.actions?.enableDelete) return;
-    if (!dataProvider.remove) {
-      setError("Delete no disponible: falta dataProvider.remove()");
-      return;
-    }
-
-    const ok = confirmDelete
-      ? await confirmDelete(row)
-      : window.confirm(`¿Eliminar el registro "${row?.id}"?`);
-
-    if (!ok) return;
-
-    setError(null);
-    try {
-      const table = config.actions.deleteTable || config.source.table;
-      await dataProvider.remove(table, row.id);
-      await loadRows();
-    } catch (e: any) {
-      setError(e?.message || "No se pudo eliminar");
-    }
-  }
-
+  // ---------------- render helpers ----------------
   const renderGroupHeader = (groupKey: string) => {
-    const groupBy = config.grouping.groupByField;
-    const groupLookup = (config.lookups || []).find((l) => l.field === groupBy);
-    const meta = groupLookup ? lookupCache?.[groupLookup.field]?.[groupKey] : undefined;
-    const label = meta?.label || groupKey || "—";
+    if (!groupByField) return <div className="fw-bold">{groupKey}</div>;
 
-    return (
-      <div className="fw-bold d-flex align-items-center gap-2">
-        {meta?.icon && <i className={meta.icon} style={{ color: meta.color || "inherit" }} aria-hidden />}
-        <span>{label}</span>
-      </div>
-    );
+    const f = fieldsByName[groupByField];
+    if (f?.type === "selectorTabla") {
+      const meta = getLookupMeta(lookupCache, groupByField, groupKey);
+      return (
+        <div className="fw-bold d-flex align-items-center gap-2">
+          {meta?.icon && <i className={meta.icon} style={{ color: meta.color || "inherit" }} aria-hidden />}
+          <span>{meta?.label || String(groupKey || "—")}</span>
+        </div>
+      );
+    }
+
+    return <div className="fw-bold">{String(groupKey || "—")}</div>;
+  };
+
+  const renderCell = (row: any, col: NormalizedColumn) => {
+    const f = fieldsByName[col.field];
+    const raw = row?.[col.field];
+
+    if (f?.type === "selectorTabla") {
+      const meta = getLookupMeta(lookupCache, col.field, raw);
+      if (meta?.label) {
+        return (
+          <span className="d-inline-flex align-items-center gap-2">
+            {meta.icon && <i className={meta.icon} style={{ color: meta.color || "inherit" }} aria-hidden />}
+            <span>{meta.label}</span>
+          </span>
+        );
+      }
+      const id = normalizeId(raw);
+      return <span className="text-muted">{id || "—"}</span>;
+    }
+
+    return <>{renderPrimitive(raw, col.type || "text", currency)}</>;
   };
 
   const renderTable = (items: any[]) => (
-    <div style={{ overflowX: "auto" }}>
+    <div className="table-responsive">
       <table className="table table-hover align-middle mb-0">
         <thead>
           <tr className="text-muted small">
-            {config.columns.map((c) => (
-              <th key={c.field} style={c.width ? { width: c.width } : undefined}>
+            {(effectiveColumns || []).map((c, idx) => (
+              <th key={`${c.field}__${idx}`} style={c.width ? { width: c.width } : undefined}>
                 {c.label}
               </th>
             ))}
-            {(onViewRow || onEditRow || config.actions?.enableDelete) && (
+            {(onViewRow || onEditRow) && (
               <th className="text-end" style={{ width: "1%" }}>
                 Acciones
               </th>
@@ -392,51 +624,33 @@ export default function TreeView({
         </thead>
 
         <tbody>
-          {items.map((r) => (
-            <tr key={r.id}>
-              {config.columns.map((c) => {
-                // Si la columna es FK y hay lookup para ese field, renderiza label
-                const lk = (config.lookups || []).find((l) => l.field === c.field);
-                const raw = r?.[c.field];
-                const meta = lk ? lookupCache?.[lk.field]?.[String(raw ?? "")] : undefined;
-                const valueToRender = meta?.label ?? raw;
+          {items.map((r, ridx) => (
+            <tr key={normalizeId(r?.id) || String(ridx)}>
+              {(effectiveColumns || []).map((c, idx) => (
+                <td key={`${c.field}__${idx}`} className="fw-semibold">
+                  {renderCell(r, c)}
+                </td>
+              ))}
 
-                return (
-                  <td key={c.field} className="fw-semibold">
-                    {renderValue(valueToRender, c.type || "text", currency)}
-                  </td>
-                );
-              })}
-
-              {(onViewRow || onEditRow || config.actions?.enableDelete) && (
+              {(onViewRow || onEditRow) && (
                 <td className="text-end text-nowrap">
-                  {onViewRow && (
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-secondary me-2"
-                      onClick={() => onViewRow(r)}
-                    >
-                      <i className="bi bi-eye" /> Ver
-                    </button>
-                  )}
-                  {onEditRow && (
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-primary me-2"
-                      onClick={() => onEditRow(r)}
-                    >
-                      <i className="bi bi-pencil" /> Editar
-                    </button>
-                  )}
-                  {config.actions?.enableDelete && (
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-danger"
-                      onClick={() => handleDelete(r)}
-                    >
-                      <i className="bi bi-trash" /> Eliminar
-                    </button>
-                  )}
+
+                  <td className="text-end text-nowrap">
+                                        <ActionMenu
+                                          items={[
+                                            onViewRow && {
+                                              label: "Ver",
+                                              icon: <i className="bi bi-eye" />,
+                                              onClick: () => onViewRow(r),
+                                            },
+                                            onEditRow && {
+                                              label: "Editar",
+                                              icon: <i className="bi bi-pencil" />,
+                                              onClick: () => onEditRow(r),
+                                            }
+                                          ]}
+                                        />
+                                      </td>
                 </td>
               )}
             </tr>
@@ -446,9 +660,48 @@ export default function TreeView({
     </div>
   );
 
+  // ---------------- guards / UX ----------------
+  if (!p.config) return <div className="alert alert-warning mb-0">TreeView: falta <code>config</code>.</div>;
+  if (!cfg) return <div className="alert alert-warning mb-0">TreeView: config inválido.</div>;
+  if (!provider) return <div className="alert alert-warning mb-0">TreeView: falta <code>dataProvider</code>.</div>;
+
+  if (!isReady) {
+    return (
+      <div className="alert alert-warning mb-0">
+        TreeView: configuración incompleta.
+        <div className="small text-muted mt-1">
+          Requiere <code>sourceTable</code> y <code>groupBy[0]</code>.
+        </div>
+      </div>
+    );
+  }
+
+  const hasSelectorColumns =
+    effectiveColumns.some((c) => fieldsByName[c.field]?.type === "selectorTabla") ||
+    (groupByField && fieldsByName[groupByField]?.type === "selectorTabla");
+
+  const missingResolve = hasSelectorColumns && !resolveTable;
+  const missingLookup = hasSelectorColumns && !provider.lookup;
+
   return (
     <div className="d-flex flex-column gap-3">
-      {config.ui?.title && <div className="fw-semibold">{config.ui.title}</div>}
+      <div className="d-flex align-items-center justify-content-between">
+        
+        
+      </div>
+
+      {missingResolve && (
+        <div className="alert alert-warning py-2 mb-0">
+          Hay campos <code>selectorTabla</code> pero no se recibió <code>resolveTable()</code>. Sin esto no se puede
+          resolver la tabla destino para el lookup.
+        </div>
+      )}
+
+      {missingLookup && (
+        <div className="alert alert-warning py-2 mb-0">
+          Hay campos <code>selectorTabla</code> pero el provider no tiene <code>lookup()</code>. Sin lookup, se verán IDs.
+        </div>
+      )}
 
       {error && <div className="alert alert-danger py-2 mb-0">{error}</div>}
 
@@ -460,7 +713,6 @@ export default function TreeView({
         <div className="accordion" id="acc-treeview">
           {grouped.map((g) => {
             const isOpen = openGroupKey === g.key;
-            const badgeCount = g.items.length;
 
             return (
               <div className="accordion-item" key={g.key || "empty"}>
@@ -473,8 +725,8 @@ export default function TreeView({
                     <div className="d-flex w-100 align-items-center justify-content-between">
                       {renderGroupHeader(g.key)}
                       <div className="ms-3 d-flex align-items-center gap-2">
-                        <span className="badge text-bg-light">{badgeCount}</span>
-                        {config.totals?.enabled && config.totals?.showGroupTotals && (
+                        <span className="badge text-bg-light">{g.items.length}</span>
+                        {totals.enabled && totals.showGroupTotals && sumField && (
                           <span className="badge bg-dark">{moneyFmt(currency).format(g.total)}</span>
                         )}
                       </div>
@@ -483,37 +735,13 @@ export default function TreeView({
                 </h2>
 
                 <div className={`accordion-collapse collapse ${isOpen ? "show" : ""}`}>
-                  <div className="accordion-body">
-                    {g.levels ? (
-                      <div className="d-flex flex-column gap-3">
-                        {g.levels.map((lv) => (
-                          <div key={lv.levelKey} className="card">
-                            <div className="card-header d-flex justify-content-between align-items-center">
-                              <div className="fw-semibold">
-                                {(config.grouping.level?.labelPrefix || "Nivel")} {lv.levelKey}
-                              </div>
-                              {config.totals?.enabled && config.totals?.showGroupTotals && sumField && (
-                                <span className="badge bg-dark">
-                                  {moneyFmt(currency).format(
-                                    lv.items.reduce((acc, it) => acc + Number(it?.[sumField] || 0), 0)
-                                  )}
-                                </span>
-                              )}
-                            </div>
-                            <div className="card-body p-0">{renderTable(lv.items)}</div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      renderTable(g.items)
-                    )}
-                  </div>
+                  <div className="accordion-body">{renderTable(g.items)}</div>
                 </div>
               </div>
             );
           })}
 
-          {config.totals?.enabled && config.totals?.showGrandTotal && (
+          {totals.enabled && totals.showGrandTotal && sumField && (
             <div className="d-flex justify-content-end align-items-center gap-2 mt-3 pt-3 border-top">
               <div className="fw-semibold">Total</div>
               <div className="fw-bold fs-5">

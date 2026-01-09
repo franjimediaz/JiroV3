@@ -12,6 +12,7 @@ import  TreeView  from "./TreeView";
 
 
 
+
 type Mode = "view" | "edit" | "create";
 
 type Props = {
@@ -34,6 +35,9 @@ type Props = {
   onTreeViewRowView?: (row: any) => void;
   onTreeViewRowEdit?: (row: any) => void;
   confirmTreeViewDelete?: (row: any) => Promise<boolean>;
+  modulesBySlug?: Record<string, { db?: { table?: string; primaryKey?: string } }>;
+  schemasBySlug?: Record<string, ModuleSchema>;
+
 };
 
 
@@ -54,6 +58,8 @@ export default function Form({
   onTreeViewRowView,
   onTreeViewRowEdit,
   confirmTreeViewDelete,
+  schemasBySlug,
+  modulesBySlug
 }: Props) {
   // Derivar modo por defecto si no viene
   const effectiveMode: Mode = mode || (readOnly ? "view" : "edit");
@@ -95,35 +101,54 @@ export default function Form({
   //    - si hay tabs explícitos: úsalo tal cual
   //    - si NO hay tabs explícitos: NO mostramos barra principal, pero sí podemos “inyectar”
   //      pestañas TreeView/Calendar solo si tienes config (y así el usuario puede acceder).
-  const uiTabs = useMemo<UiTab[]>(() => {
-    if (tabsDesdeSchema.length > 0) return tabsDesdeSchema;
+const uiTabs = useMemo<UiTab[]>(() => {
+  // 1) Si hay tabs explícitos en schema: respétalos tal cual
+  if (tabsDesdeSchema.length > 0) return tabsDesdeSchema;
 
-    const out: UiTab[] = [];
+  // 2) Si NO hay tabs explícitos:
+  //    - Si no hay configs legacy, no mostramos tabs (modo clásico)
+  const hasLegacy = !!legacyTreeCfg || !!legacyCalendarCfg;
+  if (!hasLegacy) return [];
 
-    // Solo añadimos pestañas no-form si existen configs legacy
-    if (legacyTreeCfg) {
-      out.push({
-        id: "__treeview__",
-        label: legacyTreeCfg?.ui?.title || "TreeView",
-        type: "treeview",
-        config: legacyTreeCfg,
-      });
-    }
+  // 3) Si hay configs legacy, montamos pestañas:
+  //    Formulario + (TreeView?) + (Calendar?)
+  const out: UiTab[] = [
+    {
+      id: "__form__",
+      label: "Formulario",
+      type: "form",
+      config: { formSections: (schema.ui as any)?.formSections || [] },
+    },
+  ];
 
-    if (legacyCalendarCfg) {
-      out.push({
-        id: "__calendar__",
-        label: legacyCalendarCfg?.ui?.title || "Calendario",
-        type: "calendar",
-        config: legacyCalendarCfg,
-      });
-    }
+  if (legacyTreeCfg) {
+    out.push({
+      id: "__treeview__",
+      label: legacyTreeCfg?.ui?.title || "TreeView",
+      type: "treeview",
+      config: legacyTreeCfg,
+    });
+  }
 
-    // Si no hay nada, el Form se renderiza sin tabs (modo clásico)
-    return out;
-  }, [tabsDesdeSchema, legacyTreeCfg, legacyCalendarCfg]);
+  if (legacyCalendarCfg) {
+    out.push({
+      id: "__calendar__",
+      label: legacyCalendarCfg?.ui?.title || "Calendario",
+      type: "calendar",
+      config: legacyCalendarCfg,
+    });
+  }
+
+  return out;
+}, [tabsDesdeSchema, legacyTreeCfg, legacyCalendarCfg, schema.ui]);
+
+
+
 
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+
+
+
 
   useEffect(() => {
     if (!uiTabs.length) {
@@ -422,19 +447,104 @@ export default function Form({
   const showFormContent = !activeTab || activeTab.type === "form";
   const showReverseLinks = showFormContent;
 
+  const resolveTable = useMemo(() => {
+  return (moduleSlug: string) => {
+    const m = modulesBySlug?.[moduleSlug];
+
+    // 1) props.db.table (lo ideal)
+    const table = m?.db?.table;
+
+    // 2) si guardas tabla en otro sitio (por si tu row ya viene “plano”)
+    const table2 = (m as any)?.table;
+
+    const finalTable = table || table2;
+    if (!finalTable) return null;
+
+    return { table: finalTable, valueField: m?.db?.primaryKey || "id" || "uid"};
+  };
+}, [modulesBySlug]);
+
+
   // TreeView: dónde sacamos la config real
   // - si activeTab es treeview: usa su config
   // - si no hay tabs: usa schema.ui.treeView
   const treeViewConfig = useMemo(() => {
     if (activeTab?.type === "treeview") return activeTab.config ?? null;
+    
     return legacyTreeCfg;
   }, [activeTab, legacyTreeCfg]);
+
+  console.log("FORM -> TreeView props", {
+      activeTabId,
+      treeViewConfig,
+      treeViewProvider: !!treeViewProvider,
+      modulesBySlugKeys: Object.keys(modulesBySlug || {}).slice(0, 10),
+      parentRecordId: (treeViewParentRecord ?? values)?.id,
+    });
 
   // Calendar: idem (placeholder)
   const calendarConfig = useMemo(() => {
     if (activeTab?.type === "calendar") return activeTab.config ?? null;
     return legacyCalendarCfg;
   }, [activeTab, legacyCalendarCfg]);
+
+const tvTable =
+  (treeViewConfig as any)?.source?.table ??
+  (treeViewConfig as any)?.sourceTable ??
+  "—";
+
+const tvGroupBy =
+  (treeViewConfig as any)?.grouping?.groupByField ??
+  (Array.isArray((treeViewConfig as any)?.groupBy) ? (treeViewConfig as any).groupBy[0] : undefined) ??
+  "—";
+
+  useEffect(() => {
+  if (activeTab?.type !== "treeview") return;
+
+  console.log("FORM -> TreeView props", {
+    activeTabId,
+    activeTab,
+    treeViewConfig: activeTab.config ?? null,
+    treeViewProvider: !!treeViewProvider,
+    modulesBySlugKeys: Object.keys(modulesBySlug || {}).slice(0, 10),
+    parentRecordId: (treeViewParentRecord ?? values)?.id,
+  });
+}, [activeTab?.type, activeTabId, activeTab, treeViewProvider, modulesBySlug, treeViewParentRecord, values]);
+
+
+const treeSourceSlug =
+  (treeViewConfig as any)?.source?.table ??
+  (treeViewConfig as any)?.sourceTable ??
+  null;
+
+const treeSchemaFields = useMemo(() => {
+  if (!treeSourceSlug) return schema.fields;
+  const modSchema = schemasBySlug?.[treeSourceSlug];
+  return modSchema?.fields || schema.fields;
+}, [schemasBySlug, treeSourceSlug, schema.fields]);
+
+  useEffect(() => {
+  if (activeTab?.type !== "treeview") return;
+  console.log("TREE schemaFields chosen", {
+    treeSourceSlug,
+    treeSchemaFieldsCount: treeSchemaFields?.length,
+    exampleFields: (treeSchemaFields || []).slice(0, 5).map((f:any) => ({ name: f.name, type: f.type })),
+  });
+}, [activeTab?.type, treeSourceSlug, treeSchemaFields]);
+useEffect(() => {
+  if (activeTab?.type !== "treeview") return;
+
+  console.log("TREE schema debug", {
+    treeSourceSlug,
+    schemaFieldsFromSource_firstNames: (schemasBySlug?.[treeSourceSlug || ""]?.fields || [])
+      .slice(0, 8)
+      .map((f: any) => f.name),
+    currentSchema_firstNames: (schema.fields || []).slice(0, 8).map((f: any) => f.name),
+    sameReference: schemasBySlug?.[treeSourceSlug || ""]?.fields === schema.fields,
+  });
+}, [activeTab?.type, treeSourceSlug, schemasBySlug, schema.fields]);
+
+
 
   // ---------------- Render principal ----------------
   return (
@@ -543,6 +653,7 @@ export default function Form({
           </div>
 
           <div className="card-body">
+            
             {!treeViewConfig ? (
               <div className="alert alert-warning mb-0">
                 No hay configuración de TreeView en el módulo (schema.ui.treeView o tab.config).
@@ -555,14 +666,19 @@ export default function Form({
                 </div>
               </div>
             ) : (
+              
               <TreeView
                 config={treeViewConfig}
                 dataProvider={treeViewProvider}
                 parentRecord={treeViewParentRecord ?? values}
+                schemaFields={treeSchemaFields}
                 onViewRow={onTreeViewRowView}
                 onEditRow={onTreeViewRowEdit}
                 confirmDelete={confirmTreeViewDelete}
+                resolveTable={resolveTable}  
+                
               />
+              
             )}
           </div>
         </div>

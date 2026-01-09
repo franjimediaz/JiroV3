@@ -156,7 +156,7 @@ export type UiTab =
       id: string;
       label: string;
       type: "treeview";
-      config?: { sourceTable?: string; groupBy?: string[]; columns?: string[] };
+      config?: TreeViewConfigLegacy | TreeViewConfig | any;
     }
   | {
       id: string;
@@ -336,4 +336,9 @@ export type TreeViewDataProvider = {
   list: (query: TreeViewQuery) => Promise<any[]>;
   lookup?: (query: LookupQuery) => Promise<any[]>;
   remove?: (table: string, id: string) => Promise<void>;
+};
+type TreeViewConfigLegacy = {
+  sourceTable?: string;
+  groupBy?: string[];
+  columns?: string[];
 };

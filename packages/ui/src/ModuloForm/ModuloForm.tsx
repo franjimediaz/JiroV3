@@ -1689,77 +1689,185 @@ export default function ModuloForm({
 
               {/* Config TreeView */}
               {t.type === "treeview" && (
-                <div className={styles.card} style={{ marginTop: 12 }}>
-                  <h4 style={{ marginTop: 0 }}>Config TreeView</h4>
-                  <div className={styles.grid}>
-                    <div>
-                      <label className={styles.label}>Tabla destino (sourceTable)</label>
-                      <input
-                        className={styles.input}
-                        value={t.config?.sourceTable || ""}
-                        onChange={(e) =>
-                          updateTab((prev) => {
-                            if (prev.type !== "treeview") return prev;
-                            return {
-                              ...prev,
-                              config: { ...(prev.config || {}), sourceTable: e.target.value },
-                            };
-                          })
-                        }
-                        disabled={readOnly}
-                      />
-                    </div>
+                      <div className={styles.card} style={{ marginTop: 12 }}>
+                        <h4 style={{ marginTop: 0 }}>Config TreeView</h4>
 
-                    <div>
-                      <label className={styles.label}>groupBy (coma)</label>
-                      <input
-                        className={styles.input}
-                        value={(t.config?.groupBy || []).join(",")}
-                        onChange={(e) =>
-                          updateTab((prev) => {
-                            if (prev.type !== "treeview") return prev;
-                            return {
-                              ...prev,
-                              config: {
-                                ...(prev.config || {}),
-                                groupBy: e.target.value
-                                  .split(",")
-                                  .map((s) => s.trim())
-                                  .filter(Boolean),
-                              },
-                            };
-                          })
-                        }
-                        disabled={readOnly}
-                      />
-                    </div>
+                        <div className={styles.grid}>
+                          <div>
+                            <label className={styles.label}>Tabla destino (source.table)</label>
+                            <input
+                              className={styles.input}
+                              value={t.config?.source?.table || t.config?.sourceTable || ""}
+                              onChange={(e) =>
+                                updateTab((prev) => {
+                                  if (prev.type !== "treeview") return prev;
 
-                    <div>
-                      <label className={styles.label}>columns (coma)</label>
-                      <input
-                        className={styles.input}
-                        value={(t.config?.columns || []).join(",")}
-                        onChange={(e) =>
-                          updateTab((prev) => {
-                            if (prev.type !== "treeview") return prev;
-                            return {
-                              ...prev,
-                              config: {
-                                ...(prev.config || {}),
-                                columns: e.target.value
-                                  .split(",")
-                                  .map((s) => s.trim())
-                                  .filter(Boolean),
-                              },
-                            };
-                          })
-                        }
-                        disabled={readOnly}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
+                                  const table = e.target.value;
+
+                                  return {
+                                    ...prev,
+                                    config: {
+                                      ...(prev.config || {}),
+
+                                      // ✅ nuevo
+                                      source: { ...(prev.config?.source || {}), table },
+
+                                      // (opcional) legacy para no perder compatibilidad con configs antiguas
+                                      sourceTable: table,
+                                    },
+                                  };
+                                })
+                              }
+                              disabled={readOnly}
+                            />
+                          </div>
+                          <div>
+                            <label className={styles.label}>Filtro por padre (campo FK en source)</label>
+                            <input
+                              className={styles.input}
+                              value={(t.config?.filters?.[0]?.field as string) || ""}
+                              onChange={(e) =>
+                                updateTab((prev) => {
+                                  if (prev.type !== "treeview") return prev;
+
+                                  const field = e.target.value;
+
+                                  return {
+                                    ...prev,
+                                    config: {
+                                      ...(prev.config || {}),
+                                      filters: field
+                                        ? [{ op: "eq", field, valueFromParent: "id" }]
+                                        : [],
+                                    },
+                                  };
+                                })
+                              }
+                              disabled={readOnly}
+                              placeholder="Ej: proyectoId"
+                            />
+                            <div className={styles.help}>Se aplicará: field = parentRecord.id</div>
+                          </div>
+
+
+                          <div>
+                            <label className={styles.label}>groupBy (campo)</label>
+                            <input
+                              className={styles.input}
+                              value={t.config?.grouping?.groupByField || (t.config?.groupBy || [])[0] || ""}
+                              onChange={(e) =>
+                                updateTab((prev) => {
+                                  if (prev.type !== "treeview") return prev;
+
+                                  const groupByField = e.target.value.trim();
+
+                                  return {
+                                    ...prev,
+                                    config: {
+                                      ...(prev.config || {}),
+
+                                      // ✅ nuevo
+                                      grouping: {
+                                        ...(prev.config?.grouping || {}),
+                                        groupByField,
+                                      },
+
+                                      // (opcional) legacy como array para tu UI actual
+                                      groupBy: groupByField ? [groupByField] : [],
+                                    },
+                                  };
+                                })
+                              }
+                              disabled={readOnly}
+                            />
+                          </div>
+
+                          <div>
+                            <label className={styles.label}>columns (coma → field list)</label>
+                            <input
+                              className={styles.input}
+                              value={
+                                Array.isArray(t.config?.columns)
+                                  ? (
+                                      // si ya está en formato nuevo [{field,...}]
+                                      t.config.columns[0] && typeof t.config.columns[0] === "object"
+                                        ? t.config.columns.map((c: any) => c.field).join(",")
+                                        : // legacy string[]
+                                          (t.config.columns || []).join(",")
+                                    )
+                                  : (t.config?.columns || []).join(",")
+                              }
+                              onChange={(e) =>
+                                updateTab((prev) => {
+                                  if (prev.type !== "treeview") return prev;
+
+                                  const fields = e.target.value
+                                    .split(",")
+                                    .map((s) => s.trim())
+                                    .filter(Boolean);
+
+                                  return {
+                                    ...prev,
+                                    config: {
+                                      ...(prev.config || {}),
+
+                                      // ✅ nuevo: columns como objetos mínimos
+                                      columns: fields.map((f) => ({
+                                        field: f,
+                                        label: f,
+                                        // type opcional (si no lo defines, TreeView lo trata como text)
+                                      })),
+
+                                      // (opcional) legacy
+                                      // columnsLegacy: fields,
+                                    },
+                                  };
+                                })
+                              }
+                              disabled={readOnly}
+                            />
+                          </div>
+
+                          <div>
+                            <label className={styles.label}>Sum Field (opcional)</label>
+                            <input
+                              className={styles.input}
+                              value={t.config?.totals?.sumField || ""}
+                              onChange={(e) =>
+                                updateTab((prev) => {
+                                  if (prev.type !== "treeview") return prev;
+
+                                  const sumField = e.target.value.trim();
+
+                                  return {
+                                    ...prev,
+                                    config: {
+                                      ...(prev.config || {}),
+                                      totals: sumField
+                                        ? {
+                                            ...(prev.config?.totals || {}),
+                                            enabled: true,
+                                            sumField,
+                                            showGroupTotals: true,
+                                            showGrandTotal: true,
+                                          }
+                                        : { enabled: false, sumField: "" },
+                                    },
+                                  };
+                                })
+                              }
+                              disabled={readOnly}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="small text-muted mt-2">
+                          Nota: el TreeView genérico espera <code>source.table</code>, <code>grouping.groupByField</code> y{" "}
+                          <code>columns</code> como objetos.
+                        </div>
+                      </div>
+                    )}
+
 
               {/* Config Calendario */}
               {t.type === "calendar" && (

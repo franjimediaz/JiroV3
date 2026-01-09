@@ -1,36 +1,35 @@
 "use client";
 
-import {ListView} from "@repo/ui"; // ruta donde lo hayas guardado
-import type { ModuleSchema } from "@repo/types";
+import { ListView} from "@repo/ui";
 import { useConfirm } from "@/lib/hooks/useConfirm";
-import { RequirePerms, usePerms } from "@/lib/perms";
+import type { ModuleSchema } from "@repo/types";
 import { useRouter } from "next/navigation";
+import { RequirePerms, usePerms } from "@/lib/perms";
 import { createClient } from "@/lib/supabase/client";
+
+
 
 const CFG = {
   moduleSlug: "users",
   titleSingular: "Usuario",
-  displayField: "title",
+  displayField: "name",
   route:"/system/users/"
 } as const;
 
 
-type Customer = {
-  id: string;
-  name?: string;
-  email?: string;
-};
 
-type RolPageClientProps = {
-  Rol: Customer[];
-  schema: ModuleSchema; // ⬅️ añadimos el schema del módulo
-};
+export default function PageClient({
+  customers,
+  schema,
+}: {
+  customers: any[];
+  schema: ModuleSchema;
+}) {
 
-export default function PageClient({ Rol, schema }: RolPageClientProps) {
 
-const router = useRouter();
-const { loading, hasPermiso } = usePerms();
- const { confirm, modal, inform  } = useConfirm();
+  const router = useRouter();
+  const { loading, hasPermiso } = usePerms();
+  const { confirm, modal, inform  } = useConfirm();
 
   const handleDelete = async (row: any) => {
     // 1) permiso (UX)
@@ -131,20 +130,23 @@ const { loading, hasPermiso } = usePerms();
   router.push(`${CFG.route}new`);
 };
 
-      if (loading) return null;
+
+
+  if (loading) return null;
 
   return (
-    <RequirePerms modulo="rol" accion="ver">
-
+    <RequirePerms modulo={CFG.moduleSlug} accion="ver">
+      <>
+      {modal}
       <ListView
         schema={schema}
-        data={Rol}
+        data={customers}
         onViewRow={handleView}
         onEditRow={handleEdit}
         onDeleteRow={handleDelete}
         onCreate={handleCreate}
       />
-      </RequirePerms>
-    
+      </>
+    </RequirePerms>
   );
 }
