@@ -729,12 +729,12 @@ const handleEdit = onEditRow
                 <td className="text-end text-nowrap">
                 <ActionMenu
                   items={[
-                    onViewRow && {
+                    handleView && {
                       label: "Ver",
                       icon: <i className="bi bi-eye" />,
                       onClick: () => handleView?.(r),
                     },
-                    onEditRow && {
+                    handleEdit && {
                       label: "Editar",
                       icon: <i className="bi bi-pencil" />,
                       onClick: () => handleEdit?.(r),
@@ -773,6 +773,11 @@ const handleEdit = onEditRow
 
   const missingResolve = hasSelectorColumns && !resolveTable;
   const missingLookup = hasSelectorColumns && !provider.lookup;
+
+  useEffect(() => {
+  console.log("TREE route debug", { sourceTable, baseRoute });
+}, [sourceTable, baseRoute]);
+
 
   return (
     <div className="d-flex flex-column gap-3">

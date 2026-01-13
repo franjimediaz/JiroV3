@@ -147,7 +147,7 @@ export default async function EntityPage({
 
   const { data: modulos, error } = await supabase
     .from("modulos")
-    .select("slug, props, activo, tipo, orden");
+    .select("slug, props, activo, tipo, orden, route");
 
   if (error) {
     console.error("Error cargando modulos:", error);
