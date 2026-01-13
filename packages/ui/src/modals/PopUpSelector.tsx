@@ -105,81 +105,55 @@ export function PopupSelector({
   };
 
   const ui = (
-    <div
-      onMouseDown={closeOnBackdrop}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 9999,
-        padding: 16,
-      }}
-    >
+    <div onMouseDown={closeOnBackdrop} className="selModal">
       <div
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        style={{
-          width: "min(720px, 100%)",
-          maxHeight: "80vh",
-          overflow: "hidden",
-          borderRadius: 14,
-          background: "var(--card, #171a1f)",
-          border: "1px solid var(--border, #26303a)",
-          boxShadow: "var(--shadow-md, 0 10px 30px rgba(0,0,0,0.35))",
-        }}
+        className="selModal__dialog"
       >
         {/* Header */}
-        <div style={{ padding: 14, borderBottom: "1px solid var(--border, #26303a)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div className="title">{title || "Seleccionar"}</div>
+        <div className="selModal__header">
+          <div className="selModal__titleRow">
+            <div className="selModal__title">{title || "Seleccionar"}</div>
           </div>
 
-          <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+          <div className="selModal__searchRow">
             <input
               ref={searchRef}
-              className="form-control"
+              className="form-control selModal__search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Buscar…"
             />
-            <button className="btn btn-outline-light" type="button" onClick={clear}>
+            <button
+              className="btn btn-outline-light selBtnClear"
+              type="button"
+              onClick={clear}
+            >
               Limpiar
             </button>
           </div>
-
-
         </div>
 
         {/* Body */}
-        <div style={{ padding: 14, overflow: "auto", maxHeight: "calc(80vh - 140px)" }}>
+        <div className="selModal__body">
           {items.length === 0 && !loading && (
-            <div style={{ opacity: 0.8, fontSize: 14 }}>No hay resultados.</div>
+            <div className="selModal__empty">No hay resultados.</div>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="selModal__list">
             {items.map((it) => {
               const checked = draft.has(it.value);
               return (
                 <button
                   key={String(it.value)}
                   type="button"
-                  className="btn btn-outline-light"
+                  className={`btn btn-outline-light selItem ${checked ? "selItem--checked" : ""}`}
                   onClick={() => toggle(it.value)}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    textAlign: "left",
-                    borderRadius: 12,
-                    borderColor: checked ? "var(--ring, #7aa7ff)" : undefined,
-                  }}
                 >
-                  <span>{it.label}</span>
-                  <span style={{ opacity: 0.85 }}>
+                  <span className="selItem__main">{it.label}</span>
+                  <span className="selItem__mark">
                     {multiple ? (checked ? "☑" : "☐") : checked ? "◉" : "○"}
                   </span>
                 </button>
@@ -189,15 +163,7 @@ export function PopupSelector({
         </div>
 
         {/* Footer */}
-        <div
-          style={{
-            padding: 14,
-            borderTop: "1px solid var(--border, #26303a)",
-            display: "flex",
-            justifyContent: "flex-end",
-            gap: 8,
-          }}
-        >
+        <div className="selModal__footer">
           <button className="btn btn-secondary" type="button" onClick={onClose}>
             Cancelar
           </button>

@@ -168,6 +168,7 @@ export default async function EntityPage({
             table: props?.db?.table ?? m.slug,
             primaryKey: props?.db?.primaryKey ?? "id",
           },
+          route: props?.route ?? props?.ui?.route ?? m.route ?? null,
         },
       ];
     })

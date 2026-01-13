@@ -9,8 +9,8 @@ import { IconPicker } from "./IconPicker";
 import  Selector from "./Selector";
 import ReverseLinkTable from "./ReverseLinkTable";
 import  TreeView  from "./TreeView";
-
-
+import FormActionsBar from "./ModuloForm/FormActionsBar";
+import type { FormAction } from "./ModuloForm/FormActionsBar";
 
 
 type Mode = "view" | "edit" | "create";
@@ -38,9 +38,8 @@ type Props = {
   modulesBySlug?: Record<string, { db?: { table?: string; primaryKey?: string } }>;
   schemasBySlug?: Record<string, ModuleSchema>;
 
+
 };
-
-
 
 export default function Form({
   schema,
@@ -69,6 +68,11 @@ export default function Form({
   const tabsDesdeSchema = useMemo<UiTab[]>(() => {
     const uiAny = (schema.ui || {}) as any;
     const rawTabs = Array.isArray(uiAny?.tabs) ? uiAny.tabs : [];
+
+
+
+
+
 
     // Normaliza a {id,label,type,config}
     const normalized: UiTab[] = rawTabs
@@ -278,15 +282,13 @@ const uiTabs = useMemo<UiTab[]>(() => {
     return map;
   }, [schema.fields]);
 
-  // Campos “en secciones”
-  const fieldsInSections = useMemo(() => {
-    return new Set((formSections || []).flatMap((s) => s.fields || []));
-  }, [formSections]);
+
+
+  const formActions =
+  (((schema.ui as any)?.formActions as FormAction[]) || []);
 
   // Campos “sin sección” (excluye ReverseLink)
-  const unsectionedFields = useMemo(() => {
-    return (schema.fields || []).filter((f) => f.type !== "ReverseLink" && !fieldsInSections.has(f.name));
-  }, [schema.fields, fieldsInSections]);
+
 
   // Bootstrap col según ui.width
   const colClass = (f: Field): string => {
@@ -444,6 +446,7 @@ const uiTabs = useMemo<UiTab[]>(() => {
   // Importante:
   // - si NO hay tabs, activeTab es null → showFormContent = true (modo clásico)
   // - si hay tabs y activeTab.type=form → render form
+
   const showFormContent = !activeTab || activeTab.type === "form";
   const showReverseLinks = showFormContent;
 
@@ -464,23 +467,38 @@ const uiTabs = useMemo<UiTab[]>(() => {
   };
 }, [modulesBySlug]);
 
+    const resolveRoute = useMemo(() => {
+  return (source: string) => {
+    // source puede ser moduleSlug o table
+    const m = modulesBySlug?.[source];
 
-  // TreeView: dónde sacamos la config real
-  // - si activeTab es treeview: usa su config
-  // - si no hay tabs: usa schema.ui.treeView
+    // 1) si viene como moduleSlug
+    const r1 = (m as any)?.route;
+
+    // 2) si viene como tabla, intenta encontrar por db.table
+    let r2: string | null = null;
+    if (!r1 && modulesBySlug) {
+      for (const [slug, mod] of Object.entries(modulesBySlug)) {
+        const table = (mod as any)?.db?.table;
+        if (table === source) {
+          r2 = (mod as any)?.route || null;
+          break;
+        }
+      }
+    }
+
+    return (r1 || r2 || null) as string | null;
+  };
+}, [modulesBySlug]);
+
+
+  // TreeView
+
   const treeViewConfig = useMemo(() => {
     if (activeTab?.type === "treeview") return activeTab.config ?? null;
     
     return legacyTreeCfg;
   }, [activeTab, legacyTreeCfg]);
-
-  console.log("FORM -> TreeView props", {
-      activeTabId,
-      treeViewConfig,
-      treeViewProvider: !!treeViewProvider,
-      modulesBySlugKeys: Object.keys(modulesBySlug || {}).slice(0, 10),
-      parentRecordId: (treeViewParentRecord ?? values)?.id,
-    });
 
   // Calendar: idem (placeholder)
   const calendarConfig = useMemo(() => {
@@ -488,15 +506,6 @@ const uiTabs = useMemo<UiTab[]>(() => {
     return legacyCalendarCfg;
   }, [activeTab, legacyCalendarCfg]);
 
-const tvTable =
-  (treeViewConfig as any)?.source?.table ??
-  (treeViewConfig as any)?.sourceTable ??
-  "—";
-
-const tvGroupBy =
-  (treeViewConfig as any)?.grouping?.groupByField ??
-  (Array.isArray((treeViewConfig as any)?.groupBy) ? (treeViewConfig as any).groupBy[0] : undefined) ??
-  "—";
 
   useEffect(() => {
   if (activeTab?.type !== "treeview") return;
@@ -523,26 +532,26 @@ const treeSchemaFields = useMemo(() => {
   return modSchema?.fields || schema.fields;
 }, [schemasBySlug, treeSourceSlug, schema.fields]);
 
-  useEffect(() => {
-  if (activeTab?.type !== "treeview") return;
-  console.log("TREE schemaFields chosen", {
-    treeSourceSlug,
-    treeSchemaFieldsCount: treeSchemaFields?.length,
-    exampleFields: (treeSchemaFields || []).slice(0, 5).map((f:any) => ({ name: f.name, type: f.type })),
-  });
-}, [activeTab?.type, treeSourceSlug, treeSchemaFields]);
-useEffect(() => {
-  if (activeTab?.type !== "treeview") return;
+    useEffect(() => {
+      if (activeTab?.type !== "treeview") return;
+      console.log("TREE schemaFields chosen", {
+        treeSourceSlug,
+        treeSchemaFieldsCount: treeSchemaFields?.length,
+        exampleFields: (treeSchemaFields || []).slice(0, 5).map((f:any) => ({ name: f.name, type: f.type })),
+      });
+    }, [activeTab?.type, treeSourceSlug, treeSchemaFields]);
+    useEffect(() => {
+      if (activeTab?.type !== "treeview") return;
 
-  console.log("TREE schema debug", {
-    treeSourceSlug,
-    schemaFieldsFromSource_firstNames: (schemasBySlug?.[treeSourceSlug || ""]?.fields || [])
-      .slice(0, 8)
-      .map((f: any) => f.name),
-    currentSchema_firstNames: (schema.fields || []).slice(0, 8).map((f: any) => f.name),
-    sameReference: schemasBySlug?.[treeSourceSlug || ""]?.fields === schema.fields,
-  });
-}, [activeTab?.type, treeSourceSlug, schemasBySlug, schema.fields]);
+      console.log("TREE schema debug", {
+        treeSourceSlug,
+        schemaFieldsFromSource_firstNames: (schemasBySlug?.[treeSourceSlug || ""]?.fields || [])
+          .slice(0, 8)
+          .map((f: any) => f.name),
+        currentSchema_firstNames: (schema.fields || []).slice(0, 8).map((f: any) => f.name),
+        sameReference: schemasBySlug?.[treeSourceSlug || ""]?.fields === schema.fields,
+      });
+    }, [activeTab?.type, treeSourceSlug, schemasBySlug, schema.fields]);
 
 
 
@@ -641,11 +650,11 @@ useEffect(() => {
         // ---------------- TREEVIEW ----------------
         <div className="card">
           <div className="card-header">
-            <div className="fw-semibold">{treeViewConfig?.ui?.title || "TreeView"}</div>
+            <div className="fw-semibold">{treeViewConfig?.ui?.title || ""}</div>
             <div className="small text-muted">
               {treeViewConfig?.source?.table
                 ? `Tabla: ${treeViewConfig.source.table}`
-                : "Sin tabla configurada"}
+                : ""}
               {treeViewConfig?.grouping?.groupByField
                 ? ` · groupBy: ${treeViewConfig.grouping.groupByField}`
                 : ""}
@@ -676,6 +685,7 @@ useEffect(() => {
                 onEditRow={onTreeViewRowEdit}
                 confirmDelete={confirmTreeViewDelete}
                 resolveTable={resolveTable}  
+                resolveRoute={resolveRoute}
                 
               />
               
@@ -738,19 +748,24 @@ useEffect(() => {
       )}
 
       {/* Acciones */}
-      <div className="d-flex justify-content-end gap-2 mt-3">{renderActions()}</div>
+        <div>
+          <div className="d-flex flex-column align-items-end gap-2 mt-3">
+            {/* Botones configurables desde módulos */}
+              <FormActionsBar
+                schema={schema}
+                mode={effectiveMode}
+                values={values}
+                setValues={setValues}
+                actions={formActions}
+              />
+          <div className="d-flex justify-content-end gap-2 mt-3">{renderActions()}</div>
+      </div>
+    </div>
     </form>
   );
 }
 
-
-
-
 /* ---------------- Renderers por tipo ---------------- */
-
-
-
-
 
 function FieldInput({
   field,
@@ -1093,11 +1108,6 @@ if (type === "iconpicker") {
   );
 
 }
-
-
-
-
-
 
 /* ---------------- Utils ---------------- */
 

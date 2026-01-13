@@ -70,9 +70,11 @@ type Props = {
   onEditRow?: any;
   confirmDelete?: any;
   resolveTable?: any;
+  resolveRoute?: any;
 };
-
+type ResolveRouteFn = (source: string) => string | null;
 // ---------------- unwrap helpers ----------------
+
 
 function unwrapConfig(cfg: any): LegacyConfig | null {
   if (!cfg) return null;
@@ -108,6 +110,14 @@ function unwrapResolveTable(v: any): ResolveTableFn | undefined {
   if (typeof v?.resolveTable === "function") return v.resolveTable as ResolveTableFn;
   return undefined;
 }
+
+function unwrapResolveRoute(v: any): ResolveRouteFn | undefined {
+  if (!v) return undefined;
+  if (typeof v === "function") return v as ResolveRouteFn;
+  if (typeof v?.resolveRoute === "function") return v.resolveRoute as ResolveRouteFn;
+  return undefined;
+}
+
 
 // ---------------- format helpers ----------------
 
@@ -244,6 +254,23 @@ function dedupeStrings(arr: string[]) {
   }
   return out;
 }
+function cleanBaseRoute(base: string) {
+  if (!base) return "";
+  // asegura que empieza con "/"
+  let b = base.trim();
+  if (!b.startsWith("/")) b = `/${b}`;
+  // quita trailing slash
+  if (b.length > 1 && b.endsWith("/")) b = b.slice(0, -1);
+  return b;
+}
+
+function joinRoute(base: string, id: any) {
+  const b = cleanBaseRoute(base);
+  const rid = String(id ?? "").trim();
+  if (!b || !rid) return null;
+  return `${b}/${encodeURIComponent(rid)}`;
+}
+
 function getByPath(obj: any, path: string) {
   if (!obj || !path) return undefined;
   const parts = path.split(".").map((p) => p.trim()).filter(Boolean);
@@ -254,6 +281,8 @@ function getByPath(obj: any, path: string) {
   }
   return cur;
 }
+
+
 
 
 
@@ -268,6 +297,7 @@ export default function TreeView(p: Props) {
   const onEditRow = useMemo(() => unwrapFn(p.onEditRow, "onTreeViewRowEdit"), [p.onEditRow]);
   const confirmDelete = useMemo(() => unwrapFn(p.confirmDelete, "confirmTreeViewDelete"), [p.confirmDelete]);
   const resolveTable = useMemo(() => unwrapResolveTable(p.resolveTable), [p.resolveTable]);
+  const resolveRoute = useMemo(() => unwrapResolveRoute(p.resolveRoute), [p.resolveRoute]);
   const normalizedFilters = useMemo<TreeViewQuery["filters"]>(() => {
   const raw = (cfg?.filters || []) as any[];
   const out: TreeViewQuery["filters"] = [];
@@ -314,16 +344,77 @@ export default function TreeView(p: Props) {
   const [lookupCache, setLookupCache] = useState<Record<string, Record<string, LookupMeta>>>({});
 
   // legacy config fields
-  const sourceTable = cfg?.sourceTable;
+
   const groupByField = Array.isArray(cfg?.groupBy) && cfg!.groupBy!.length ? cfg!.groupBy![0] : undefined;
   const columns = useMemo(() => normalizeColumns(cfg?.columns), [cfg?.columns]);
   const totals = cfg?.totals || {};
   const currency = totals.currency || "EUR";
   const sumField = totals.sumField;
+  const sourceTable =
+    cfg?.sourceTable ||
+    (cfg as any)?.source?.table ||
+    (p.config as any)?.sourceTable ||
+    (p.config as any)?.source?.table;
+
+const baseRoute = useMemo(() => {
+  if (!resolveRoute) return null;
+  const src = typeof sourceTable === "string" ? sourceTable.trim() : "";
+  if (!src) return null;
+  const r = resolveRoute(src);
+  return r ? cleanBaseRoute(r) : null;
+}, [resolveRoute, sourceTable]);
+
+const canNavigateByRoute = !!baseRoute;
+const hasActionHandlers = !!onViewRow || !!onEditRow;
+const showActions = true;
+
+
+
+
 
   const isReady = !!sourceTable && !!groupByField;
 
   const fieldsByName = useMemo(() => buildFieldsByName(schemaFields), [schemaFields]);
+  const defaultView = useMemo(() => {
+  if (!baseRoute) return undefined;
+  return (row: any) => {
+    const url = joinRoute(baseRoute, row?.id);
+    if (!url) return;
+    window.location.assign(url);
+  };
+}, [baseRoute]);
+
+const defaultEdit = useMemo(() => {
+  if (!baseRoute) return undefined;
+  return (row: any) => {
+    const url = joinRoute(baseRoute, row?.id);
+    if (!url) return;
+    window.location.assign(`${url}?edit=true`);
+  };
+}, [baseRoute]);
+
+
+const handleView = onViewRow
+  ? (row: any) => onViewRow(row)
+  : baseRoute
+  ? (row: any) => {
+      const url = joinRoute(baseRoute, row?.id);
+      if (!url) return;
+      window.location.assign(url);
+    }
+  : undefined;
+
+const handleEdit = onEditRow
+  ? (row: any) => onEditRow(row)
+  : baseRoute
+  ? (row: any) => {
+      const url = joinRoute(baseRoute, row?.id);
+      if (!url) return;
+      window.location.assign(`${url}?edit=true`);
+    }
+  : undefined;
+
+
 
   // infer column types from schema if missing
   const effectiveColumns: NormalizedColumn[] = useMemo(() => {
@@ -615,7 +706,7 @@ export default function TreeView(p: Props) {
                 {c.label}
               </th>
             ))}
-            {(onViewRow || onEditRow) && (
+            {showActions && (
               <th className="text-end" style={{ width: "1%" }}>
                 Acciones
               </th>
@@ -632,26 +723,26 @@ export default function TreeView(p: Props) {
                 </td>
               ))}
 
-              {(onViewRow || onEditRow) && (
-                <td className="text-end text-nowrap">
+              {showActions && (
+                
 
-                  <td className="text-end text-nowrap">
-                                        <ActionMenu
-                                          items={[
-                                            onViewRow && {
-                                              label: "Ver",
-                                              icon: <i className="bi bi-eye" />,
-                                              onClick: () => onViewRow(r),
-                                            },
-                                            onEditRow && {
-                                              label: "Editar",
-                                              icon: <i className="bi bi-pencil" />,
-                                              onClick: () => onEditRow(r),
-                                            }
-                                          ]}
-                                        />
-                                      </td>
-                </td>
+                <td className="text-end text-nowrap">
+                <ActionMenu
+                  items={[
+                    onViewRow && {
+                      label: "Ver",
+                      icon: <i className="bi bi-eye" />,
+                      onClick: () => handleView?.(r),
+                    },
+                    onEditRow && {
+                      label: "Editar",
+                      icon: <i className="bi bi-pencil" />,
+                      onClick: () => handleEdit?.(r),
+                    }
+                  ]}
+                />
+              </td>
+                
               )}
             </tr>
           ))}

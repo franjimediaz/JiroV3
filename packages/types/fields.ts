@@ -146,24 +146,24 @@ export const Appareance_Valid_Types: Appareance[] = [
   "Zoom"
 ];
 export type UiTab =
-  | {
-      id: string;
-      label: string;
-      type: "form";
-      config?: { formSections?: FormSection[] };
-    }
-  | {
-      id: string;
-      label: string;
-      type: "treeview";
-      config?: TreeViewConfigLegacy | TreeViewConfig | any;
-    }
-  | {
-      id: string;
-      label: string;
-      type: "calendar";
-      config?: { sourceTable?: string; startField?: string; endField?: string; titleField?: string; colorField?: string };
-    };
+                    | {
+                        id: string;
+                        label: string;
+                        type: "form";
+                        config?: { formSections?: FormSection[] };
+                      }
+                    | {
+                        id: string;
+                        label: string;
+                        type: "treeview";
+                        config?: TreeViewConfigLegacy | TreeViewConfig | any;
+                      }
+                    | {
+                        id: string;
+                        label: string;
+                        type: "calendar";
+                        config?: { sourceTable?: string; startField?: string; endField?: string; titleField?: string; colorField?: string };
+                      };
 export type ModuleSchema = {
   db: {
     table: string;
@@ -176,8 +176,13 @@ export type ModuleSchema = {
     color?: string;
     sidebar?: boolean;
     tabs?: UiTab[];
+    formActions?: FormAction[];
+
   };
+
 };
+
+
 export type ModuloRow = {
   id: string;
   parent_id: string | null;
@@ -342,3 +347,106 @@ type TreeViewConfigLegacy = {
   groupBy?: string[];
   columns?: string[];
 };
+export type FormMode = "view" | "edit" | "create";
+
+/** condiciones simples para deshabilitar */
+export type ActionDisabledWhen =
+  | { type: "missingFields"; fields: string[] }
+  | { type: "modeIs"; modes: FormMode[] };
+
+export type ActionConfirm = {
+  title?: string;
+  text: string;
+};
+
+export type ActionVariant =
+  | "primary"
+  | "secondary"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info"
+  | "light"
+  | "dark";
+
+type BaseFormAction = {
+  id: string;
+  label: string;
+  icon?: string; // p.ej. "bi bi-plus-lg"
+  variant?: ActionVariant;
+  showIn?: FormMode[]; // default: ["view","edit","create"]
+  confirm?: ActionConfirm;
+  disabledWhen?: ActionDisabledWhen;
+
+  /** por si luego quieres colocar arriba/abajo */
+  placement?: "top" | "bottom";
+};
+
+/**
+ * 1) Crear registro relacionado
+ * - target: tabla destino
+ * - fieldMap: { campoDestino: "campoOrigen" } (soporta paths tipo "cliente.id")
+ * - defaults: valores fijos en destino
+ */
+export type CreateRelatedAction = BaseFormAction & {
+  type: "createRelated";
+  target: {
+    table: string;
+    moduleSlug?: string; // opcional, si luego quieres resolver tabla por módulo
+  };
+  fieldMap?: Record<string, string>;
+  defaults?: Record<string, unknown>;
+  afterCreate?: {
+    navigateTo?: "record" | "list" | "none";
+    hrefTemplate?: string; // ej "/presupuestos/{{id}}?edit=true"
+    openEdit?: boolean;
+  };
+};
+
+/**
+ * 4) Navegación inteligente
+ */
+export type NavigateAction = BaseFormAction & {
+  type: "navigate";
+  target?: {
+    table?: string;
+    moduleSlug?: string;
+  };
+  hrefTemplate: string; // ej "/tareas/new?obraId={{id}}"
+};
+
+/**
+ * 2) Calcular / recomputar
+ */
+export type RecalculateAction = BaseFormAction & {
+  type: "recalculate";
+};
+
+/**
+ * 2) Duplicar registro
+ */
+export type DuplicateAction = BaseFormAction & {
+  type: "duplicate";
+  includeChildren?: boolean;
+  omitFields?: string[]; // ej ["id","createdAt","updatedAt"]
+  afterDuplicate?: {
+    navigateTo?: "record" | "list" | "none";
+    openEdit?: boolean;
+  };
+};
+
+/**
+ * 5) Acciones externas (placeholder)
+ */
+export type ExternalAction = BaseFormAction & {
+  type: "external";
+  kind: "pdf" | "email" | "print" | "custom";
+  payload?: Record<string, unknown>;
+};
+
+export type FormAction =
+  | CreateRelatedAction
+  | NavigateAction
+  | RecalculateAction
+  | DuplicateAction
+  | ExternalAction;

@@ -7,8 +7,29 @@ type ModuloRow = {
   props: any;
 };
 
+export type CreateInput = {
+  table: string;
+  data: Record<string, any>;
+};
+
+export type CreateResult = {
+  id: string;
+  record?: any;
+};
+
 let schemaCache: Record<string, ModuleSchema> | null = null;
 let schemaCacheAt = 0;
+
+function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {
+  return path
+    .split(".")
+    .reduce<unknown>((acc, key) => {
+      if (acc && typeof acc === "object" && key in (acc as Record<string, unknown>)) {
+        return (acc as Record<string, unknown>)[key];
+      }
+      return undefined;
+    }, obj) as T | undefined;
+}
 
 async function loadSchemas(): Promise<Record<string, ModuleSchema>> {
   const now = Date.now();
@@ -18,6 +39,7 @@ async function loadSchemas(): Promise<Record<string, ModuleSchema>> {
   if (!res.ok) {
     throw new Error(`getSchema: error cargando /api/modulos (status ${res.status})`);
   }
+
   const json = await res.json();
   if (!json?.ok || !Array.isArray(json.data)) {
     throw new Error("getSchema: respuesta inválida de /api/modulos");
@@ -35,21 +57,27 @@ async function loadSchemas(): Promise<Record<string, ModuleSchema>> {
   return map;
 }
 
+/**
+ * Resuelve placeholders del tipo:
+ *  - "{{id}}"
+ *  - "{{cliente.id}}"
+ */
 function resolveTpl(v: any, record: any) {
   if (typeof v !== "string") return v;
-  return v.replace(/\{\{\s*([\w]+)\s*\}\}/g, (_, key) => {
-    const val = record?.[key];
-    // IMPORTANTE: si falta el valor, devuelve null para que el where no compare con "id" literal
+
+  return v.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, keyPath) => {
+    const val = getByPath(record, keyPath);
+    // si falta el valor, devuelve "" para no comparar literal
     return val === undefined || val === null ? "" : String(val);
   });
 }
 
 export const dataProvider: DataProvider & {
   getSchema: (moduleSlug: string) => Promise<ModuleSchema>;
+  create: (input: CreateInput) => Promise<CreateResult>;
 } = {
   async aggregate(input: AggregateInput, record: any, _context?: Record<string, any>) {
-    
-    // 1) Resolver where usando el record actual
+    // 1) Resolver where usando el record actual (placeholders)
     const whereResolved = (input.where || []).map((c: any) => ({
       ...c,
       value: resolveTpl(c.value, record),
@@ -57,22 +85,19 @@ export const dataProvider: DataProvider & {
 
     // 2) Llamar al endpoint
     const res = await fetch("/api/aggregate", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    sourceTable: input.sourceTable, // ej: "materialstask"
-    field: input.field,             // ej: "total"
-    op: input.op,                   // ej: "sum"
-    where: (input.where || []).map((c) => ({
-      field: c.field,
-      op: c.op,
-      // 🔑 resolver placeholders ANTES de enviar
-      value: typeof c.value === "string"
-        ? c.value.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => record?.[k] ?? null)
-        : c.value,
-    })),
-  }),
-});
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sourceTable: input.sourceTable, // ej: "materialstask"
+        field: input.field,             // ej: "total"
+        op: input.op,                   // ej: "sum"
+        where: whereResolved.map((c: any) => ({
+          field: c.field,
+          op: c.op,
+          value: c.value,
+        })),
+      }),
+    });
 
     if (!res.ok) {
       const txt = await res.text();
@@ -113,6 +138,33 @@ export const dataProvider: DataProvider & {
     }
 
     return { data: Array.isArray(json.data) ? json.data : [] };
+  },
+
+  async create(input: CreateInput): Promise<CreateResult> {
+    const res = await fetch("/api/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        table: input.table,
+        data: input.data,
+      }),
+    });
+
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`dataProvider.create error (${res.status}): ${txt}`);
+    }
+
+    const json = await res.json();
+    if (!json?.ok) {
+      throw new Error(json?.detail || "dataProvider.create error");
+    }
+
+    if (!json?.id) {
+      throw new Error("dataProvider.create: respuesta inválida (sin id)");
+    }
+
+    return { id: String(json.id), record: json.record };
   },
 
   async getSchema(moduleSlug: string): Promise<ModuleSchema> {

@@ -7,6 +7,27 @@ import ModuloForm from "./FormModule";
 
 export const dynamic = "force-dynamic";
 
+async function loadFieldsForTable(tableSlug: string) {
+    "use server";
+
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("modulos")
+      .select("props")
+      .eq("slug", tableSlug)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+
+    const raw = (data as any)?.props?.fields || [];
+    return (Array.isArray(raw) ? raw : [])
+      .map((f: any) => ({
+        name: String(f?.name ?? ""),
+        label: f?.label ? String(f.label) : undefined,
+      }))
+      .filter((x: any) => x.name);
+  }
+
 async function getModuloById(id: string) {
   const { data, error } = await supabaseAdmin
     .from("modulos")
@@ -106,7 +127,7 @@ export default async function ModuloUnifiedPage(props: {
 
   return (
 <main className="container-fluid py-4">
-      <ModuloForm initialData={modulo} mode={mode} />
+      <ModuloForm initialData={modulo} mode={mode} loadFieldsForTable={loadFieldsForTable} />
     </main>
   );
 }

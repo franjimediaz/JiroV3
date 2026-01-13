@@ -8,6 +8,7 @@ export type {
     UiTab,
     ModuloRow,
     ModuloNode,
+    FormAction,
     OpenCreateModuleFn,
     Appareance,
     FormSection,

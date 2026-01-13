@@ -8,9 +8,11 @@ import {ModuloForm} from "@repo/ui";
 export default function FormModules({
   initialData,
   mode,
+  loadFieldsForTable,
 }: {
   initialData: any;
   mode: "view" | "edit" | "create";
+  loadFieldsForTable?: (tableSlug: string) => Promise<{ name: string; label?: string }[]>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -27,10 +29,11 @@ export default function FormModules({
     }
     return res;
   };
+  
 
   return (
     <RequirePerms modulo="modulos" accion="actualizar">
-      <ModuloForm initialData={initialData} mode={mode} onSave={onSave} />
+      <ModuloForm initialData={initialData} mode={mode} onSave={onSave} loadFieldsForTable={loadFieldsForTable} />
     </RequirePerms>
   );
 }

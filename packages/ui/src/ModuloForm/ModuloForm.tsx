@@ -1,13 +1,33 @@
 "use client";
 
-import { useState, useTransition, useEffect  } from "react";
+import { useState, useTransition, useEffect} from "react";
 import styles from "./modulo-detalle.module.css";
+import  Selector from "../Selector";
 import {IconPicker} from "@repo/ui";
-import type { Field as FieldSchema, FieldType, ModuleSchema, Field, Appareance, Compute, FormSection, UiTab} from "@repo/types";
-import {VALID_FIELD_TYPES,Appareance_Valid_Types} from "@repo/types";
+import type { Field as FieldSchema, FieldType, ModuleSchema, Field, FormSection, UiTab, FormAction} from "@repo/types";
+import {VALID_FIELD_TYPES} from "@repo/types";
+import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
+import {FieldRow} from "./FieldRow"
+
+type PickTarget = "columns" | "groupByField" | "parentFilterField" | "sumField";
 
 
+const isPickMultiple = (target: PickTarget) => target === "columns";
 
+const getPickValue = (target: PickTarget, t: any) => {
+  switch (target) {
+    case "columns":
+      return extractColumnFields(t.config?.columns); // 👈 usa el helper bueno
+    case "groupByField":
+      return t.config?.grouping?.groupByField || (t.config?.groupBy || [])[0] || "";
+    case "parentFilterField":
+      return (t.config?.filters?.[0]?.field as string) || "";
+    case "sumField":
+      return t.config?.totals?.sumField || "";
+    default:
+      return "";
+  }
+};
 
 function validatePropsClient(props: any): string | null {
   if (!props || typeof props !== "object") return "props debe ser un objeto";
@@ -72,46 +92,6 @@ function validatePropsClient(props: any): string | null {
   return null;
 }
 
-function normalizeFieldType(field: Field, nextType: FieldType): Field {
-  const base: any = { ...field, type: nextType };
-
-  if (nextType === "selectorTabla") {
-    return {
-      ...base,
-      type: "selectorTabla",
-      ref: {
-        moduleSlug: (field as any).ref?.moduleSlug ?? "",
-        displayField: (field as any).ref?.displayField ?? "name",
-        multiple: (field as any).ref?.multiple,
-        table: (field as any).ref?.table,
-        valueField: (field as any).ref?.valueField,
-        filters: (field as any).ref?.filters,
-        sort: (field as any).ref?.sort,
-      },
-    };
-  }
-
-  if (nextType === "ReverseLink") {
-    return {
-      ...base,
-      type: "ReverseLink",
-      ref: {
-        moduleSlug: (field as any).ref?.moduleSlug ?? "",
-        foreignKey: (field as any).ref?.foreignKey ?? "",
-        parentKey: (field as any).ref?.parentKey ?? "id",
-        limit: (field as any).ref?.limit ?? 20,
-        filters: (field as any).ref?.filters,
-        sort: (field as any).ref?.sort,
-      },
-    };
-  }
-
-  const { ref, ...rest } = base;
-  return rest as Field;
-}
-
-
-
 // —— Subcomponentes UI simples ————————————————————————————————
 function getSectionFieldSet(sections: Array<{ fields: string[] }>) {
   const set = new Set<string>();
@@ -120,1007 +100,36 @@ function getSectionFieldSet(sections: Array<{ fields: string[] }>) {
   }
   return set;
 }
+function extractColumnFields(columns: any): string[] {
+  if (!columns) return [];
 
+  // Formato nuevo: [{field,label,...}]
+  if (Array.isArray(columns) && columns[0] && typeof columns[0] === "object") {
+    return columns.map((c: any) => String(c.field)).filter(Boolean);
+  }
 
+  // Legacy: string[]
+  if (Array.isArray(columns)) {
+    return columns.map((x: any) => String(x)).filter(Boolean);
+  }
 
-
-function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ marginBottom: 12 }}>
-      <label className={styles.label} style={{ display: "block", marginBottom: 6 }}>{label}</label>
-      {children}
-    </div>
-  );
+  return [];
 }
 
-
-
-function ArrayChips({
-  value,
-  onChange,
-  placeholder = "Añade opción y pulsa Enter",
-}: {
-  value?: string[];
-  onChange: (v: string[]) => void;
-  placeholder?: string;
-}) {
-  const [input, setInput] = useState("");
-  const vals = value || [];
-  return (
-    <div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        {vals.map((v, i) => (
-          <span key={i} className={styles.badge}>
-            {v}
-            <button
-              type="button"
-              onClick={() => onChange(vals.filter((_, idx) => idx !== i))}
-              style={{ marginLeft: 6 }}
-              aria-label="Eliminar opción"
-            >
-              ×
-            </button>
-          </span>
-        ))}
-      </div>
-      <input
-        className={styles.input}
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder={placeholder}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && input.trim()) {
-            e.preventDefault();
-            onChange([...vals, input.trim()]);
-            setInput("");
-          }
-        }}
-      />
-    </div>
-  );
-}
-const defaultFormula: Extract<Compute, { type: "formula" }> = {
-  type: "formula",
-  expr: "",
-  deps: [],
-  persist: "onSave",
-};
-
-const defaultAggregate: Extract<Compute, { type: "aggregate" }> = {
-  type: "aggregate",
-  sourceTable: "",
-  field: "",
-  op: "sum",
-  where: [],
-  persist: "onSave",
-};
-
-const computeNone: Extract<Compute, { type: "none" }> = { type: "none" };
-
-// Aseguradores
-function ensureFormula(field: FieldSchema): Extract<Compute, { type: "formula" }> {
-  const prev = field.compute?.type === "formula" ? field.compute : undefined;
-  return { ...defaultFormula, ...(prev || {}) };
-}
-
-function ensureAggregate(field: FieldSchema): Extract<Compute, { type: "aggregate" }> {
-  const prev = field.compute?.type === "aggregate" ? field.compute : undefined;
-  return { ...defaultAggregate, ...(prev || {}) };
+function buildColumnsObjects(selectedNames: string[], availableFields: TableField[]) {
+  const byName = new Map(availableFields.map((f) => [f.name, f]));
+  return selectedNames.map((name) => ({
+    field: name,
+    label: byName.get(name)?.label || name,
+  }));
 }
 
 // Helpers para el selector de modo
-function getComputeKind(field: FieldSchema): "none" | "formula" | "aggregate" {
-  if (!field.compute) return "none";
-  return field.compute.type;
-}
-
-function setComputeKind(field: FieldSchema, kind: "none" | "formula" | "aggregate"): FieldSchema {
-  if (kind === "none") return { ...field, compute: computeNone };
-  if (kind === "formula") return { ...field, compute: ensureFormula(field) };
-  return { ...field, compute: ensureAggregate(field) };
-}
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className={styles.card} style={{ marginTop: 16 }}>
       <h3 style={{ marginTop: 0 }}>{title}</h3>
       {children}
-    </div>
-  );
-}
-
-function FieldRow({
-  field,
-  onChange,
-  onRemove,
-  onMoveUp,
-  onMoveDown,
-  canUp,
-  canDown,
-  readOnly,
-}: {
-  field: FieldSchema;
-  onChange: (f: FieldSchema) => void;
-  onRemove: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  canUp: boolean;
-  canDown: boolean;
-  readOnly?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-
-  const summaryLabel = field.label?.trim() || "Sin label";
-  const summaryName = field.name?.trim() || "sin_name";
-  const summaryType = field.type || "text";
-  const summaryCompute = getComputeKind(field);
-
-  const duplicate = () => {
-    const baseName = (field.name || "campo").replace(/\s+/g, "_");
-    const copy: FieldSchema = {
-      ...field,
-      name: `${baseName}_copy_${Math.floor(Math.random() * 1000)}`,
-      label: `${field.label || "Campo"} (copia)`,
-    };
-    onChange(copy);
-  };
-
-  // arriba del return de FieldRow (o dentro, antes del return)
-const [whereText, setWhereText] = useState(() =>
-  JSON.stringify(ensureAggregate(field).where ?? [], null, 2)
-);
-const [whereErr, setWhereErr] = useState<string | null>(null);
-
-// si cambia el field desde fuera (p.ej. cambias compute kind / cambias de campo)
-useEffect(() => {
-  setWhereText(JSON.stringify(ensureAggregate(field).where ?? [], null, 2));
-  setWhereErr(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [field.name, field.compute?.type]);
-
-const commitWhereIfValid = (text: string) => {
-  try {
-    const parsed = JSON.parse(text || "[]");
-    if (!Array.isArray(parsed)) {
-      setWhereErr("El where debe ser un ARRAY. Ejemplo: [{...}]");
-      return;
-    }
-
-    // Validación suave: estructura mínima
-    for (let i = 0; i < parsed.length; i++) {
-      const c = parsed[i];
-      if (!c || typeof c !== "object") {
-        setWhereErr(`Condición [${i}] debe ser un objeto`);
-        return;
-      }
-      if (typeof c.field !== "string" || !c.field.trim()) {
-        setWhereErr(`Condición [${i}] => "field" (string) es requerido`);
-        return;
-      }
-      if (typeof c.op !== "string" || !c.op.trim()) {
-        setWhereErr(`Condición [${i}] => "op" (string) es requerido`);
-        return;
-      }
-      // value puede ser string/number/boolean/null/array, pero debe existir la clave
-      if (!("value" in c)) {
-        setWhereErr(`Condición [${i}] => falta "value"`);
-        return;
-      }
-    }
-
-    setWhereErr(null);
-
-    const base = ensureAggregate(field);
-    onChange({ ...field, compute: { ...base, where: parsed } });
-  } catch (e: any) {
-    setWhereErr(e?.message || "JSON inválido");
-  }
-};
-
-
-  return (
-    <div className={styles.fieldformcard} style={{ marginBottom: 12 }}>
-      {/* ========= HEADER COMPACTO ========= */}
-      <div className={styles.card} style={{ padding: 12 }}>
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <button
-            type="button"
-            className={styles.btn}
-            onClick={() => setOpen((v) => !v)}
-            style={{
-              flex: 1,
-              textAlign: "left",
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-            }}
-            title={open ? "Ocultar detalle" : "Mostrar detalle"}
-          >
-            <div style={{ fontWeight: 700 }}>
-              {summaryLabel}
-              <span style={{ opacity: 0.8, fontWeight: 500 }}> · {summaryName}</span>
-            </div>
-
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, opacity: 0.9 }}>
-              <span className={styles.hint}>type: {summaryType}</span>
-              <span className={styles.hint}>compute: {summaryCompute}</span>
-              {field.required ? <span className={styles.hint}>required</span> : null}
-              {field.readOnly ? <span className={styles.hint}>readOnly</span> : null}
-              {(field.visible ?? true) === false ? <span className={styles.hint}>hidden</span> : null}
-              {field.allowOverride ? <span className={styles.hint}>override</span> : null}
-            </div>
-          </button>
-
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={onMoveUp}
-              disabled={!canUp || readOnly}
-              title="Subir"
-            >
-              ↑
-            </button>
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={onMoveDown}
-              disabled={!canDown || readOnly}
-              title="Bajar"
-            >
-              ↓
-            </button>
-
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={duplicate}
-              disabled={readOnly}
-              title="Duplicar (rápido)"
-            >
-              ⎘
-            </button>
-
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={onRemove}
-              disabled={readOnly}
-              style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}
-              title="Eliminar campo"
-            >
-              Eliminar
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ========= DETALLE PLEGABLE (tu contenido original, sin perder nada) ========= */}
-      {open && (
-        <>
-          {/* BLOQUE PRINCIPAL (tu grid 1 + grid 2) */}
-          <div className={styles.card} style={{ marginTop: 12 }}>
-            <h4 style={{ marginTop: 0 }}>Opciones Generales</h4>
-            <div className={styles.grid}>
-              
-              <div>
-                <label className={styles.label}>name</label>
-                <input
-                  className={styles.input}
-                  value={field.name}
-                  onChange={(e) => onChange({ ...field, name: e.target.value })}
-                  disabled={readOnly}
-                />
-              </div>
-
-              <div>
-                <label className={styles.label}>label</label>
-                <input
-                  className={styles.input}
-                  value={field.label}
-                  onChange={(e) => onChange({ ...field, label: e.target.value })}
-                  disabled={readOnly}
-                />
-              </div>
-
-              <div>
-                <label className={styles.label}>type</label>
-                <select
-                  className={styles.input}
-                  value={field.type}
-                  onChange={(e) => onChange(normalizeFieldType(field, e.target.value as FieldType))}
-                  disabled={readOnly}
-                >
-                  {VALID_FIELD_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Modo de cálculo */}
-              <div>
-                <label className={styles.label}>compute</label>
-                <select
-                  className={styles.input}
-                  value={getComputeKind(field)}
-                  onChange={(e) => onChange(setComputeKind(field, e.target.value as any))}
-                  disabled={readOnly}
-                >
-                  <option value="none">none</option>
-                  <option value="formula">formula</option>
-                  <option value="aggregate">aggregate</option>
-                </select>
-              </div>
-
-              <div>
-                  <label className={styles.label}>visible when</label>
-                  <select
-                    className={styles.input}
-                    value={field.visibleWhen || "add_edit"}
-                    onChange={(e) =>
-                      onChange({
-                        ...field,
-                        visibleWhen: e.target.value as "add" | "edit" | "add_edit",
-                      })
-                    }
-                  >
-                    <option value="add">add</option>
-                    <option value="edit">edit</option>
-                    <option value="add_edit">add & edit</option>
-                  </select>
-                </div>
-
-              <div>
-                <label className={styles.label}>appareance</label>
-                <select
-                  className={styles.input}
-                  value={field.appareance}
-                  onChange={(e) => onChange({ ...field, appareance: e.target.value as Appareance })}
-                  disabled={readOnly}
-                >
-                  {Appareance_Valid_Types.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-                        <div className={styles.grid}>
-              <div>
-                <label className={styles.label}>placeholder</label>
-                <input
-                  className={styles.input}
-                  value={field.placeholder || ""}
-                  onChange={(e) => onChange({ ...field, placeholder: e.target.value })}
-                  disabled={readOnly}
-                />
-              </div>
-
-              <div>
-                <label className={styles.label}>help</label>
-                <input
-                  className={styles.input}
-                  value={field.help || ""}
-                  onChange={(e) => onChange({ ...field, help: e.target.value })}
-                  disabled={readOnly}
-                />
-              </div>
-
-              <div>
-                <label className={styles.label}>defaultValue</label>
-                <input
-                  className={styles.input}
-                  value={
-                    typeof field.defaultValue === "string" || typeof field.defaultValue === "number"
-                      ? String(field.defaultValue)
-                      : field.defaultValue === undefined
-                        ? ""
-                        : JSON.stringify(field.defaultValue)
-                  }
-                  onChange={(e) => onChange({ ...field, defaultValue: e.target.value })}
-                  disabled={readOnly}
-                />
-              </div>
-
-              <div className={styles.switchRow}>
-                <label className={styles.label}>required</label>
-                <input
-                  type="checkbox"
-                  checked={!!field.required}
-                  onChange={(e) => onChange({ ...field, required: e.target.checked })}
-                  disabled={readOnly}
-                />
-              </div>
-              <div className={styles.switchRow}>
-                <label className={styles.label}>virtual</label>
-                <input
-                  type="checkbox"
-                  checked={!!field.virtual}
-                  onChange={(e) => onChange({ ...field, virtual: e.target.checked })}
-                  disabled={readOnly}
-                />
-              </div>
-
-              <div className={styles.switchRow}>
-                <label className={styles.label}>visible</label>
-                <input
-                  type="checkbox"
-                  checked={field.visible ?? true}
-                  onChange={(e) => onChange({ ...field, visible: e.target.checked })}
-                  disabled={readOnly}
-                />
-              </div>
-
-              
-
-              
-
-              <div className={styles.switchRow}>
-                <label className={styles.label}>allowOverride (forzar valor)</label>
-                <input
-                  type="checkbox"
-                  checked={!!field.allowOverride}
-                  onChange={(e) => onChange({ ...field, allowOverride: e.target.checked })}
-                  disabled={readOnly}
-                />
-              </div>
-
-              
-
-
-
-
-            </div>
-          </div>
-
-          {/* Opcionales comunes */}
-          <div className={styles.card} style={{ marginTop: 12 }}>
-            <h4 style={{ marginTop: 0 }}>Opciones UI</h4>
-
-            <div className={styles.grid}>
-              <div>
-                <label className={styles.label}>ui.width</label>
-                <select
-                  className={styles.input}
-                  value={field.ui?.width || "1/1"}
-                  onChange={(e) =>
-                    onChange({
-                      ...field,
-                      ui: { ...(field.ui || {}), width: e.target.value as any },
-                    })
-                  }
-                  disabled={readOnly}
-                >
-                  <option value="1/1">1/1</option>
-                  <option value="1/2">1/2</option>
-                  <option value="1/3">1/3</option>
-                  <option value="2/3">2/3</option>
-                </select>
-              </div>
-
-              <div>
-                <label className={styles.label}>ui.variant</label>
-                <select
-                  className={styles.input}
-                  value={field.ui?.variant || "input"}
-                  onChange={(e) =>
-                    onChange({
-                      ...field,
-                      ui: { ...(field.ui || {}), variant: e.target.value as any },
-                    })
-                  }
-                  disabled={readOnly}
-                >
-                  <option value="input">input</option>
-                  <option value="textarea">textarea</option>
-                  <option value="currency">currency</option>
-                  <option value="percent">percent</option>
-                  <option value="richtext">richtext</option>
-                </select>
-              </div>
-              <div className={styles.switchRow}>
-                <label className={styles.label}>readOnly</label>
-                <input
-                  type="checkbox"
-                  checked={!!field.readOnly}
-                  onChange={(e) => onChange({ ...field, readOnly: e.target.checked })}
-                  disabled={readOnly}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Específico por tipo */}
-          {["select", "multiselect"].includes(field.type) && (
-            <Labeled label="options">
-              <ArrayChips
-                value={field.options || []}
-                onChange={(opts) => onChange({ ...field, options: opts })}
-              />
-            </Labeled>
-          )}
-          {field.type === "selectorTabla" && (
-            <div className={styles.card} style={{ marginTop: 12 }}>
-              <h4 style={{ marginTop: 0 }}>Selector Tabla</h4>
-
-              <div className={styles.grid}>
-                <div>
-                  <label className={styles.label}>ref.moduleSlug</label>
-                  <input
-                    className={styles.input}
-                    value={field.ref?.moduleSlug || ""}
-                    onChange={(e) =>
-                      onChange({
-                        ...field,
-                        ref: {
-                          ...(field.ref || { moduleSlug: "", displayField: "" }),
-                          moduleSlug: e.target.value,
-                        },
-                      })
-                    }
-                    disabled={readOnly}
-                  />
-                </div>
-
-                <div>
-                  <label className={styles.label}>ref.displayField</label>
-                  <input
-                    className={styles.input}
-                    value={field.ref?.displayField || ""}
-                    onChange={(e) =>
-                      onChange({
-                        ...field,
-                        ref: {
-                          ...(field.ref || { moduleSlug: "", displayField: "" }),
-                          displayField: e.target.value,
-                        },
-                      })
-                    }
-                    disabled={readOnly}
-                  />
-                </div>
-
-                <div>
-                  <label className={styles.label}>ref.valueField</label>
-                  <input
-                    className={styles.input}
-                    value={field.ref?.valueField || "id"}
-                    onChange={(e) =>
-                      onChange({
-                        ...field,
-                        ref: {
-                          ...(field.ref || { moduleSlug: "", displayField: "" }),
-                          valueField: e.target.value,
-                        },
-                      })
-                    }
-                    disabled={readOnly}
-                  />
-                </div>
-              <div>
-                <div>
-                  <label className={styles.label}>ref.multiple</label>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={!!field.ref?.multiple}
-                      onChange={(e) =>
-                        onChange({
-                          ...field,
-                          ref: {
-                            ...(field.ref || { moduleSlug: "", displayField: "" }),
-                            multiple: e.target.checked,
-                          },
-                        })
-                      }
-                      disabled={readOnly}
-                    />
-                    <span style={{ fontSize: 13, opacity: 0.85 }}>Permitir multiselección</span>
-                  </div>
-                </div>
-                <div>
-                  <label className={styles.label}>ref.hasStyle (aplica estilo en tablas con campos icon y color)</label>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={!!field.ref?.hasStyle}
-                      onChange={(e) =>
-                        onChange({
-                          ...field,
-                          ref: {
-                            ...(field.ref || { moduleSlug: "", displayField: "" }),
-                            hasStyle: e.target.checked,
-                          },
-                        })
-                      }
-                      disabled={readOnly}
-                    />
-                    <span style={{ fontSize: 13, opacity: 0.85 }}>Tiene estilo</span>
-                  </div>
-                </div>
-                </div>
-                <div className="full">
-                  <label className={styles.label}>ref.filters (JSON)</label>
-                  <textarea
-                    className={styles.textarea}
-                    rows={4}
-                    value={JSON.stringify(field.ref?.filters || [], null, 2)}
-                    onChange={(e) => {
-                      try {
-                        const filters = JSON.parse(e.target.value || "[]");
-                        onChange({
-                          ...field,
-                          ref: {
-                            ...(field.ref || { moduleSlug: "", displayField: "" }),
-                            filters,
-                          },
-                        });
-                      } catch {
-                        // opcional: marcar error visual
-                      }
-                    }}
-                    spellCheck={false}
-                    disabled={readOnly}
-                  />
-                  <div className={styles.hint}>
-                    Ejemplo: [{"{"}"field":"obraId","op":"=","value":123{""}{"}"}]
-                  </div>
-                </div>
-
-                <div className="full">
-                  <label className={styles.label}>ref.sort (JSON)</label>
-                  <textarea
-                    className={styles.textarea}
-                    rows={3}
-                    value={JSON.stringify(field.ref?.sort || [], null, 2)}
-                    onChange={(e) => {
-                      try {
-                        const sort = JSON.parse(e.target.value || "[]");
-                        onChange({
-                          ...field,
-                          ref: {
-                            ...(field.ref || { moduleSlug: "", displayField: "" }),
-                            sort,
-                          },
-                        });
-                      } catch {
-                        // opcional: marcar error
-                      }
-                    }}
-                    spellCheck={false}
-                    disabled={readOnly}
-                  />
-                  <div className={styles.hint}>
-                    Ejemplo: [{"{"}"field":"nombre","direction":"asc"{""}{"}"}]
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          {field.type === "ReverseLink" && (
-             <div className={styles.card} style={{ marginTop: 12 }}>
-            <div className={styles.grid}>
-              <div>
-                <label className={styles.label}>ref.moduleSlug (tabla destino)</label>
-                <input
-                  className={styles.input}
-                  value={field.ref?.moduleSlug || ""}
-                  onChange={(e) =>
-                    onChange({
-                      ...field,
-                      ref: { ...(field.ref || {}), moduleSlug: e.target.value },
-                    })
-                  }
-                />
-              </div>
-
-    <div>
-      <label className={styles.label}>ref.foreignKey (FK en la tabla destino)</label>
-      <input
-        className={styles.input}
-        value={field.ref?.foreignKey || ""}
-        onChange={(e) =>
-          onChange({
-            ...field,
-            ref: { ...(field.ref || {}), foreignKey: e.target.value },
-          })
-        }
-        placeholder="ej: clienteId"
-      />
-    </div>
-
-    <div>
-      <label className={styles.label}>ref.parentKey (campo del registro actual)</label>
-      <input
-        className={styles.input}
-        value={field.ref?.parentKey || "id"}
-        onChange={(e) =>
-          onChange({
-            ...field,
-            ref: { ...(field.ref || {}), parentKey: e.target.value },
-          })
-        }
-        placeholder="id"
-      />
-    </div>
-
-    <div>
-      <label className={styles.label}>ref.limit</label>
-      <input
-        className={styles.input}
-        type="number"
-        value={field.ref?.limit ?? 20}
-        onChange={(e) =>
-          onChange({
-            ...field,
-            ref: { ...(field.ref || {}), limit: Number(e.target.value || 20) },
-          })
-        }
-      />
-    </div>
-              <div>
-                <label className={styles.label}>ref.route (tabla destino)</label>
-                <input
-                  className={styles.input}
-                  value={field.ref?.route || ""}
-                  onChange={(e) =>
-                    onChange({
-                      ...field,
-                      ref: { ...(field.ref || {}), route: e.target.value },
-                    })
-                  }
-                />
-              </div>
-    <div className="full">
-      <label className={styles.label}>ref.filters extra (JSON)</label>
-      <textarea
-        className={styles.textarea}
-        rows={4}
-        value={JSON.stringify(field.ref?.filters || [], null, 2)}
-        onChange={(e) => {
-          try {
-            const filters = JSON.parse(e.target.value || "[]");
-            onChange({
-              ...field,
-              ref: { ...(field.ref || {}), filters },
-            });
-          } catch {}
-        }}
-        spellCheck={false}
-      />
-      <div className={styles.hint}>
-        Se aplican además del filtro FK. Ej: [{"{"}"field":"estado","op":"=","value":"activa"{""}{"}"}]
-      </div>
-    </div>
-
-    <div className="full">
-      <label className={styles.label}>ref.sort (JSON)</label>
-      <textarea
-        className={styles.textarea}
-        rows={3}
-        value={JSON.stringify(field.ref?.sort || [], null, 2)}
-        onChange={(e) => {
-          try {
-            const sort = JSON.parse(e.target.value || "[]");
-            onChange({
-              ...field,
-              ref: { ...(field.ref || {}), sort },
-            });
-          } catch {}
-        }}
-        spellCheck={false}
-      />
-      <div className={styles.hint}>
-        Ej: [{"{"}"field":"created_at","direction":"desc"{""}{"}"}]
-      </div>
-    </div>
-  </div>
-  </div>
-)}
-
-
-          {/* IMPORTANTE: tu código tenía un bloque field.type === "formula" y otro getComputeKind(field) === "formula".
-             Dejo SOLO el segundo (getComputeKind) porque es el que realmente corresponde al selector compute y evita duplicar UI.
-             Si quieres mantener ambos por compatibilidad, te lo vuelvo a dejar doble, pero no aporta y confunde. */}
-
-          {getComputeKind(field) === "formula" && (
-            <div className={styles.card} style={{ marginTop: 12 }}>
-              <h4 style={{ marginTop: 0 }}>Cálculo (formula)</h4>
-
-              <label className={styles.label}>Expresión</label>
-              <input
-                className={styles.input}
-                value={ensureFormula(field).expr}
-                onChange={(e) => {
-                  const base = ensureFormula(field);
-                  onChange({ ...field, compute: { ...base, expr: e.target.value } });
-                }}
-                disabled={readOnly}
-              />
-
-              <label className={styles.label}>Dependencias (coma separadas)</label>
-              <input
-                className={styles.input}
-                value={ensureFormula(field).deps.join(",")}
-                onChange={(e) => {
-                  const deps = e.target.value
-                    .split(",")
-                    .map((d) => d.trim())
-                    .filter(Boolean);
-                  const base = ensureFormula(field);
-                  onChange({ ...field, compute: { ...base, deps } });
-                }}
-                disabled={readOnly}
-              />
-
-              <label className={styles.label}>Persistencia</label>
-              <select
-                className={styles.input}
-                value={ensureFormula(field).persist}
-                onChange={(e) => {
-                  const base = ensureFormula(field);
-                  onChange({
-                    ...field,
-                    compute: { ...base, persist: e.target.value as "none" | "onSave" | "always" },
-                  });
-                }}
-                disabled={readOnly}
-              >
-                <option value="none">none</option>
-                <option value="onSave">onSave</option>
-                <option value="always">always</option>
-              </select>
-            </div>
-          )}
-
-          {getComputeKind(field) === "aggregate" && (
-            <div className={styles.card} style={{ marginTop: 12 }}>
-              <h4 style={{ marginTop: 0 }}>Cálculo (aggregate)</h4>
-
-              <div className={styles.grid}>
-                <div>
-                  <label className={styles.label}>sourceTable</label>
-                  <input
-                    className={styles.input}
-                    value={ensureAggregate(field).sourceTable}
-                    onChange={(e) => {
-                      const base = ensureAggregate(field);
-                      onChange({ ...field, compute: { ...base, sourceTable: e.target.value } });
-                    }}
-                    disabled={readOnly}
-                  />
-                </div>
-
-                <div>
-                  <label className={styles.label}>field</label>
-                  <input
-                    className={styles.input}
-                    value={ensureAggregate(field).field}
-                    onChange={(e) => {
-                      const base = ensureAggregate(field);
-                      onChange({ ...field, compute: { ...base, field: e.target.value } });
-                    }}
-                    disabled={readOnly}
-                  />
-                </div>
-
-                <div>
-                  <label className={styles.label}>op</label>
-                  <select
-                    className={styles.input}
-                    value={ensureAggregate(field).op}
-                    onChange={(e) => {
-                      const base = ensureAggregate(field);
-                      onChange({ ...field, compute: { ...base, op: e.target.value as any } });
-                    }}
-                    disabled={readOnly}
-                  >
-                    <option value="sum">sum</option>
-                    <option value="avg">avg</option>
-                    <option value="min">min</option>
-                    <option value="max">max</option>
-                    <option value="count">count</option>
-                  </select>
-                </div>
-              </div>
-
-              <label className={styles.label}>where (JSON)</label>
-                <textarea
-                  className={styles.textarea}
-                  rows={6}
-                  value={whereText}
-                  placeholder={`[
-                  { "field": "obraId", "op": "=", "value": "{{id}}" }
-                ]`}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setWhereText(next);
-
-                    // Si el usuario lo deja válido mientras escribe, lo aplicamos al vuelo.
-                    // Si no, no rompemos el estado del campo: solo mostramos error.
-                    commitWhereIfValid(next);
-                  }}
-                  onBlur={() => {
-                    // En blur, intentamos consolidar (por si quedó medio escrito)
-                    commitWhereIfValid(whereText);
-                  }}
-                  spellCheck={false}
-                  disabled={readOnly}
-                />
-
-                <div className={styles.hint} style={{ marginTop: 6 }}>
-                  
-                  Ejemplo referencia formulario actual: <code>{"{{id}}"}</code>, <code>{"{{obraId}}"}</code>, <code>{"{{clienteId}}"}</code>.
-                  Ejemplo consulta: <code>{ '[{"op": "=",'+
-                          ' "field": "task",'+
-                          '"value": "{{id}}"}]'
-                            
-                          
-                          }
-                          </code>
-                  
-                </div>
-
-                {whereErr && (
-                  <div style={{ marginTop: 8, fontSize: 12, color: "#b42318" }}>
-                    {whereErr}
-                  </div>
-                )}
-
-
-              <label className={styles.label}>persist</label>
-              <select
-                className={styles.input}
-                value={ensureAggregate(field).persist}
-                onChange={(e) => {
-                  const base = ensureAggregate(field);
-                  onChange({
-                    ...field,
-                    compute: { ...base, persist: e.target.value as "none" | "onSave" | "always" },
-                  });
-                }}
-                disabled={readOnly}
-              >
-                <option value="none">none</option>
-                <option value="onSave">onSave</option>
-                <option value="always">always</option>
-              </select>
-            </div>
-          )}
-
-          {/* ========= FOOTER DE ACCIONES (lo mantengo, por si te gusta tenerlo también abajo) ========= */}
-          <div className={styles.actionsRow} style={{ justifyContent: "space-between", marginTop: 12 }}>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" className={styles.btn} onClick={onMoveUp} disabled={!canUp || readOnly}>
-                ↑
-              </button>
-              <button type="button" className={styles.btn} onClick={onMoveDown} disabled={!canDown || readOnly}>
-                ↓
-              </button>
-            </div>
-
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={onRemove}
-              disabled={readOnly}
-              style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}
-            >
-              Eliminar campo
-            </button>
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -1132,11 +141,14 @@ export default function ModuloForm({
   initialData,
   mode,
   onSave,
+  loadFieldsForTable,
 }: {
   initialData: any;
   mode: "view" | "edit" | "create";
   onSave: (fd: FormData) => Promise<{ ok: boolean; detail: string; id?: string }>;
+  loadFieldsForTable?: (tableSlug: string) => Promise<{ name: string; label?: string }[]>;
 }) {
+  
   const [pending, start] = useTransition();
   const readOnly = mode === "view";
 
@@ -1148,7 +160,29 @@ export default function ModuloForm({
   const [activo, setActivo] = useState<boolean>(!!initialData?.activo);
   const [sidebar, setSidebar] = useState<boolean>(!!initialData?.sidebar);
   const [parentId, setParentId] = useState<string | null>(initialData?.parent_id ?? null);
+  const [pickOpen, setPickOpen] = useState(false);
+  const [pickTarget, setPickTarget] = useState<PickTarget>("columns");
+  const [fieldsByTable, setFieldsByTable] = useState<Record<string, { name: string; label?: string }[]>>({});
+  const [loadingByTable, setLoadingByTable] = useState<Record<string, boolean>>({});
 
+  const ensureFieldsLoaded = async (tableSlug: string) => {
+    if (!tableSlug) return;
+    if (!loadFieldsForTable) return;
+
+    // cache
+    if (fieldsByTable[tableSlug]) return;
+
+    setLoadingByTable((p) => ({ ...p, [tableSlug]: true }));
+    try {
+      const fields = await loadFieldsForTable(tableSlug);
+      setFieldsByTable((p) => ({ ...p, [tableSlug]: Array.isArray(fields) ? fields : [] }));
+    } catch (e) {
+      console.error("loadFieldsForTable failed:", tableSlug, e);
+      setFieldsByTable((p) => ({ ...p, [tableSlug]: [] }));
+    } finally {
+      setLoadingByTable((p) => ({ ...p, [tableSlug]: false }));
+    }
+  };
   // =========================
   // propsObj parse + migración (legacy ui.formSections -> tabs[firstForm].config.formSections)
   // =========================
@@ -1202,7 +236,50 @@ export default function ModuloForm({
   const [rawText, setRawText] = useState(() => JSON.stringify(propsObj, null, 2));
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // =========================
+  // =========================Button Actions
+  const getFormActions = (): FormAction[] => {
+    const uiAny = (propsObj.ui || {}) as any;
+    return Array.isArray(uiAny.formActions) ? uiAny.formActions : [];
+  };
+
+  const setFormActions = (actions: FormAction[]) => {
+    const ui = { ...(propsObj.ui || {}), formActions: actions as any };
+    const next = { ...propsObj, ui };
+    setPropsObj(next);
+    setRawText(JSON.stringify(next, null, 2));
+  };
+
+  const addFormAction = () => {
+    const list = getFormActions();
+    const n = list.length + 1;
+
+    const newAction: FormAction = {
+      id: `action_${n}`,
+      type: "recalculate",
+      label: `Acción ${n}`,
+      icon: "bi bi-lightning",
+      variant: "secondary",
+      showIn: ["view", "edit", "create"],
+    };
+
+    setFormActions([...list, newAction]);
+  };
+
+  const updateFormAction = (idx: number, patch: Partial<FormAction>) => {
+    const list = getFormActions();
+    if (!list[idx]) return;
+    const next = [...list];
+    next[idx] = { ...(next[idx] as any), ...(patch as any) } as FormAction;
+    setFormActions(next);
+  };
+
+  const removeFormAction = (idx: number) => {
+    const list = getFormActions();
+    setFormActions(list.filter((_, i) => i !== idx));
+  };
+
+
+
   // Tabs helpers
   // =========================
   const getTabs = (): UiTab[] => {
@@ -1217,7 +294,7 @@ export default function ModuloForm({
     setRawText(JSON.stringify(next, null, 2));
   };
 
-  // =========================
+
   // FormSections por pestaña
   // =========================
   const getTabFormSections = (tab: UiTab): FormSection[] => {
@@ -1336,14 +413,6 @@ export default function ModuloForm({
   };
 
   // =========================
-  // Open/close secciones (clave compuesta)
-  // =========================
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
-  const isSectionOpen = (key: string) => !!openSections[key];
-  const toggleSectionOpen = (key: string) =>
-    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
-
-  // =========================
   // Submit
   // =========================
   const onSubmit = (e: React.FormEvent) => {
@@ -1391,14 +460,33 @@ export default function ModuloForm({
       setMsg({ ok: res.ok, text: res.detail });
     });
   };
+  //const [activeTabId, setActiveTabId] = useState<string>(() => getTabs()[0]?.id || "");
+
 
   const readOnlyAttr = { disabled: readOnly } as const;
+  const [activeTabId, setActiveTabId] = useState<string>("");
+      useEffect(() => {
+      const tabs = getTabs();
+      if (!tabs.length) {
+        if (activeTabId) setActiveTabId("");
+        return;
+      }
+      // si no hay activa o ya no existe, seleccionar la primera
+      if (!activeTabId || !tabs.some((t) => t.id === activeTabId)) {
+        setActiveTabId(tabs[0].id);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [propsObj.ui]);
+
+
 
   return (
     <form className={styles.card} onSubmit={onSubmit}>
       {/* Cabecera */}
       <div className={styles.card}>
         <div className={styles.grid}>
+          
+          {/* Name */}
           <div>
             <label className={styles.label}>Nombre</label>
             <input
@@ -1408,7 +496,7 @@ export default function ModuloForm({
               {...readOnlyAttr}
             />
           </div>
-
+          {/* Slug/Xml */}
           <div>
             <label className={styles.label}>Slug/Xml</label>
             <input
@@ -1418,7 +506,7 @@ export default function ModuloForm({
               {...readOnlyAttr}
             />
           </div>
-
+          {/* Tipo */}
           <div>
             <label className={styles.label}>Tipo</label>
             <select
@@ -1433,60 +521,71 @@ export default function ModuloForm({
               <option value="vista">vista</option>
             </select>
           </div>
-        </div>
+          {/* Orden */}
+          <div>
+            <label className={styles.label}>Orden</label>
+            <input
+              type="number"
+              className={styles.input}
+              value={orden}
+              onChange={(e) => setOrden(Number(e.target.value))}
+              {...readOnlyAttr}
+            />
+          </div>
+          {/* Orden */}
+          <div>
+            <label className={styles.label}>Ruta (route)</label>
+            <input
+              className={styles.input}
+              value={route}
+              onChange={(e) => setRoute(e.target.value)}
+              {...readOnlyAttr}
+            />
+          </div>
+          {/* Parent */}
+          <div>
+            <label className={styles.label}>Parent (carpeta módulo)</label>
 
-        <div>
-          <label className={styles.label}>Orden</label>
-          <input
-            type="number"
-            className={styles.input}
-            value={orden}
-            onChange={(e) => setOrden(Number(e.target.value))}
-            {...readOnlyAttr}
-          />
-        </div>
-
-        <div>
-          <label className={styles.label}>Ruta (route)</label>
-          <input
-            className={styles.input}
-            value={route}
-            onChange={(e) => setRoute(e.target.value)}
-            {...readOnlyAttr}
-          />
-        </div>
-
-        <div className={styles.switchRow}>
-          <label className={styles.label}>Activo</label>
-          <input
-            type="checkbox"
-            checked={activo}
-            onChange={(e) => setActivo(e.target.checked)}
-            {...readOnlyAttr}
-          />
-        </div>
-
-        <div className={styles.switchRow}>
-          <label className={styles.label}>Sidebar</label>
-          <input
-            type="checkbox"
-            checked={sidebar}
-            onChange={(e) => setSidebar(e.target.checked)}
-            {...readOnlyAttr}
-          />
-        </div>
-
-        <div>
-          <label className={styles.label}>Parent ID (opcional)</label>
-          <input
-            className={styles.input}
-            value={parentId ?? ""}
-            onChange={(e) => setParentId(e.target.value || null)}
-            {...readOnlyAttr}
-          />
+            <Selector
+              moduleSlug="modulos"          
+              displayField="nombre"
+              valueField="id"
+              value={parentId ?? ""}
+              readOnly={readOnly}
+              placeholder="— Sin parent —"
+              label="Selecciona el parent"
+              filters={[
+                { field: "activo", op: "=", value: true },
+                { field: "tipo", op: "=", value: "carpeta" }, // solo permite carpetas
+                // evitar que un módulo sea parent de sí mismo
+                ...(initialData?.id ? [{ field: "id", op: "!=", value: initialData.id }] : []),
+              ]}
+              sort={[{ field: "orden", direction: "asc" }]}
+              onChange={(nextId: string) => setParentId(nextId ? nextId : null)}
+            />
+          </div>
+          {/* Activo */}
+          <div className={styles.switchRow}>
+            <label className={styles.label}>Activo</label>
+            <input
+              type="checkbox"
+              checked={activo}
+              onChange={(e) => setActivo(e.target.checked)}
+              {...readOnlyAttr}
+            />
+          </div>
+          {/* Sidebar*/}
+          <div className={styles.switchRow}>
+            <label className={styles.label}>Sidebar</label>
+            <input
+              type="checkbox"
+              checked={sidebar}
+              onChange={(e) => setSidebar(e.target.checked)}
+              {...readOnlyAttr}
+            />
+          </div>
         </div>
       </div>
-
       {/* DB */}
       <Section title="Sección: DB">
         <div className={styles.grid}>
@@ -1541,6 +640,7 @@ export default function ModuloForm({
       <Section title="Sección: UI">
         <div className={styles.grid}>
           <div>
+            {/* Color */}
             <input
               type="color"
               className={styles.color}
@@ -1554,20 +654,299 @@ export default function ModuloForm({
               {...readOnlyAttr}
               style={{ padding: 0, height: 42 }}
             />
+            {/* ui.icon */}
+            <div>
+              <label className={styles.label}>ui.icon</label>
+              <IconPicker
+                value={propsObj.ui?.icon}
+                onChange={(icon: string) => {
+                  const ui = { ...(propsObj.ui || {}), icon };
+                  const next = { ...propsObj, ui };
+                  setPropsObj(next);
+                  setRawText(JSON.stringify(next, null, 2));
+                }}
+              />
+            </div>
+          </div>
+          <div style={{ gridColumn: "1 / -1", marginTop: 12 }}>
+          <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
+            <div style={{ fontWeight: 600 }}>ui.formActions</div>
+
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={addFormAction}
+              disabled={readOnly}
+            >
+              + Añadir botón
+            </button>
           </div>
 
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label className={styles.label}>ui.icon</label>
-            <IconPicker
-              value={propsObj.ui?.icon}
-              onChange={(icon: string) => {
-                const ui = { ...(propsObj.ui || {}), icon };
-                const next = { ...propsObj, ui };
-                setPropsObj(next);
-                setRawText(JSON.stringify(next, null, 2));
-              }}
-            />
-          </div>
+          {getFormActions().length === 0 && (
+            <div className={styles.hint}>
+              No hay acciones configuradas. Añade botones para “crear relacionado”, “navegar”, “recalcular”, “duplicar”, etc.
+            </div>
+          )}
+
+          {getFormActions().map((a, idx) => {
+            // helpers rápidos para JSON (fieldMap/defaults)
+            const safeJson = (v: any) => (v ? JSON.stringify(v, null, 2) : "");
+            const parseJson = (txt: string) => {
+              if (!txt.trim()) return undefined;
+              return JSON.parse(txt);
+            };
+
+            return (
+              <div key={a.id || idx} className={styles.card} style={{ marginTop: 12 }}>
+                <div className={styles.grid}>
+                  
+                  <div>
+                    <label className={styles.label}>id</label>
+                    <input
+                      className={styles.input}
+                      value={a.id}
+                      onChange={(e) => updateFormAction(idx, { id: e.target.value })}
+                      disabled={readOnly}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={styles.label}>label</label>
+                    <input
+                      className={styles.input}
+                      value={a.label}
+                      onChange={(e) => updateFormAction(idx, { label: e.target.value })}
+                      disabled={readOnly}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={styles.label}>type</label>
+                    <select
+                      className={styles.input}
+                      value={a.type}
+                      onChange={(e) => updateFormAction(idx, { type: e.target.value as any })}
+                      disabled={readOnly}
+                    >
+                      <option value="recalculate">recalculate</option>
+                      <option value="createRelated">createRelated</option>
+                      <option value="navigate">navigate</option>
+                      <option value="duplicate">duplicate</option>
+                      <option value="external">external</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={styles.label}>variant</label>
+                    <select
+                      className={styles.input}
+                      value={(a as any).variant || "secondary"}
+                      onChange={(e) => updateFormAction(idx, { variant: e.target.value as any })}
+                      disabled={readOnly}
+                    >
+                      {["primary","secondary","success","warning","danger","info","light","dark"].map(v => (
+                        <option key={v} value={v}>{v}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label className={styles.label}>icon (Bootstrap Icons)</label>
+                    <IconPicker
+                      value={(a as any).icon || ""}
+                      onChange={(icon: string) => updateFormAction(idx, { icon })}
+                    />
+                  </div>
+
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label className={styles.label}>showIn</label>
+                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                      {(["view", "edit", "create"] as const).map((m) => {
+                        const showIn = (a as any).showIn || ["view", "edit", "create"];
+                        const checked = showIn.includes(m);
+                        return (
+                          <label key={m} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={readOnly}
+                              onChange={(e) => {
+                                const next = e.target.checked
+                                  ? Array.from(new Set([...showIn, m]))
+                                  : showIn.filter((x: string) => x !== m);
+                                updateFormAction(idx, { showIn: next as any });
+                              }}
+                            />
+                            <span className={styles.label} style={{ margin: 0 }}>{m}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label className={styles.label}>confirm.text (opcional)</label>
+                    <input
+                      className={styles.input}
+                      value={(a as any).confirm?.text || ""}
+                      onChange={(e) => {
+                        const text = e.target.value;
+                        updateFormAction(idx, {
+                          confirm: text.trim()
+                            ? { ...((a as any).confirm || {}), text }
+                            : undefined,
+                        } as any);
+                      }}
+                      disabled={readOnly}
+                      placeholder="Ej: ¿Seguro que quieres generar el presupuesto?"
+                    />
+                  </div>
+
+                  {/* ---- Tipo: createRelated ---- */}
+                  {a.type === "createRelated" && (
+                    <>
+                      <div>
+                        <label className={styles.label}>target.table</label>
+                        <input
+                          className={styles.input}
+                          value={(a as any).target?.table || ""}
+                          onChange={(e) => {
+                            const table = e.target.value;
+                            updateFormAction(idx, { target: { ...((a as any).target || {}), table } } as any);
+                          }}
+                          disabled={readOnly}
+                          placeholder="Ej: tareas"
+                        />
+                      </div>
+
+                      <div>
+                        <label className={styles.label}>afterCreate.navigateTo</label>
+                        <select
+                          className={styles.input}
+                          value={(a as any).afterCreate?.navigateTo || "record"}
+                          onChange={(e) => {
+                            const navigateTo = e.target.value;
+                            updateFormAction(idx, {
+                              afterCreate: { ...((a as any).afterCreate || {}), navigateTo },
+                            } as any);
+                          }}
+                          disabled={readOnly}
+                        >
+                          <option value="record">record</option>
+                          <option value="list">list</option>
+                          <option value="none">none</option>
+                        </select>
+                      </div>
+
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label className={styles.label}>fieldMap (JSON) — {"{destino: \"origen\"}"}</label>
+                        <textarea
+                          className={styles.textarea}
+                          value={safeJson((a as any).fieldMap)}
+                          disabled={readOnly}
+                          rows={4}
+                          onChange={(e) => {
+                            try {
+                              const obj = parseJson(e.target.value);
+                              updateFormAction(idx, { fieldMap: obj } as any);
+                            } catch {
+                              // no rompas el formulario: si está mal, no actualices
+                            }
+                          }}
+                          placeholder={`{\n  "obraId": "id",\n  "clienteId": "clienteId"\n}`}
+                        />
+                      </div>
+
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label className={styles.label}>defaults (JSON)</label>
+                        <textarea
+                          className={styles.textarea}
+                          value={safeJson((a as any).defaults)}
+                          disabled={readOnly}
+                          rows={4}
+                          onChange={(e) => {
+                            try {
+                              const obj = parseJson(e.target.value);
+                              updateFormAction(idx, { defaults: obj } as any);
+                            } catch {}
+                          }}
+                          placeholder={`{\n  "estado": "pendiente"\n}`}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* ---- Tipo: navigate ---- */}
+                  {a.type === "navigate" && (
+                    <>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label className={styles.label}>hrefTemplate</label>
+                        <input
+                          className={styles.input}
+                          value={(a as any).hrefTemplate || ""}
+                          onChange={(e) => updateFormAction(idx, { hrefTemplate: e.target.value } as any)}
+                          disabled={readOnly}
+                          placeholder='/tareas/new?obraId={{id}}'
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* ---- Tipo: duplicate ---- */}
+                  {a.type === "duplicate" && (
+                    <>
+                      <div className={styles.switchRow}>
+                        <label className={styles.label}>includeChildren</label>
+                        <input
+                          type="checkbox"
+                          checked={!!(a as any).includeChildren}
+                          onChange={(e) => updateFormAction(idx, { includeChildren: e.target.checked } as any)}
+                          disabled={readOnly}
+                        />
+                      </div>
+
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label className={styles.label}>omitFields (JSON array)</label>
+                        <input
+                          className={styles.input}
+                          value={safeJson((a as any).omitFields)}
+                          onChange={(e) => {
+                            try {
+                              const arr = parseJson(e.target.value);
+                              updateFormAction(idx, { omitFields: arr } as any);
+                            } catch {}
+                          }}
+                          disabled={readOnly}
+                          placeholder='["id","createdAt","updatedAt"]'
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* ---- Tipo: external (placeholder) ---- */}
+                  {a.type === "external" && (
+                    <div style={{ gridColumn: "1 / -1" }} className={styles.hint}>
+                      Acción externa (PDF/email/print) — la dejamos lista para implementar más adelante.
+                    </div>
+                  )}
+                </div>
+
+                <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    className={styles.btnDanger}
+                    onClick={() => removeFormAction(idx)}
+                    disabled={readOnly}
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+          
         </div>
       </Section>
 
@@ -1591,605 +970,752 @@ export default function ModuloForm({
           </button>
         </div>
 
-        {getTabs().length === 0 && (
-          <div className={styles.hint}>
-            Si no defines pestañas, (de momento) no se renderiza editor por pestaña.
-            Añade una pestaña tipo <b>form</b>.
-          </div>
-        )}
-
-        {getTabs().map((t, idx) => {
-          const tabs = getTabs();
-
-          // ✅ Evita contaminar el union: actualiza con updater
-          const updateTab = (updater: (prev: UiTab) => UiTab) => {
-            const nextTabs = [...tabs];
-            nextTabs[idx] = updater(nextTabs[idx]);
-            setTabs(nextTabs);
-          };
-
-          const removeTab = () => setTabs(tabs.filter((_, i) => i !== idx));
-
-          return (
-            <div key={t.id} className={styles.card} style={{ marginTop: 12 }}>
+        {getTabs().length > 0 && (
+            <div className={styles.card} style={{ marginTop: 12 }}>
               <div className={styles.grid}>
-                <div>
-                  <label className={styles.label}>ID</label>
-                  <input
-                    className={styles.input}
-                    value={t.id}
-                    onChange={(e) => updateTab((prev) => ({ ...prev, id: e.target.value }))}
-                    disabled={readOnly}
-                  />
-                </div>
-
-                <div>
-                  <label className={styles.label}>Label</label>
-                  <input
-                    className={styles.input}
-                    value={t.label}
-                    onChange={(e) => updateTab((prev) => ({ ...prev, label: e.target.value }))}
-                    disabled={readOnly}
-                  />
-                </div>
-
-                <div>
-                  <label className={styles.label}>Tipo</label>
+                <div className="full">
+                  <label className={styles.label}>Pestaña activa</label>
                   <select
                     className={styles.input}
-                    value={t.type}
-                    onChange={(e) => {
-                      const nextType = e.target.value as UiTab["type"];
-
-                      // ✅ REEMPLAZA el tab completo al cambiar type (evita el error TS)
-                      updateTab((prev) => {
-                        if (nextType === "form") {
-                          const keepSections =
-                            prev.type === "form" ? prev.config?.formSections ?? [] : [];
-                          return {
-                            id: prev.id,
-                            label: prev.label,
-                            type: "form",
-                            config: { formSections: keepSections },
-                          };
-                        }
-
-                        if (nextType === "treeview") {
-                          return {
-                            id: prev.id,
-                            label: prev.label,
-                            type: "treeview",
-                            config: { sourceTable: "", groupBy: [], columns: [] },
-                          };
-                        }
-
-                        // calendar
-                        return {
-                          id: prev.id,
-                          label: prev.label,
-                          type: "calendar",
-                          config: {
-                            sourceTable: "",
-                            startField: "",
-                            endField: "",
-                            titleField: "",
-                            colorField: "",
-                          },
-                        };
-                      });
-                    }}
+                    value={activeTabId || getTabs()[0]?.id}
+                    onChange={(e) => setActiveTabId(e.target.value)}
                     disabled={readOnly}
                   >
-                    <option value="form">form</option>
-                    <option value="treeview">treeview</option>
-                    <option value="calendar">calendar</option>
+                    {getTabs().map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.label} — ({t.type})
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
+            </div>
+          )}
 
-              {/* Config TreeView */}
-              {t.type === "treeview" && (
-                      <div className={styles.card} style={{ marginTop: 12 }}>
-                        <h4 style={{ marginTop: 0 }}>Config TreeView</h4>
 
-                        <div className={styles.grid}>
+        {(() => {
+                  const tabs = getTabs();
+                  if (tabs.length === 0) return null;
+
+                  const idx = Math.max(
+                    0,
+                    tabs.findIndex((t) => t.id === (activeTabId || tabs[0].id))
+                  );
+
+                  const t = tabs[idx];
+                  const updateTab = (updater: (prev: UiTab) => UiTab) => {
+                    const nextTabs = [...tabs];
+                    nextTabs[idx] = updater(nextTabs[idx]);
+                    setTabs(nextTabs);
+                    const nextId = nextTabs[idx]?.id;
+                    if (nextId && nextId !== activeTabId) setActiveTabId(nextId);
+                  };
+
+                  const removeTab = () => {
+                    const next = tabs.filter((_, i) => i !== idx);
+                    setTabs(next);
+                    setActiveTabId(next[0]?.id || "");
+                  };
+
+                  return (
+                    <div key={t.id} className={styles.card} style={{ marginTop: 12 }}>
+
+                      <div className={styles.grid}>
+                          {/* ID */}
                           <div>
-                            <label className={styles.label}>Tabla destino (source.table)</label>
+                            <label className={styles.label}>ID</label>
                             <input
                               className={styles.input}
-                              value={t.config?.source?.table || t.config?.sourceTable || ""}
-                              onChange={(e) =>
-                                updateTab((prev) => {
-                                  if (prev.type !== "treeview") return prev;
-
-                                  const table = e.target.value;
-
-                                  return {
-                                    ...prev,
-                                    config: {
-                                      ...(prev.config || {}),
-
-                                      // ✅ nuevo
-                                      source: { ...(prev.config?.source || {}), table },
-
-                                      // (opcional) legacy para no perder compatibilidad con configs antiguas
-                                      sourceTable: table,
-                                    },
-                                  };
-                                })
-                              }
+                              value={t.id}
+                              onChange={(e) => updateTab((prev) => ({ ...prev, id: e.target.value }))}
                               disabled={readOnly}
                             />
                           </div>
+                          {/* Label */}
                           <div>
-                            <label className={styles.label}>Filtro por padre (campo FK en source)</label>
+                            <label className={styles.label}>Label</label>
                             <input
                               className={styles.input}
-                              value={(t.config?.filters?.[0]?.field as string) || ""}
-                              onChange={(e) =>
-                                updateTab((prev) => {
-                                  if (prev.type !== "treeview") return prev;
-
-                                  const field = e.target.value;
-
-                                  return {
-                                    ...prev,
-                                    config: {
-                                      ...(prev.config || {}),
-                                      filters: field
-                                        ? [{ op: "eq", field, valueFromParent: "id" }]
-                                        : [],
-                                    },
-                                  };
-                                })
-                              }
-                              disabled={readOnly}
-                              placeholder="Ej: proyectoId"
-                            />
-                            <div className={styles.help}>Se aplicará: field = parentRecord.id</div>
-                          </div>
-
-
-                          <div>
-                            <label className={styles.label}>groupBy (campo)</label>
-                            <input
-                              className={styles.input}
-                              value={t.config?.grouping?.groupByField || (t.config?.groupBy || [])[0] || ""}
-                              onChange={(e) =>
-                                updateTab((prev) => {
-                                  if (prev.type !== "treeview") return prev;
-
-                                  const groupByField = e.target.value.trim();
-
-                                  return {
-                                    ...prev,
-                                    config: {
-                                      ...(prev.config || {}),
-
-                                      // ✅ nuevo
-                                      grouping: {
-                                        ...(prev.config?.grouping || {}),
-                                        groupByField,
-                                      },
-
-                                      // (opcional) legacy como array para tu UI actual
-                                      groupBy: groupByField ? [groupByField] : [],
-                                    },
-                                  };
-                                })
-                              }
+                              value={t.label}
+                              onChange={(e) => updateTab((prev) => ({ ...prev, label: e.target.value }))}
                               disabled={readOnly}
                             />
                           </div>
-
+                          {/* Tipo */}
                           <div>
-                            <label className={styles.label}>columns (coma → field list)</label>
-                            <input
+                            <label className={styles.label}>Tipo</label>
+                            <select
                               className={styles.input}
-                              value={
-                                Array.isArray(t.config?.columns)
-                                  ? (
-                                      // si ya está en formato nuevo [{field,...}]
-                                      t.config.columns[0] && typeof t.config.columns[0] === "object"
-                                        ? t.config.columns.map((c: any) => c.field).join(",")
-                                        : // legacy string[]
-                                          (t.config.columns || []).join(",")
-                                    )
-                                  : (t.config?.columns || []).join(",")
-                              }
-                              onChange={(e) =>
-                                updateTab((prev) => {
-                                  if (prev.type !== "treeview") return prev;
+                              value={t.type}
+                              onChange={(e) => {
+                                const nextType = e.target.value as UiTab["type"];
 
-                                  const fields = e.target.value
-                                    .split(",")
-                                    .map((s) => s.trim())
-                                    .filter(Boolean);
+                                updateTab((prev) => {
+                                  if (nextType === "form") {
+                                    const keepSections = prev.type === "form" ? prev.config?.formSections ?? [] : [];
+                                    return {
+                                      id: prev.id,
+                                      label: prev.label,
+                                      type: "form",
+                                      config: { formSections: keepSections },
+                                    };
+                                  }
+
+                                  if (nextType === "treeview") {
+                                    return {
+                                      id: prev.id,
+                                      label: prev.label,
+                                      type: "treeview",
+                                      config: { sourceTable: "", groupBy: [], columns: [] },
+                                    };
+                                  }
 
                                   return {
-                                    ...prev,
-                                    config: {
-                                      ...(prev.config || {}),
-
-                                      // ✅ nuevo: columns como objetos mínimos
-                                      columns: fields.map((f) => ({
-                                        field: f,
-                                        label: f,
-                                        // type opcional (si no lo defines, TreeView lo trata como text)
-                                      })),
-
-                                      // (opcional) legacy
-                                      // columnsLegacy: fields,
-                                    },
+                                    id: prev.id,
+                                    label: prev.label,
+                                    type: "calendar",
+                                    config: { sourceTable: "", startField: "", endField: "", titleField: "", colorField: "" },
                                   };
-                                })
-                              }
+                                });
+                              }}
                               disabled={readOnly}
-                            />
+                            >
+                              <option value="form">Formulario</option>
+                              <option value="treeview">Tree View</option>
+                              <option value="calendar">Calendario</option>
+                            </select>
                           </div>
+                      </div>
+                        {/* Config TreeView */}
+                        {t.type === "treeview" && (
+                          <div className={styles.card} style={{ marginTop: 12 }}>
+                            <h4 style={{ marginTop: 0 }}>Config TreeView</h4>
 
-                          <div>
-                            <label className={styles.label}>Sum Field (opcional)</label>
-                            <input
-                              className={styles.input}
-                              value={t.config?.totals?.sumField || ""}
-                              onChange={(e) =>
-                                updateTab((prev) => {
-                                  if (prev.type !== "treeview") return prev;
+                            <div className={styles.grid}>
+                              <div>
+                                <label className={styles.label}>Tabla destino (source.table)</label>
 
-                                  const sumField = e.target.value.trim();
+                                <Selector
+                                  moduleSlug="modulos"
+                                  displayField="nombre"
+                                  valueField="slug"
+                                  value={t.config?.source?.table || t.config?.sourceTable || ""}
+                                  readOnly={readOnly}
+                                  placeholder="— Seleccionar —"
+                                  label="Selecciona la tabla destino"
+                                  filters={[
+                                    { field: "activo", op: "=", value: true },
+                                    { field: "tipo", op: "in", value: ["tabla", "subtabla", "vista"] },
+                                  ]}
+                                  sort={[{ field: "orden", direction: "asc" }]}
+                                  onChange={(slugSel: string) =>
+                                    updateTab((prev) => {
+                                      if (prev.type !== "treeview") return prev;
 
-                                  return {
-                                    ...prev,
-                                    config: {
-                                      ...(prev.config || {}),
-                                      totals: sumField
-                                        ? {
-                                            ...(prev.config?.totals || {}),
-                                            enabled: true,
-                                            sumField,
-                                            showGroupTotals: true,
-                                            showGrandTotal: true,
-                                          }
-                                        : { enabled: false, sumField: "" },
-                                    },
-                                  };
-                                })
+                                      const table = slugSel || "";
+                                      ensureFieldsLoaded(table);
+
+                                      return {
+                                        ...prev,
+                                        config: {
+                                          ...(prev.config || {}),
+
+                                          // ✅ nuevo
+                                          source: { ...(prev.config?.source || {}), table },
+
+                                          // ✅ legacy
+                                          sourceTable: table,
+                                        },
+                                      };
+                                    })
+                                  }
+                                />
+                              </div>
+
+                              <div>
+                                
+                                  <label className={styles.label}>columns</label>
+
+                                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                    <input
+                                      className={styles.input}
+                                      value={extractColumnFields(t.config?.columns).join(", ")}
+                                      readOnly
+                                      disabled={readOnly}
+                                      placeholder="Sin columnas seleccionadas"
+                                    />
+
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline-light"
+                                      onClick={() =>{ 
+                                        const table = t.config?.source?.table || t.config?.sourceTable || "";
+                                        if (table) ensureFieldsLoaded(table);
+                                        setPickTarget("columns");
+                                        setPickOpen(true)
+                                      }}
+                                      disabled={readOnly}
+                                      
+                                    >
+                                      Elegir…
+                                    </button>
+                              </div>
+
+                                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75}}>
+                                    Se guardará como <code>columns: [{"{ field, label }"}]</code>
+                                  </div>
+
+                            
+
+                  {(() => {
+                              const sourceTable = t.config?.source?.table || t.config?.sourceTable || "";
+                              const availableFields = fieldsByTable[sourceTable] || [];
+                              const fieldsLoading = !!loadingByTable[sourceTable];
+                              const applyPick = (target: PickTarget, selected: any, availableFields: any[]) => {
+                          updateTab((prev) => {
+                            if (prev.type !== "treeview") return prev;
+
+                            if (target === "columns") {
+                              const selectedNames = Array.isArray(selected) ? selected : [];
+                              return {
+                                ...prev,
+                                config: {
+                                  ...(prev.config || {}),
+                                  columns: buildColumnsObjects(selectedNames, availableFields),
+                                },
+                              };
+                            }
+
+                            if (target === "groupByField") {
+                              const groupByField = String(selected || "").trim();
+                              return {
+                                ...prev,
+                                config: {
+                                  ...(prev.config || {}),
+                                  grouping: { ...(prev.config?.grouping || {}), groupByField },
+                                  groupBy: groupByField ? [groupByField] : [],
+                                },
+                              };
+                            }
+
+                            if (target === "parentFilterField") {
+                              const field = String(selected || "").trim();
+                              return {
+                                ...prev,
+                                config: {
+                                  ...(prev.config || {}),
+                                  filters: field ? [{ op: "eq", field, valueFromParent: "id" }] : [],
+                                },
+                              };
+                            }
+
+                            if (target === "sumField") {
+                              const sumField = String(selected || "").trim();
+                              return {
+                                ...prev,
+                                config: {
+                                  ...(prev.config || {}),
+                                  totals: sumField
+                                    ? {
+                                        ...(prev.config?.totals || {}),
+                                        enabled: true,
+                                        sumField,
+                                        showGroupTotals: true,
+                                        showGrandTotal: true,
+                                      }
+                                    : { enabled: false, sumField: "" },
+                                },
+                              };
+                            }
+
+                            return prev;
+                          });
+                        };
+
+                              if (!sourceTable) {
+                                return <div className={styles.help}>Selecciona primero una tabla destino…</div>;
                               }
-                              disabled={readOnly}
-                            />
-                          </div>
-                        </div>
 
+                              return (
+                                <>
+                                  <div>
+                                    <label className={styles.label}>groupBy (campo)</label>
+                                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                      <input
+                                        className={styles.input}
+                                        value={t.config?.grouping?.groupByField || (t.config?.groupBy || [])[0] || ""}
+                                        readOnly
+                                        disabled={readOnly}
+                                      />
+                                      <button
+                                        type="button"
+                                        className="btn btn-outline-light"
+                                        disabled={readOnly}
+                                        onClick={() => {
+                                          setPickTarget("groupByField");
+                                          setPickOpen(true);
+                                        }}
+                                      >
+                                        Elegir…
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label className={styles.label}>Filtro por padre (campo FK en source)</label>
+                                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                      <input
+                                        className={styles.input}
+                                        value={(t.config?.filters?.[0]?.field as string) || ""}
+                                        readOnly
+                                        disabled={readOnly}
+                                      />
+                                      <button
+                                        type="button"
+                                        className="btn btn-outline-light"
+                                        disabled={readOnly}
+                                        onClick={() => {
+                                          setPickTarget("parentFilterField");
+                                          setPickOpen(true);
+                                        }}
+                                      >
+                                        Elegir…
+                                      </button>
+                                    </div>
+                                    <div className={styles.help}>Se aplicará: field = parentRecord.id</div>
+                                  </div>
+
+                                  <div>
+                                    <label className={styles.label}>Sum Field (opcional)</label>
+                                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                      <input
+                                        className={styles.input}
+                                        value={t.config?.totals?.sumField || ""}
+                                        readOnly
+                                        disabled={readOnly}
+                                      />
+                                      <button
+                                        type="button"
+                                        className="btn btn-outline-light"
+                                        disabled={readOnly}
+                                        onClick={() => {
+                                          setPickTarget("sumField");
+                                          setPickOpen(true);
+                                        }}
+                                      >
+                                        Elegir…
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <FieldPickerModal
+                                    open={pickOpen}
+                                    title={
+                                      pickTarget === "columns"
+                                        ? "Seleccionar columnas"
+                                        : pickTarget === "groupByField"
+                                        ? "Seleccionar campo groupBy"
+                                        : pickTarget === "parentFilterField"
+                                        ? "Seleccionar campo FK (filtro padre)"
+                                        : "Seleccionar sumField"
+                                    }
+                                    multiple={isPickMultiple(pickTarget)}
+                                    value={getPickValue(pickTarget, t)}
+                                    fields={availableFields}
+                                    loading={fieldsLoading}
+                                    onClose={() => setPickOpen(false)}
+                                    onApply={(next) => applyPick(pickTarget, next, availableFields)}
+                                  />
+                                </>
+                              );
+                            })()}
+                        <div>
+                      </div>
+                    </div>
+                  </div>
                         <div className="small text-muted mt-2">
                           Nota: el TreeView genérico espera <code>source.table</code>, <code>grouping.groupByField</code> y{" "}
                           <code>columns</code> como objetos.
                         </div>
                       </div>
-                    )}
-
-
-              {/* Config Calendario */}
-              {t.type === "calendar" && (
-                <div className={styles.card} style={{ marginTop: 12 }}>
-                  <h4 style={{ marginTop: 0 }}>Config Calendario</h4>
-                  <div className={styles.grid}>
-                    <div>
-                      <label className={styles.label}>Tabla (sourceTable)</label>
-                      <input
-                        className={styles.input}
-                        value={t.config?.sourceTable || ""}
-                        onChange={(e) =>
-                          updateTab((prev) => {
-                            if (prev.type !== "calendar") return prev;
-                            return { ...prev, config: { ...(prev.config || {}), sourceTable: e.target.value } };
-                          })
-                        }
-                        disabled={readOnly}
-                      />
-                    </div>
-
-                    <div>
-                      <label className={styles.label}>startField</label>
-                      <input
-                        className={styles.input}
-                        value={t.config?.startField || ""}
-                        onChange={(e) =>
-                          updateTab((prev) => {
-                            if (prev.type !== "calendar") return prev;
-                            return { ...prev, config: { ...(prev.config || {}), startField: e.target.value } };
-                          })
-                        }
-                        disabled={readOnly}
-                      />
-                    </div>
-
-                    <div>
-                      <label className={styles.label}>endField</label>
-                      <input
-                        className={styles.input}
-                        value={t.config?.endField || ""}
-                        onChange={(e) =>
-                          updateTab((prev) => {
-                            if (prev.type !== "calendar") return prev;
-                            return { ...prev, config: { ...(prev.config || {}), endField: e.target.value } };
-                          })
-                        }
-                        disabled={readOnly}
-                      />
-                    </div>
-
-                    <div>
-                      <label className={styles.label}>titleField</label>
-                      <input
-                        className={styles.input}
-                        value={t.config?.titleField || ""}
-                        onChange={(e) =>
-                          updateTab((prev) => {
-                            if (prev.type !== "calendar") return prev;
-                            return { ...prev, config: { ...(prev.config || {}), titleField: e.target.value } };
-                          })
-                        }
-                        disabled={readOnly}
-                      />
-                    </div>
-
-                    <div>
-                      <label className={styles.label}>colorField</label>
-                      <input
-                        className={styles.input}
-                        value={t.config?.colorField || ""}
-                        onChange={(e) =>
-                          updateTab((prev) => {
-                            if (prev.type !== "calendar") return prev;
-                            return { ...prev, config: { ...(prev.config || {}), colorField: e.target.value } };
-                          })
-                        }
-                        disabled={readOnly}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ✅ Formulario por pestaña */}
-              {t.type === "form" && (
-                <div className={styles.card} style={{ marginTop: 12 }}>
-                  <h4 style={{ marginTop: 0 }}>Formulario (pestaña: {t.label})</h4>
-
-                  <div className={styles.actionsRow} style={{ justifyContent: "space-between", gap: 12 }}>
-                    <button type="button" className={styles.btnAdd} onClick={addField} disabled={readOnly}>
-                      + Añadir campo (global)
-                    </button>
-
-                    <button
-                      type="button"
-                      className={styles.btnAdd}
-                      onClick={() => addSectionToTab(idx)}
-                      disabled={readOnly}
-                    >
-                      + Añadir sección (esta pestaña)
-                    </button>
-                  </div>
-
-                  {propsObj.fields.length === 0 && getTabFormSections(t).length === 0 && (
-                    <div className={styles.hint}>
-                      Aún no hay campos ni secciones en esta pestaña.
-                    </div>
-                  )}
-
-                  {getTabFormSections(t).map((section, sIdx) => {
-                    const allFieldNames = propsObj.fields.map((f) => f.name);
-                    const fieldsInSection = propsObj.fields.filter((f) => (section.fields || []).includes(f.name));
-                    const openKey = `${t.id}__${section.id}`;
-
-                    return (
-                      <div key={section.id} className={styles.sectionRow}>
-                        <div className={styles.sectionHeader}>
-                          <button
-                            type="button"
-                            className={styles.sectionToggle}
-                            onClick={() => toggleSectionOpen(openKey)}
-                            title="Mostrar/ocultar sección"
-                          >
-                            <div className={styles.sectionTitleLine}>
-                              <span className={styles.sectionTitle}>{section.label || "Sección sin label"}</span>
-                              <span className={styles.sectionMeta}>
-                                <span className={styles.badgeSoft}>id: {section.id}</span>
-                                <span className={styles.badgeSoft}>{(section.fields || []).length} campos</span>
-                              </span>
-                            </div>
-
-                            {section.description ? (
-                              <div className={styles.sectionDescPreview}>
-                                {section.description.length > 80
-                                  ? section.description.slice(0, 80) + "…"
-                                  : section.description}
-                              </div>
-                            ) : null}
-                          </button>
-
-                          <div className={styles.sectionActions}>
-                            <button
-                              type="button"
-                              className={styles.iconBtn}
-                              onClick={() => moveTabSection(idx, sIdx, -1)}
-                              disabled={readOnly || sIdx === 0}
-                              title="Subir sección"
-                            >
-                              ↑
-                            </button>
-
-                            <button
-                              type="button"
-                              className={styles.iconBtn}
-                              onClick={() => moveTabSection(idx, sIdx, +1)}
-                              disabled={readOnly || sIdx === getTabFormSections(t).length - 1}
-                              title="Bajar sección"
-                            >
-                              ↓
-                            </button>
-
-                            <button
-                              type="button"
-                              className={styles.dangerBtn}
-                              onClick={() => removeTabSection(idx, sIdx)}
-                              disabled={readOnly}
-                              title="Eliminar sección"
-                            >
-                              Eliminar
-                            </button>
-                          </div>
-                        </div>
-
-                        {isSectionOpen(openKey) && (
-                          <div className={styles.sectionBody}>
+                          )}
+                        {/* Config Calendario */}
+                        {t.type === "calendar" && (
+                          <div className={styles.card} style={{ marginTop: 12 }}>
+                            <h4 style={{ marginTop: 0 }}>Config Calendario</h4>
                             <div className={styles.grid}>
                               <div>
-                                <label className={styles.label}>Label sección</label>
+                                <label className={styles.label}>Tabla (sourceTable)</label>
                                 <input
                                   className={styles.input}
-                                  value={section.label}
-                                  onChange={(e) => updateTabSection(idx, sIdx, { label: e.target.value })}
+                                  value={t.config?.sourceTable || ""}
+                                  onChange={(e) =>
+                                    updateTab((prev) => {
+                                      if (prev.type !== "calendar") return prev;
+                                      return { ...prev, config: { ...(prev.config || {}), sourceTable: e.target.value } };
+                                    })
+                                  }
                                   disabled={readOnly}
                                 />
                               </div>
 
                               <div>
-                                <label className={styles.label}>ID</label>
+                                <label className={styles.label}>startField</label>
                                 <input
                                   className={styles.input}
-                                  value={section.id}
+                                  value={t.config?.startField || ""}
                                   onChange={(e) =>
-                                    updateTabSection(idx, sIdx, {
-                                      id: e.target.value || `section_${sIdx + 1}`,
+                                    updateTab((prev) => {
+                                      if (prev.type !== "calendar") return prev;
+                                      return { ...prev, config: { ...(prev.config || {}), startField: e.target.value } };
+                                    })
+                                  }
+                                  disabled={readOnly}
+                                />
+                              </div>
+
+                              <div>
+                                <label className={styles.label}>endField</label>
+                                <input
+                                  className={styles.input}
+                                  value={t.config?.endField || ""}
+                                  onChange={(e) =>
+                                    updateTab((prev) => {
+                                      if (prev.type !== "calendar") return prev;
+                                      return { ...prev, config: { ...(prev.config || {}), endField: e.target.value } };
+                                    })
+                                  }
+                                  disabled={readOnly}
+                                />
+                              </div>
+
+                              <div>
+                                <label className={styles.label}>titleField</label>
+                                <input
+                                  className={styles.input}
+                                  value={t.config?.titleField || ""}
+                                  onChange={(e) =>
+                                    updateTab((prev) => {
+                                      if (prev.type !== "calendar") return prev;
+                                      return { ...prev, config: { ...(prev.config || {}), titleField: e.target.value } };
+                                    })
+                                  }
+                                  disabled={readOnly}
+                                />
+                              </div>
+
+                              <div>
+                                <label className={styles.label}>colorField</label>
+                                <input
+                                  className={styles.input}
+                                  value={t.config?.colorField || ""}
+                                  onChange={(e) =>
+                                    updateTab((prev) => {
+                                      if (prev.type !== "calendar") return prev;
+                                      return { ...prev, config: { ...(prev.config || {}), colorField: e.target.value } };
                                     })
                                   }
                                   disabled={readOnly}
                                 />
                               </div>
                             </div>
+                          </div>
+                          )}
+                        {/* Formulario por pestaña */}
+                        {t.type === "form" && (
+                            <div className={styles.card} style={{ marginTop: 12 }}>
+                              <div className={styles.actionsRow} style={{ justifyContent: "space-between", gap: 12 }}>
+                                <div>
+                                  <h4 style={{ margin: 0 }}>Formulario</h4>
+                                  <div className={styles.hint} style={{ marginTop: 4 }}>
+                                    Pestaña: <strong>{t.label}</strong>
+                                  </div>
+                                </div>
 
-                            <div>
-                              <label className={styles.label}>Descripción</label>
-                              <input
-                                className={styles.input}
-                                value={section.description || ""}
-                                onChange={(e) => updateTabSection(idx, sIdx, { description: e.target.value })}
-                                disabled={readOnly}
-                              />
-                            </div>
+                                <div className={styles.actionsRow} style={{ justifyContent: "flex-end", gap: 8 }}>
+                                  <button
+                                    type="button"
+                                    className={styles.btnAdd}
+                                    onClick={addField}
+                                    disabled={readOnly}
+                                    title="Añade un campo global (aparece en el dropdown de campos)"
+                                  >
+                                    + Añadir campo (global)
+                                  </button>
 
-                            <div style={{ marginTop: 12 }}>
-                              <label className={styles.label}>Campos en esta sección</label>
-                              <select
-                                multiple
-                                className={styles.input}
-                                value={section.fields}
-                                onChange={(e) => {
-                                  const selected = Array.from(e.currentTarget.selectedOptions).map(
-                                    (opt) => opt.value
-                                  );
-                                  updateTabSection(idx, sIdx, { fields: selected });
-                                }}
-                                disabled={readOnly}
-                                style={{ height: 140 }}
-                              >
-                                {allFieldNames.map((name) => (
-                                  <option key={name} value={name}>
-                                    {name}
-                                  </option>
-                                ))}
-                              </select>
-                              <div className={styles.hint}>Ctrl/Cmd para seleccionar varios.</div>
-                            </div>
+                                  <button
+                                    type="button"
+                                    className={styles.btnAdd}
+                                    onClick={() => addSectionToTab(idx)}
+                                    disabled={readOnly}
+                                    title="Añade una sección a esta pestaña"
+                                  >
+                                    + Añadir sección (esta pestaña)
+                                  </button>
+                                </div>
+                              </div>
 
-                            <div style={{ marginTop: 14 }}>
-                              {fieldsInSection.length === 0 ? (
-                                <div className={styles.hint}>No hay campos asignados a esta sección.</div>
-                              ) : (
-                                fieldsInSection.map((f) => {
-                                  const fieldIdx = propsObj.fields.findIndex((x) => x.name === f.name);
-                                  if (fieldIdx === -1) return null;
+                              {propsObj.fields.length === 0 && getTabFormSections(t).length === 0 && (
+                                <div className={styles.hint}>Aún no hay campos ni secciones en esta pestaña.</div>
+                              )}
+
+                              {/* SECCIONES (dropdown/accordion) */}
+                              <div className="d-flex flex-column gap-2" style={{ marginTop: 12 }}>
+                                {getTabFormSections(t).map((section, sIdx) => {
+                                  const allFieldNames = propsObj.fields.map((f) => f.name);
+                                  const fieldsInSection = propsObj.fields.filter((f) => (section.fields || []).includes(f.name));
 
                                   return (
-                                    <FieldRow
-                                      key={fieldIdx}
-                                      field={propsObj.fields[fieldIdx]}
-                                      onChange={(patch: Field) => updateField(fieldIdx, patch)}
-                                      onRemove={() => removeField(fieldIdx)}
-                                      onMoveUp={() => moveField(fieldIdx, -1)}
-                                      onMoveDown={() => moveField(fieldIdx, +1)}
-                                      canUp={fieldIdx > 0}
-                                      canDown={fieldIdx < propsObj.fields.length - 1}
-                                      readOnly={readOnly}
-                                    />
+                                    <details key={section.id} className={styles.sectionRow}>
+                                      <summary className={styles.sectionHeader} style={{ cursor: "pointer", listStyle: "none" as any }}>
+                                        <div className={styles.sectionTitleLine}>
+                                          <span className={styles.sectionTitle}>{section.label || "Sección sin label"}</span>
+                                          <span className={styles.sectionMeta}>
+                                            <span className={styles.badgeSoft}>id: {section.id}</span>
+                                            <span className={styles.badgeSoft}>{(section.fields || []).length} campos</span>
+                                          </span>
+                                        </div>
+
+                                        {section.description ? (
+                                          <div className={styles.sectionDescPreview}>
+                                            {section.description.length > 80 ? section.description.slice(0, 80) + "…" : section.description}
+                                          </div>
+                                        ) : null}
+
+                                        {/* Acciones sección */}
+                                        <div className={styles.sectionActions} onClick={(e) => e.preventDefault()}>
+                                          <button
+                                            type="button"
+                                            className={styles.iconBtn}
+                                            onClick={() => moveTabSection(idx, sIdx, -1)}
+                                            disabled={readOnly || sIdx === 0}
+                                            title="Subir sección"
+                                          >
+                                            ↑
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            className={styles.iconBtn}
+                                            onClick={() => moveTabSection(idx, sIdx, +1)}
+                                            disabled={readOnly || sIdx === getTabFormSections(t).length - 1}
+                                            title="Bajar sección"
+                                          >
+                                            ↓
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            className={styles.dangerBtn}
+                                            onClick={() => removeTabSection(idx, sIdx)}
+                                            disabled={readOnly}
+                                            title="Eliminar sección"
+                                          >
+                                            Eliminar
+                                          </button>
+                                        </div>
+                                      </summary>
+
+                                      {/* CUERPO SECCIÓN */}
+                                      <div className={styles.sectionBody}>
+                                        <div className={styles.grid}>
+                                          <div>
+                                            <label className={styles.label}>Label sección</label>
+                                            <input
+                                              className={styles.input}
+                                              value={section.label}
+                                              onChange={(e) => updateTabSection(idx, sIdx, { label: e.target.value })}
+                                              disabled={readOnly}
+                                            />
+                                          </div>
+
+                                          <div>
+                                            <label className={styles.label}>ID</label>
+                                            <input
+                                              className={styles.input}
+                                              value={section.id}
+                                              onChange={(e) =>
+                                                updateTabSection(idx, sIdx, { id: e.target.value || `section_${sIdx + 1}` })
+                                              }
+                                              disabled={readOnly}
+                                            />
+                                          </div>
+                                        </div>
+
+                                        <div>
+                                          <label className={styles.label}>Descripción</label>
+                                          <input
+                                            className={styles.input}
+                                            value={section.description || ""}
+                                            onChange={(e) => updateTabSection(idx, sIdx, { description: e.target.value })}
+                                            disabled={readOnly}
+                                          />
+                                        </div>
+
+                                        <div style={{ marginTop: 12 }}>
+                                          <label className={styles.label}>Campos en esta sección</label>
+                                          <select
+                                            multiple
+                                            className={styles.input}
+                                            value={section.fields}
+                                            onChange={(e) => {
+                                              const selected = Array.from(e.currentTarget.selectedOptions).map((opt) => opt.value);
+                                              updateTabSection(idx, sIdx, { fields: selected });
+                                            }}
+                                            disabled={readOnly}
+                                            style={{ height: 140 }}
+                                          >
+                                            {allFieldNames.map((name) => (
+                                              <option key={name} value={name}>
+                                                {name}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <div className={styles.hint}>Ctrl/Cmd para seleccionar varios.</div>
+                                        </div>
+
+                                        {/* CAMPOS DENTRO DE LA SECCIÓN (dropdown por campo) */}
+                                        <div style={{ marginTop: 14 }}>
+                                          {fieldsInSection.length === 0 ? (
+                                            <div className={styles.hint}>No hay campos asignados a esta sección.</div>
+                                          ) : (
+                                            <div className="d-flex flex-column gap-2">
+                                              {fieldsInSection.map((f) => {
+                                                const fieldIdx = propsObj.fields.findIndex((x) => x.name === f.name);
+                                                if (fieldIdx === -1) return null;
+
+                                                const summaryLabel = propsObj.fields[fieldIdx].label?.trim() || "Sin label";
+                                                const summaryName = propsObj.fields[fieldIdx].name?.trim() || "sin_name";
+
+                                                return (
+                                                  <details key={fieldIdx} className={styles.card} style={{ marginBottom: 0 }}>
+                                                    <summary style={{ cursor: "pointer", padding: 10 }}>
+                                                      <div className="d-flex justify-content-between align-items-center gap-2">
+                                                        <div>
+                                                          <div style={{ fontWeight: 600, fontSize: 13 }}>
+                                                            {summaryLabel} <span className={styles.badgeSoft}>{summaryName}</span>
+                                                          </div>
+                                                          <div className={styles.hint} style={{ marginTop: 2 }}>
+                                                            type: {propsObj.fields[fieldIdx].type}
+                                                          </div>
+                                                        </div>
+                                                        <span className={styles.badgeSoft}>Abrir</span>
+                                                      </div>
+                                                    </summary>
+
+                                                    <div style={{ padding: 10 }}>
+                                                      <FieldRow
+                                                        key={fieldIdx}
+                                                        field={propsObj.fields[fieldIdx]}
+                                                        onChange={(patch: Field) => updateField(fieldIdx, patch)}
+                                                        onRemove={() => removeField(fieldIdx)}
+                                                        onMoveUp={() => moveField(fieldIdx, -1)}
+                                                        onMoveDown={() => moveField(fieldIdx, +1)}
+                                                        canUp={fieldIdx > 0}
+                                                        canDown={fieldIdx < propsObj.fields.length - 1}
+                                                        readOnly={readOnly}
+                                                        fieldsByTable={fieldsByTable}
+                                                        loadingByTable={loadingByTable}
+                                                        ensureFieldsLoaded={ensureFieldsLoaded}
+                                                      />
+                                                    </div>
+                                                  </details>
+                                                );
+                                              })}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </details>
                                   );
-                                })
-                              )}
+                                })}
+                              </div>
+
+                              {/* CAMPOS SIN SECCIÓN (dropdown) */}
+                              {(() => {
+                                const sections = getTabFormSections(t);
+                                const inSections = getSectionFieldSet(sections);
+                                const unassigned = propsObj.fields
+                                  .map((f, idx2) => ({ f, idx2 }))
+                                  .filter(({ f }) => !inSections.has(f.name));
+
+                                if (unassigned.length === 0) return null;
+
+                                return (
+                                  <details className={styles.sectionRow} style={{ marginTop: 12 }}>
+                                    <summary className={styles.sectionHeader} style={{ cursor: "pointer", listStyle: "none" as any }}>
+                                      <div className={styles.sectionTitleLine}>
+                                        <span className={styles.sectionTitle}>Campos sin sección (esta pestaña)</span>
+                                        <span className={styles.sectionMeta}>
+                                          <span className={styles.badgeSoft}>{unassigned.length} campos</span>
+                                        </span>
+                                      </div>
+                                    </summary>
+
+                                    <div className={styles.sectionBody}>
+                                      <div className="d-flex flex-column gap-2">
+                                        {unassigned.map(({ idx2 }) => {
+                                          const summaryLabel = propsObj.fields[idx2].label?.trim() || "Sin label";
+                                          const summaryName = propsObj.fields[idx2].name?.trim() || "sin_name";
+
+                                          return (
+                                            <details key={idx2} className={styles.card} style={{ marginBottom: 0 }}>
+                                              <summary style={{ cursor: "pointer", padding: 10 }}>
+                                                <div className="d-flex justify-content-between align-items-center gap-2">
+                                                  <div>
+                                                    <div style={{ fontWeight: 600, fontSize: 13 }}>
+                                                      {summaryLabel} <span className={styles.badgeSoft}>{summaryName}</span>
+                                                    </div>
+                                                    <div className={styles.hint} style={{ marginTop: 2 }}>
+                                                      type: {propsObj.fields[idx2].type}
+                                                    </div>
+                                                  </div>
+                                                  <span className={styles.badgeSoft}>Abrir</span>
+                                                </div>
+                                              </summary>
+
+                                              <div style={{ padding: 10 }}>
+                                                <FieldRow
+                                                  field={propsObj.fields[idx2]}
+                                                  onChange={(patch: Field) => updateField(idx2, patch)}
+                                                  onRemove={() => removeField(idx2)}
+                                                  onMoveUp={() => moveField(idx2, -1)}
+                                                  onMoveDown={() => moveField(idx2, +1)}
+                                                  canUp={idx2 > 0}
+                                                  canDown={idx2 < propsObj.fields.length - 1}
+                                                  readOnly={readOnly}
+                                                  fieldsByTable={fieldsByTable}
+                                                  loadingByTable={loadingByTable}
+                                                  ensureFieldsLoaded={ensureFieldsLoaded}
+                                                />
+                                              </div>
+                                            </details>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </details>
+                                );
+                              })()}
                             </div>
-                          </div>
-                        )}
+                          )}
+                        {/* Botón eliminar pestaña */}
+                        <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            className={styles.btn}
+                            onClick={removeTab}
+                            disabled={readOnly}
+                            style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}
+                          >
+                            Eliminar pestaña
+                          </button>
                       </div>
-                    );
-                  })}
 
-                  {/* Campos sin sección (esta pestaña) */}
-                  {(() => {
-                    const sections = getTabFormSections(t);
-                    const inSections = getSectionFieldSet(sections);
-                    const unassigned = propsObj.fields
-                      .map((f, idx2) => ({ f, idx2 }))
-                      .filter(({ f }) => !inSections.has(f.name));
+                    </div>
+                  );
+                })()}
 
-                    if (unassigned.length === 0) return null;
-
-                    return (
-                      <div className={styles.sectionRow} style={{ marginTop: 12 }}>
-                        <div className={styles.sectionHeader}>
-                          <div className={styles.sectionTitleLine}>
-                            <span className={styles.sectionTitle}>Campos sin sección (esta pestaña)</span>
-                            <span className={styles.sectionMeta}>
-                              <span className={styles.badgeSoft}>{unassigned.length} campos</span>
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className={styles.sectionBody}>
-                          {unassigned.map(({ idx2 }) => (
-                            <FieldRow
-                              key={idx2}
-                              field={propsObj.fields[idx2]}
-                              onChange={(patch: Field) => updateField(idx2, patch)}
-                              onRemove={() => removeField(idx2)}
-                              onMoveUp={() => moveField(idx2, -1)}
-                              onMoveDown={() => moveField(idx2, +1)}
-                              canUp={idx2 > 0}
-                              canDown={idx2 < propsObj.fields.length - 1}
-                              readOnly={readOnly}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-
-              <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  className={styles.btn}
-                  onClick={removeTab}
-                  disabled={readOnly}
-                  style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}
-                >
-                  Eliminar pestaña
-                </button>
-              </div>
-            </div>
-          );
-        })}
       </Section>
 
       {/* JSON avanzado */}

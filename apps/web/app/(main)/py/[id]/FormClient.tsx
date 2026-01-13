@@ -79,6 +79,27 @@ export default function FormClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [pending, start] = useTransition();
+  const resolveRouteFromModules = (source: string) => {
+  if (!modulesBySlug) return null;
+
+  // 1) source como slug
+  const bySlug = modulesBySlug[source] as any;
+  const r1 = bySlug?.route || bySlug?.ui?.route || null;
+  if (r1) return String(r1);
+
+  // 2) source como tabla -> busca quien tenga db.table === source
+  for (const mod of Object.values(modulesBySlug)) {
+    const m: any = mod;
+    if (m?.db?.table === source) {
+      const r2 = m?.route || m?.ui?.route || null;
+      if (r2) return String(r2);
+    }
+  }
+
+  return null;
+};
+
+  
 
   const treeViewProvider = useMemo(() => createSupabaseTreeViewProvider(), []);
   const [activeTab, setActiveTab] = useState<TabKey>("proyecto");
@@ -151,9 +172,10 @@ export default function FormClient({
               modulesBySlug={modulesBySlug}
               treeViewProvider={treeViewProvider}
               treeViewParentRecord={initialData}
-              onTreeViewRowView={(row) => router.push(`${row.id}`)}
-              onTreeViewRowEdit={(row) => router.push(`${row.id}?edit=true`)}
+              //nTreeViewRowView={(row) => router.push(`${row.id}`)}
+              //onTreeViewRowEdit={(row) => router.push(`${row.id}?edit=true`)}
               schemasBySlug={schemasBySlug}
+              
             />
           )}
         </div>
