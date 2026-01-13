@@ -35,7 +35,7 @@ export function sanitize(values: any, schema: ModuleSchema) {
     const v = out[f.name];
 
     // Fechas: si llega string vacío ya sería null por arriba, pero por seguridad:
-    if ((f.type === "date" || f.type === "datetime" || f.type === "timestamp") && v === "") {
+    if ((f.type === "date" || f.type === "datetime") && v === "") {
       out[f.name] = null;
     }
 

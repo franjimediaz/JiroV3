@@ -15,7 +15,7 @@ function sanitize(values: any, schema: ModuleSchema) {
     const v = out[f.name];
 
     // ✅ Fechas: Postgres no acepta "" en timestamp/date
-    if ((f.type === "date" || f.type === "datetime" || f.type === "timestamp"|| f.type === "text") && v === "") {
+    if ((f.type === "date" || f.type === "datetime" || f.type === "text") && v === "") {
       out[f.name] = null;
     }
     if (f.name === "created_at" || f.name === "updated_at") {
