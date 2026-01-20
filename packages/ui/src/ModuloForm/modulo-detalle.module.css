@@ -182,6 +182,19 @@ select.input:disabled {
   transition: transform .05s ease, box-shadow .15s ease, background .15s ease;
   box-shadow: var(--shadow-sm);
 }
+.btnDel {
+  appearance: none;
+  background: linear-gradient(180deg, #800d0d, #800d0d85);
+  color: var(--text);
+  border: none;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform .05s ease, box-shadow .15s ease, background .15s ease;
+  box-shadow: var(--shadow-sm);
+}
 
 .btn:hover {
   transform: translateY(-1px);

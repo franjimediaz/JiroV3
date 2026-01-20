@@ -757,6 +757,7 @@ const treeSchemaFields = useMemo(() => {
                 values={values}
                 setValues={setValues}
                 actions={formActions}
+                resolveRoute={resolveRoute}
               />
           <div className="d-flex justify-content-end gap-2 mt-3">{renderActions()}</div>
       </div>

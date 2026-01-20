@@ -702,12 +702,17 @@ const handleEdit = onEditRow
         <thead>
           <tr className="text-muted small">
             {(effectiveColumns || []).map((c, idx) => (
-              <th key={`${c.field}__${idx}`} style={c.width ? { width: c.width } : undefined}>
+              <th key={`${c.field}__${idx}`} style={{
+                          ...(c.width ? { width: c.width } : {}),
+                          background: "linear-gradient(90deg, #0d275a, #11294ec4, #4d648a96)",
+                          color:"white"
+
+                        }}>
                 {c.label}
               </th>
             ))}
             {showActions && (
-              <th className="text-end" style={{ width: "1%" }}>
+              <th className="text-end" style={{ width: "1%", background: "linear-gradient(90deg, #0d275a, #11294ec4, #4d648a96)",color:"white"}}>
                 Acciones
               </th>
             )}

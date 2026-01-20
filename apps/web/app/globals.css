@@ -584,3 +584,11 @@ a {
   .selModal__searchRow { flex-direction: column; }
   .selBtnClear.btn { width: 100%; }
 }
+
+.thTable {
+  width: 180;
+  background-color: linear-gradient(90deg, #0c1f49ab, #1f407546, #4d648aaf);
+  color: white;
+  padding: 12px 16px;
+  
+}

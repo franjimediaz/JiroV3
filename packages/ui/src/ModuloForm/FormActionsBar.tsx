@@ -95,6 +95,10 @@ export default function FormActionsBar(props: {
   /** helper para navegar (si no pasas, usa window.location) */
   navigate?: (href: string) => void;
 
+  resolveRoute?: (source: string) => string | null;
+
+  
+
   /** acciones configuradas desde schema.ui.formActions */
   actions?: FormAction[];
 
@@ -110,6 +114,7 @@ export default function FormActionsBar(props: {
     values,
     setValues,
     navigate,
+    resolveRoute,
     actions = [],
   } = props;
 
@@ -128,6 +133,19 @@ export default function FormActionsBar(props: {
     if (navigate) return navigate(href);
     if (typeof window !== "undefined") window.location.href = href;
   };
+
+    const buildBaseRoute = (source: string) => {
+    const base = resolveRoute?.(source) || `/${source}`;
+    return base.endsWith("/") ? base.slice(0, -1) : base;
+  };
+
+  const buildRecordHref = (source: string, id: string, openEdit?: boolean) => {
+    const edit = openEdit ? "?edit=true" : "";
+    return `${buildBaseRoute(source)}/${id}${edit}`;
+  };
+
+  const buildListHref = (source: string) => buildBaseRoute(source);
+
 
   const isDisabled = (a: FormAction) => {
     const dw = (a as any).disabledWhen as DisabledWhen | undefined;
@@ -201,7 +219,7 @@ export default function FormActionsBar(props: {
         // mapeo: { destino: "origen" }
         if (a.fieldMap) {
           for (const [destField, srcFieldPath] of Object.entries(a.fieldMap)) {
-            const srcVal = srcFieldPath.split(".").reduce((acc, k) => acc?.[k], values);
+            const srcVal = getByPath(values, srcFieldPath);
             if (srcVal !== undefined) payload[destField] = srcVal;
           }
         }
@@ -221,6 +239,7 @@ export default function FormActionsBar(props: {
         // 3) post-create navegación
         const createdId = created?.id ?? created?.data?.id ?? created?.record?.id;
         const after = a.afterCreate || { navigateTo: "record", openEdit: true };
+        const source = a.target.moduleSlug || a.target.table;
 
         if (after.navigateTo === "none") return;
 
@@ -233,12 +252,12 @@ export default function FormActionsBar(props: {
         if (after.navigateTo === "record") {
           // aquí depende de tu routing real; dejamos una ruta genérica por tabla
           const edit = after.openEdit ? "?edit=true" : "";
-          go(`/${a.target.table}/${createdId}${edit}`);
+          go(buildRecordHref(source, String(createdId), after.openEdit));
           return;
         }
 
         // list
-        go(`/${a.target.table}`);
+        go(buildListHref(source));
         return;
       }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect} from "react";
+import { useState, useTransition, useEffect, useRef} from "react";
 import styles from "./modulo-detalle.module.css";
 import  Selector from "../Selector";
 import {IconPicker} from "@repo/ui";
@@ -8,8 +8,31 @@ import type { Field as FieldSchema, FieldType, ModuleSchema, Field, FormSection,
 import {VALID_FIELD_TYPES} from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
 import {FieldRow} from "./FieldRow"
+import UiFormActionsEditor from "./UiFormActionsEditor";
 
 type PickTarget = "columns" | "groupByField" | "parentFilterField" | "sumField";
+type UiMode = "view" | "edit" | "create";
+type UiActionType = "recalculate" | "createRelated" | "navigate" | "duplicate" | "external";
+type UiFormAction = {
+  id: string;
+  label: string;
+  type: UiActionType;
+  icon?: string;
+  variant?: "primary" | "secondary" | "success" | "warning" | "danger" | "info" | "light" | "dark";
+  showIn?: UiMode[];
+  confirm?: { text?: string };
+  // payloads según type
+  target?: { table?: string };
+  afterCreate?: { navigateTo?: "record" | "list" | "none" };
+  fieldMap?: any;
+  defaults?: any;
+  hrefTemplate?: string;
+  includeChildren?: boolean;
+  omitFields?: any;
+};
+
+// ---------- UI---------------
+
 
 
 const isPickMultiple = (target: PickTarget) => target === "columns";
@@ -137,6 +160,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 // —— Form principal ————————————————————————————————————————————————
 
 
+
+
 export default function ModuloForm({
   initialData,
   mode,
@@ -164,6 +189,8 @@ export default function ModuloForm({
   const [pickTarget, setPickTarget] = useState<PickTarget>("columns");
   const [fieldsByTable, setFieldsByTable] = useState<Record<string, { name: string; label?: string }[]>>({});
   const [loadingByTable, setLoadingByTable] = useState<Record<string, boolean>>({});
+
+  
 
   const ensureFieldsLoaded = async (tableSlug: string) => {
     if (!tableSlug) return;
@@ -231,52 +258,33 @@ export default function ModuloForm({
     }
   });
 
+  
+
   // JSON avanzado (opcional)
   const [showRaw, setShowRaw] = useState(false);
   const [rawText, setRawText] = useState(() => JSON.stringify(propsObj, null, 2));
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // =========================Button Actions
-  const getFormActions = (): FormAction[] => {
-    const uiAny = (propsObj.ui || {}) as any;
-    return Array.isArray(uiAny.formActions) ? uiAny.formActions : [];
-  };
 
-  const setFormActions = (actions: FormAction[]) => {
-    const ui = { ...(propsObj.ui || {}), formActions: actions as any };
-    const next = { ...propsObj, ui };
-    setPropsObj(next);
-    setRawText(JSON.stringify(next, null, 2));
-  };
+// =========================Button Actions Legacy
 
-  const addFormAction = () => {
-    const list = getFormActions();
-    const n = list.length + 1;
 
-    const newAction: FormAction = {
-      id: `action_${n}`,
-      type: "recalculate",
-      label: `Acción ${n}`,
-      icon: "bi bi-lightning",
-      variant: "secondary",
-      showIn: ["view", "edit", "create"],
-    };
 
-    setFormActions([...list, newAction]);
-  };
+const getFormActions = (): UiFormAction[] => {
+  const uiAny = (propsObj.ui || {}) as any;
+  return Array.isArray(uiAny.formActions) ? uiAny.formActions : [];
+};
 
-  const updateFormAction = (idx: number, patch: Partial<FormAction>) => {
-    const list = getFormActions();
-    if (!list[idx]) return;
-    const next = [...list];
-    next[idx] = { ...(next[idx] as any), ...(patch as any) } as FormAction;
-    setFormActions(next);
-  };
+const setFormActions = (actions: UiFormAction[]) => {
+  const ui = { ...(propsObj.ui || {}), formActions: actions as any };
+  const next = { ...propsObj, ui };
+  setPropsObj(next);
+  setRawText(JSON.stringify(next, null, 2));
+};
 
-  const removeFormAction = (idx: number) => {
-    const list = getFormActions();
-    setFormActions(list.filter((_, i) => i !== idx));
-  };
+
+
+
 
 
 
@@ -479,6 +487,28 @@ export default function ModuloForm({
     }, [propsObj.ui]);
 
 
+type SimpleField = { name: string; label?: string };
+
+const sourceFields: SimpleField[] = (propsObj.fields || []).map((f: any) => ({
+  name: f.name,
+  label: f.label,
+}));
+
+const getTableFields = (tableSlug: string): SimpleField[] => {
+  const key = (tableSlug || "").trim();
+  if (!key) return [];
+  return fieldsByTable[key] || [];
+};
+
+const ensureTableFields = (tableSlug: string) => {
+  const key = (tableSlug || "").trim();
+  if (!key) return;
+  // Reutiliza tu loader (cacheado)
+  ensureFieldsLoaded(key);
+};
+
+
+
 
   return (
     <form className={styles.card} onSubmit={onSubmit}>
@@ -654,6 +684,7 @@ export default function ModuloForm({
               {...readOnlyAttr}
               style={{ padding: 0, height: 42 }}
             />
+
             {/* ui.icon */}
             <div>
               <label className={styles.label}>ui.icon</label>
@@ -667,287 +698,28 @@ export default function ModuloForm({
                 }}
               />
             </div>
-          </div>
-          <div style={{ gridColumn: "1 / -1", marginTop: 12 }}>
-          <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
-            <div style={{ fontWeight: 600 }}>ui.formActions</div>
 
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={addFormAction}
-              disabled={readOnly}
-            >
-              + Añadir botón
-            </button>
-          </div>
-
-          {getFormActions().length === 0 && (
-            <div className={styles.hint}>
-              No hay acciones configuradas. Añade botones para “crear relacionado”, “navegar”, “recalcular”, “duplicar”, etc.
             </div>
-          )}
-
-          {getFormActions().map((a, idx) => {
-            // helpers rápidos para JSON (fieldMap/defaults)
-            const safeJson = (v: any) => (v ? JSON.stringify(v, null, 2) : "");
-            const parseJson = (txt: string) => {
-              if (!txt.trim()) return undefined;
-              return JSON.parse(txt);
-            };
-
-            return (
-              <div key={a.id || idx} className={styles.card} style={{ marginTop: 12 }}>
-                <div className={styles.grid}>
-                  
-                  <div>
-                    <label className={styles.label}>id</label>
-                    <input
-                      className={styles.input}
-                      value={a.id}
-                      onChange={(e) => updateFormAction(idx, { id: e.target.value })}
-                      disabled={readOnly}
-                    />
-                  </div>
-
-                  <div>
-                    <label className={styles.label}>label</label>
-                    <input
-                      className={styles.input}
-                      value={a.label}
-                      onChange={(e) => updateFormAction(idx, { label: e.target.value })}
-                      disabled={readOnly}
-                    />
-                  </div>
-
-                  <div>
-                    <label className={styles.label}>type</label>
-                    <select
-                      className={styles.input}
-                      value={a.type}
-                      onChange={(e) => updateFormAction(idx, { type: e.target.value as any })}
-                      disabled={readOnly}
-                    >
-                      <option value="recalculate">recalculate</option>
-                      <option value="createRelated">createRelated</option>
-                      <option value="navigate">navigate</option>
-                      <option value="duplicate">duplicate</option>
-                      <option value="external">external</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className={styles.label}>variant</label>
-                    <select
-                      className={styles.input}
-                      value={(a as any).variant || "secondary"}
-                      onChange={(e) => updateFormAction(idx, { variant: e.target.value as any })}
-                      disabled={readOnly}
-                    >
-                      {["primary","secondary","success","warning","danger","info","light","dark"].map(v => (
-                        <option key={v} value={v}>{v}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <label className={styles.label}>icon (Bootstrap Icons)</label>
-                    <IconPicker
-                      value={(a as any).icon || ""}
-                      onChange={(icon: string) => updateFormAction(idx, { icon })}
-                    />
-                  </div>
-
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <label className={styles.label}>showIn</label>
-                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                      {(["view", "edit", "create"] as const).map((m) => {
-                        const showIn = (a as any).showIn || ["view", "edit", "create"];
-                        const checked = showIn.includes(m);
-                        return (
-                          <label key={m} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              disabled={readOnly}
-                              onChange={(e) => {
-                                const next = e.target.checked
-                                  ? Array.from(new Set([...showIn, m]))
-                                  : showIn.filter((x: string) => x !== m);
-                                updateFormAction(idx, { showIn: next as any });
-                              }}
-                            />
-                            <span className={styles.label} style={{ margin: 0 }}>{m}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div style={{ gridColumn: "1 / -1" }}>
-                    <label className={styles.label}>confirm.text (opcional)</label>
-                    <input
-                      className={styles.input}
-                      value={(a as any).confirm?.text || ""}
-                      onChange={(e) => {
-                        const text = e.target.value;
-                        updateFormAction(idx, {
-                          confirm: text.trim()
-                            ? { ...((a as any).confirm || {}), text }
-                            : undefined,
-                        } as any);
-                      }}
-                      disabled={readOnly}
-                      placeholder="Ej: ¿Seguro que quieres generar el presupuesto?"
-                    />
-                  </div>
-
-                  {/* ---- Tipo: createRelated ---- */}
-                  {a.type === "createRelated" && (
-                    <>
-                      <div>
-                        <label className={styles.label}>target.table</label>
-                        <input
-                          className={styles.input}
-                          value={(a as any).target?.table || ""}
-                          onChange={(e) => {
-                            const table = e.target.value;
-                            updateFormAction(idx, { target: { ...((a as any).target || {}), table } } as any);
-                          }}
-                          disabled={readOnly}
-                          placeholder="Ej: tareas"
-                        />
-                      </div>
-
-                      <div>
-                        <label className={styles.label}>afterCreate.navigateTo</label>
-                        <select
-                          className={styles.input}
-                          value={(a as any).afterCreate?.navigateTo || "record"}
-                          onChange={(e) => {
-                            const navigateTo = e.target.value;
-                            updateFormAction(idx, {
-                              afterCreate: { ...((a as any).afterCreate || {}), navigateTo },
-                            } as any);
-                          }}
-                          disabled={readOnly}
-                        >
-                          <option value="record">record</option>
-                          <option value="list">list</option>
-                          <option value="none">none</option>
-                        </select>
-                      </div>
-
-                      <div style={{ gridColumn: "1 / -1" }}>
-                        <label className={styles.label}>fieldMap (JSON) — {"{destino: \"origen\"}"}</label>
-                        <textarea
-                          className={styles.textarea}
-                          value={safeJson((a as any).fieldMap)}
-                          disabled={readOnly}
-                          rows={4}
-                          onChange={(e) => {
-                            try {
-                              const obj = parseJson(e.target.value);
-                              updateFormAction(idx, { fieldMap: obj } as any);
-                            } catch {
-                              // no rompas el formulario: si está mal, no actualices
-                            }
-                          }}
-                          placeholder={`{\n  "obraId": "id",\n  "clienteId": "clienteId"\n}`}
-                        />
-                      </div>
-
-                      <div style={{ gridColumn: "1 / -1" }}>
-                        <label className={styles.label}>defaults (JSON)</label>
-                        <textarea
-                          className={styles.textarea}
-                          value={safeJson((a as any).defaults)}
-                          disabled={readOnly}
-                          rows={4}
-                          onChange={(e) => {
-                            try {
-                              const obj = parseJson(e.target.value);
-                              updateFormAction(idx, { defaults: obj } as any);
-                            } catch {}
-                          }}
-                          placeholder={`{\n  "estado": "pendiente"\n}`}
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {/* ---- Tipo: navigate ---- */}
-                  {a.type === "navigate" && (
-                    <>
-                      <div style={{ gridColumn: "1 / -1" }}>
-                        <label className={styles.label}>hrefTemplate</label>
-                        <input
-                          className={styles.input}
-                          value={(a as any).hrefTemplate || ""}
-                          onChange={(e) => updateFormAction(idx, { hrefTemplate: e.target.value } as any)}
-                          disabled={readOnly}
-                          placeholder='/tareas/new?obraId={{id}}'
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {/* ---- Tipo: duplicate ---- */}
-                  {a.type === "duplicate" && (
-                    <>
-                      <div className={styles.switchRow}>
-                        <label className={styles.label}>includeChildren</label>
-                        <input
-                          type="checkbox"
-                          checked={!!(a as any).includeChildren}
-                          onChange={(e) => updateFormAction(idx, { includeChildren: e.target.checked } as any)}
-                          disabled={readOnly}
-                        />
-                      </div>
-
-                      <div style={{ gridColumn: "1 / -1" }}>
-                        <label className={styles.label}>omitFields (JSON array)</label>
-                        <input
-                          className={styles.input}
-                          value={safeJson((a as any).omitFields)}
-                          onChange={(e) => {
-                            try {
-                              const arr = parseJson(e.target.value);
-                              updateFormAction(idx, { omitFields: arr } as any);
-                            } catch {}
-                          }}
-                          disabled={readOnly}
-                          placeholder='["id","createdAt","updatedAt"]'
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  {/* ---- Tipo: external (placeholder) ---- */}
-                  {a.type === "external" && (
-                    <div style={{ gridColumn: "1 / -1" }} className={styles.hint}>
-                      Acción externa (PDF/email/print) — la dejamos lista para implementar más adelante.
-                    </div>
-                  )}
-                </div>
-
-                <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
-                  <button
-                    type="button"
-                    className={styles.btnDanger}
-                    onClick={() => removeFormAction(idx)}
-                    disabled={readOnly}
-                  >
-                    Eliminar
-                  </button>
-                </div>
-              </div>
-            );
-          })}
         </div>
+          
+            <div style={{ gridColumn: "1 / -1", marginTop: 12 }}>
+              <UiFormActionsEditor
+                value={getFormActions()}
+                onChange={setFormActions}
+                readOnly={readOnly}
+                styles={styles}
+                IconPicker={IconPicker}
+                sourceFields={sourceFields}
+                getTableFields={getTableFields}
+                ensureTableFields={ensureTableFields}
+              />
+            </div>
 
           
-        </div>
+        
+
+          
+        
       </Section>
 
       {/* Pestañas / Vistas */}
@@ -955,7 +727,7 @@ export default function ModuloForm({
         <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
           <button
             type="button"
-            className={styles.btn}
+            className={styles.btnAdd}
             onClick={() => {
               const tabs = getTabs();
               const n = tabs.length + 1;
