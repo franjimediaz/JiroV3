@@ -2,7 +2,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { ModuleSchema } from "@repo/types";
-import FormClient from "./FormClient";
+import FormClient from "@/lib/FormClient";
 
 export const dynamic = "force-dynamic";
 

@@ -12,7 +12,7 @@ import UiFormActionsEditor from "./UiFormActionsEditor";
 
 type PickTarget = "columns" | "groupByField" | "parentFilterField" | "sumField";
 type UiMode = "view" | "edit" | "create";
-type UiActionType = "recalculate" | "createRelated" | "navigate" | "duplicate" | "external";
+type UiActionType = "recalculate" | "createRelated" | "navigate" | "duplicate" | "external" |"workflow";
 type UiFormAction = {
   id: string;
   label: string;
@@ -712,6 +712,10 @@ const ensureTableFields = (tableSlug: string) => {
                 sourceFields={sourceFields}
                 getTableFields={getTableFields}
                 ensureTableFields={ensureTableFields}
+                workflowCatalog={[
+              { key: "budget.generateFromTasks", label: "Generar presupuesto (snapshot tareas)" },
+              { key: "invoice.generateFromBudget", label: "Generar factura desde presupuesto" },
+            ]}
               />
             </div>
 

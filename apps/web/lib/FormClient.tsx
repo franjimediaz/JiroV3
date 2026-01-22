@@ -9,7 +9,7 @@ import { Form } from "@repo/ui";
 //import Calendar from "./Calendar";
 import type { ModuleSchema } from "@repo/types";
 import { RequirePerms } from "@/lib/perms";
-import {CFG} from "./page"
+
 
 type TabKey = "proyecto" | "arbol" | "calendario";
 
@@ -66,6 +66,7 @@ export default function FormClient({
   modulesBySlug,
   schemasBySlug,
   
+  
 }: {
   schema: ModuleSchema;
   initialData: any;
@@ -75,6 +76,7 @@ export default function FormClient({
   id: string;
   modulesBySlug?: Record<string, { db?: { table?: string; primaryKey?: string } }>;
   schemasBySlug?: Record<string, ModuleSchema>;
+  
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();

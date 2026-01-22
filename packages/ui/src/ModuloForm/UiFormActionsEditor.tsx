@@ -4,8 +4,12 @@ import React, { useMemo, useState, useEffect } from "react";
 import  Selector from "../Selector";
 
 type UiMode = "view" | "edit" | "create";
-type UiActionType = "recalculate" | "createRelated" | "navigate" | "duplicate" | "external";
+type UiActionType = "recalculate" | "createRelated" | "navigate" | "duplicate" | "external" |"workflow";
 type SimpleField = { name: string; label?: string };
+type WorkflowCatalogItem = {
+  key: string;
+  label: string;
+};
 
 export type UiFormAction = {
   id: string;
@@ -46,6 +50,9 @@ type Props = {
   // ✅ OPCIONAL: para ir cargando campos al escribir target.table
   ensureTableFields?: (table: string) => void;
   loadingTableFields?: (table: string) => boolean;
+
+  workflowCatalog?: WorkflowCatalogItem[];
+
 };
 
 const TYPE_LABEL: Record<UiActionType, string> = {
@@ -54,6 +61,7 @@ const TYPE_LABEL: Record<UiActionType, string> = {
   navigate: "Navegar",
   duplicate: "Duplicar",
   external: "Externa",
+  workflow: "Flujo",
 };
 
 const TYPE_HINT: Record<UiActionType, string> = {
@@ -62,6 +70,7 @@ const TYPE_HINT: Record<UiActionType, string> = {
   navigate: "Navega a una ruta/href basada en plantilla.",
   duplicate: "Duplica el registro (y opcionalmente hijos).",
   external: "Acción externa (PDF/email/print) — preparada para futuro.",
+  workflow: "Crea registros en base a un padre y sus relacionados",
 };
 
 function groupByType(actions: UiFormAction[]) {
@@ -71,6 +80,7 @@ function groupByType(actions: UiFormAction[]) {
     navigate: [],
     duplicate: [],
     external: [],
+    workflow: [],
   };
   actions.forEach((a, idx) => groups[a.type].push({ idx, action: a }));
   return groups;
@@ -92,6 +102,7 @@ export default function UiFormActionsEditor({
   getTableFields,
   ensureTableFields,
   loadingTableFields,
+  workflowCatalog,
 }: Props) {
   const actions = Array.isArray(value) ? value : [];
 
@@ -102,23 +113,33 @@ export default function UiFormActionsEditor({
   const groups = useMemo(() => groupByType(actions), [actions]);
 
   const addFormAction = (type: UiActionType) => {
-    const n = actions.length + 1;
+  const n = actions.length + 1;
 
-    const next: UiFormAction = {
-      id: `action_${n}`,
-      label: `Acción ${n}`,
-      type,
-      variant: "secondary",
-      showIn: ["view", "edit", "create"],
-    };
-
-    const nextActions = [...actions, next];
-    onChange(nextActions);
-
-    // UX: abre el grupo y la acción recién creada
-    setOpenGroup(type);
-    setOpenAction(actions.length);
+  const base: UiFormAction = {
+    id: `action_${n}`,
+    label: `Acción ${n}`,
+    type,
+    variant: "secondary",
+    showIn: ["view", "edit", "create"],
   };
+
+  const next: UiFormAction =
+    type === "workflow"
+      ? ({
+          ...base,
+          workflowKey: "",
+          input: {},
+          after: { navigateTo: "" }, // si tu type incluye after; si no, bórralo
+        } as any)
+      : base;
+
+  const nextActions = [...actions, next];
+  onChange(nextActions);
+
+  setOpenGroup(type);
+  setOpenAction(actions.length);
+};
+
 
   const updateFormAction = (idx: number, patch: Partial<UiFormAction>) => {
     const next = [...actions];
@@ -149,7 +170,7 @@ export default function UiFormActionsEditor({
             disabled={readOnly}
             style={{ width: 220 }}
           >
-            {(["createRelated", "navigate", "recalculate", "duplicate", "external"] as UiActionType[]).map(
+            {(["createRelated", "navigate", "recalculate", "duplicate", "external","workflow"] as UiActionType[]).map(
               (t) => (
                 <option key={t} value={t}>
                   + {TYPE_LABEL[t]}
@@ -435,6 +456,7 @@ export default function UiFormActionsEditor({
                                 sourceFields={sourceFields}
                                 getTableFields={getTableFields}
                                 ensureTableFields={ensureTableFields}
+                                workflowCatalog={workflowCatalog}
                                 />
                     
                             
@@ -501,6 +523,55 @@ export default function UiFormActionsEditor({
                               No requiere configuración adicional por ahora.
                             </div>
                           )}
+
+                          {a.type === "workflow" && (
+                            <>
+                            <div>
+                              
+                            <div>
+                            <label className={styles.label}>afterCreate.navigateTo</label>
+                            <select
+                                className={styles.input}
+                                value={(a as any).afterCreate?.navigateTo || "record"}
+                                onChange={(e) => {
+                                const navigateTo = e.target.value;
+                                updateFormAction(
+                                    idx,
+                                    {
+                                    afterCreate: { ...((a as any).afterCreate || {}), navigateTo },
+                                    } as any
+                                );
+                                }}
+                                disabled={readOnly}
+                            >
+                                <option value="record">record</option>
+                                <option value="list">list</option>
+                                <option value="none">none</option>
+                            </select>
+                            </div>
+                            </div>
+                              
+                            
+                            <UiFormActionItem
+                                idx={idx}
+                                action={a}
+                                readOnly={readOnly}
+                                styles={styles}
+                                IconPicker={IconPicker}
+                                updateFormAction={updateFormAction}
+                                removeFormAction={removeFormAction}
+                                sourceFields={sourceFields}
+                                getTableFields={getTableFields}
+                                ensureTableFields={ensureTableFields}
+                                workflowCatalog={workflowCatalog}
+                                />
+                    
+                            
+                            </>
+                          )}
+
+                          
+                          
                         </div>
                       )}
                     </div>
@@ -673,6 +744,7 @@ function UiFormActionItem({
   sourceFields,
   getTableFields,
   ensureTableFields,
+  workflowCatalog,
 }: {
   idx: number;
   action: UiFormAction;
@@ -685,10 +757,11 @@ function UiFormActionItem({
   sourceFields: SimpleField[];
   getTableFields: (table: string) => SimpleField[];
   ensureTableFields?: (table: string) => void;
+  workflowCatalog?: WorkflowCatalogItem[];
 }) {
   const targetTable = a.target?.table || "";
 
-  // ✅ AQUÍ sí es legal
+
   useEffect(() => {
     if (!targetTable) return;
     ensureTableFields?.(targetTable);
@@ -705,9 +778,7 @@ function UiFormActionItem({
       {a.type === "createRelated" && (
         
         <>
-        
-   
-                
+             
           <FieldMapEditor
             value={a.fieldMap}
             onChange={(next) =>
@@ -732,6 +803,68 @@ function UiFormActionItem({
         </> 
         
       )}
+
+      {/* ---- workflow ---- */}
+
+      
+      {a.type === "workflow" && (
+  <>
+    <div style={{ gridColumn: "1 / -1" }}>
+      <label className={styles.label}>workflowKey</label>
+
+      {workflowCatalog && workflowCatalog.length > 0 ? (
+        <select
+          className={styles.input}
+          value={(a as any).workflowKey || ""}
+          onChange={(e) => updateFormAction(idx, { workflowKey: e.target.value } as any)}
+          disabled={readOnly}
+        >
+          <option value="">— Selecciona workflow —</option>
+          {workflowCatalog.map((w) => (
+            <option key={w.key} value={w.key}>
+              {w.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          className={styles.input}
+          value={(a as any).workflowKey || ""}
+          onChange={(e) => updateFormAction(idx, { workflowKey: e.target.value } as any)}
+          disabled={readOnly}
+          placeholder="Ej: budget.generateFromTasks"
+        />
+      )}
+
+      <div className={styles.hint} style={{ marginTop: 6 }}>
+        Clave del workflow en backend. Ejemplos: <code>budget.generateFromTasks</code>, <code>invoice.generateFromBudget</code>.
+      </div>
+    </div>
+
+    <WorkflowInputEditor
+      value={(a as any).input}
+      onChange={(next) => updateFormAction(idx, { input: next } as any)}
+      readOnly={readOnly}
+      styles={styles}
+      sourceFields={sourceFieldsForCurrentModule}
+    />
+
+    <div style={{ gridColumn: "1 / -1" }}>
+      <label className={styles.label}>after.navigateTo (opcional)</label>
+      <input
+        className={styles.input}
+        value={(a as any).after?.navigateTo || ""}
+        onChange={(e) =>
+          updateFormAction(idx, { after: { ...((a as any).after || {}), navigateTo: e.target.value } } as any)
+        }
+        disabled={readOnly}
+        placeholder="/budgets/{{result.id}}?view=1"
+      />
+    </div>
+  </>
+)}
+
+
     </>
   );
 }
@@ -880,6 +1013,178 @@ function DefaultsEditor({
           </button>
           </div>
         </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+//----------- Workflow Editor
+
+
+function normalizeInput(value: any): Array<{ key: string; mode: "field" | "literal"; field: string; literal: string }> {
+  if (!value || typeof value !== "object") return [];
+  return Object.entries(value).map(([k, v]) => {
+    const raw = v == null ? "" : String(v);
+    const m = raw.startsWith("{{") && raw.endsWith("}}") ? "field" : "literal";
+    const field = m === "field" ? raw.slice(2, -2).trim() : "";
+    return { key: String(k), mode: m, field, literal: m === "literal" ? raw : "" };
+  });
+}
+
+function rowsToInput(rows: Array<{ key: string; mode: "field" | "literal"; field: string; literal: string }>) {
+  const out: Record<string, any> = {};
+  for (const r of rows) {
+    const k = r.key.trim();
+    if (!k) continue;
+
+    if (r.mode === "field") {
+      const f = r.field.trim();
+      if (!f) continue;
+      out[k] = `{{${f}}}`;
+    } else {
+      const lit = r.literal;
+      if (lit === "") continue;
+
+      // tipado básico (igual que defaults)
+      if (lit === "true") out[k] = true;
+      else if (lit === "false") out[k] = false;
+      else if (lit === "null") out[k] = null;
+      else if (lit.trim() !== "" && !Number.isNaN(Number(lit)) && String(Number(lit)) === lit.trim()) out[k] = Number(lit);
+      else out[k] = lit;
+    }
+  }
+  return out;
+}
+
+function WorkflowInputEditor({
+  value,
+  onChange,
+  readOnly,
+  styles,
+  sourceFields,
+}: {
+  value: Record<string, any> | undefined;
+  onChange: (next: Record<string, any> | undefined) => void;
+  readOnly?: boolean;
+  styles: Record<string, string>;
+  sourceFields: SimpleField[];
+}) {
+  const [rows, setRows] = useState(() => normalizeInput(value));
+
+  useEffect(() => {
+    setRows(normalizeInput(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(value)]);
+
+  const commit = (nextRows: typeof rows) => {
+    setRows(nextRows);
+    const obj = rowsToInput(nextRows);
+    onChange(Object.keys(obj).length ? obj : undefined);
+  };
+
+  const addRow = () => commit([...(rows || []), { key: "", mode: "field", field: "", literal: "" }]);
+
+  const updateRow = (i: number, patch: Partial<(typeof rows)[number]>) => {
+    const next = rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r));
+    commit(next);
+  };
+
+  const removeRow = (i: number) => commit(rows.filter((_, idx) => idx !== i));
+
+  return (
+    <div style={{ gridColumn: "1 / -1" }}>
+      <div className={styles.actionsRow} style={{ justifyContent: "space-between", marginBottom: 8 }}>
+        <label className={styles.label} style={{ margin: 0 }}>
+          input (workflow)
+        </label>
+
+        <button type="button" className={styles.btnAdd} onClick={addRow} disabled={readOnly}>
+          + Añadir parámetro
+        </button>
+      </div>
+
+      {rows.length === 0 && (
+        <div className={styles.hint} style={{ marginBottom: 10 }}>
+          Define parámetros de entrada para el workflow. Puedes tomar valores del registro actual o usar literales.
+        </div>
+      )}
+
+      {rows.map((r, i) => (
+        <div
+          key={`${i}-${r.key}`}
+          className={styles.grid}
+          style={{
+            gridTemplateColumns: "1fr 160px 1fr auto",
+            alignItems: "end",
+            gap: 10,
+            marginTop: 10,
+          }}
+        >
+          <div>
+            <label className={styles.label}>Param</label>
+            <input
+              className={styles.input}
+              value={r.key}
+              disabled={readOnly}
+              onChange={(e) => updateRow(i, { key: e.target.value })}
+              placeholder="Ej: obraId, clienteId, iva"
+            />
+          </div>
+
+          <div>
+            <label className={styles.label}>Origen</label>
+            <select
+              className={styles.input}
+              value={r.mode}
+              disabled={readOnly}
+              onChange={(e) => updateRow(i, { mode: e.target.value as any, field: "", literal: "" })}
+            >
+              <option value="field">campo</option>
+              <option value="literal">literal</option>
+            </select>
+          </div>
+
+          {r.mode === "field" ? (
+            <div>
+              <label className={styles.label}>Campo</label>
+              <select
+                className={styles.input}
+                value={r.field}
+                disabled={readOnly}
+                onChange={(e) => updateRow(i, { field: e.target.value })}
+              >
+                <option value="">— Selecciona campo —</option>
+                {sourceFields.map((f) => (
+                  <option key={f.name} value={f.name}>
+                    {f.label ? `${f.label} (${f.name})` : f.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className={styles.label}>Valor</label>
+              <input
+                className={styles.input}
+                value={r.literal}
+                disabled={readOnly}
+                onChange={(e) => updateRow(i, { literal: e.target.value })}
+                placeholder='Ej: 21 | "pendiente" | true | null'
+              />
+            </div>
+          )}
+
+          <button
+            type="button"
+            className={styles.btn}
+            style={{ background: "#fc0505ff", borderColor: "#ffb3b3", height: 42 }}
+            onClick={() => removeRow(i)}
+            disabled={readOnly}
+          >
+            Eliminar
+          </button>
         </div>
       ))}
     </div>
