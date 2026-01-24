@@ -5,15 +5,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseTreeViewProvider } from "@/lib/utils/treeViewProvider";
 import { createClient } from "@/lib/supabase/client";
 import { Form } from "@repo/ui";
-//import TreeServices from "./TreeServices";
-//import Calendar from "./Calendar";
 import type { ModuleSchema } from "@repo/types";
-import { RequirePerms } from "@/lib/perms";
+import { RequirePerms, usePerms } from "@/lib/perms";
 
+type Mode = "view" | "edit" | "create";
 
-type TabKey = "proyecto" | "arbol" | "calendario";
-
-function sanitize(values: any, schema: any) {
+// -----------------------------
+// Utils: sanitize + payload
+// -----------------------------
+function sanitize(values: any, schema: ModuleSchema) {
   const { meta, ...rest } = values || {};
   const out: any = { ...rest };
 
@@ -23,7 +23,10 @@ function sanitize(values: any, schema: any) {
     if (f.type === "multiselect") {
       if (v === "" || v === undefined) out[f.name] = [];
       if (typeof v === "string") {
-        out[f.name] = v.split(",").map((x) => x.trim()).filter(Boolean);
+        out[f.name] = v
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean);
       }
     }
 
@@ -56,72 +59,174 @@ function pickPersistablePayload(values: any, schema: ModuleSchema) {
   return out;
 }
 
+// -----------------------------
+// Resolver: módulo/ruta/tabla
+// -----------------------------
+type ModulesBySlug = Record<
+  string,
+  {
+    route?: string | null;
+    ui?: { route?: string | null };
+    db?: { table?: string; primaryKey?: string };
+  }
+>;
+
+function resolveFromSchemaAndModules(args: {
+  schema: ModuleSchema;
+  moduleSlug?: string; // preferente si lo conoces en la ruta (m/[slug]/...)
+  modulesBySlug?: ModulesBySlug;
+  fallbackRoute?: string;
+}) {
+  const schemaTable = args.schema?.db?.table;
+  const schemaPk = args.schema?.db?.primaryKey;
+
+  // 1) elegir slug base (si viene por props/ruta, úsalo)
+  let slug = args.moduleSlug || "";
+
+  // 2) si no viene, intenta resolverlo por schemaTable dentro de modulesBySlug
+  if (!slug && args.modulesBySlug && schemaTable) {
+    // match por slug
+    if (args.modulesBySlug[schemaTable]) slug = schemaTable;
+    // match por db.table
+    if (!slug) {
+      for (const [s, mod] of Object.entries(args.modulesBySlug)) {
+        if (mod?.db?.table === schemaTable) {
+          slug = s;
+          break;
+        }
+      }
+    }
+  }
+
+  // 3) fallback final: si no hay slug, usa schemaTable o "unknown"
+  if (!slug) slug = schemaTable || "unknown";
+
+  // 4) table & pk reales
+  const mod = args.modulesBySlug?.[slug];
+  const table = schemaTable || mod?.db?.table || slug;
+  const primaryKey = schemaPk || mod?.db?.primaryKey || "id";
+
+  // 5) route base
+  const routeRaw =
+    args.fallbackRoute ||
+    mod?.route ||
+    mod?.ui?.route ||
+    (args.schema as any)?.route ||
+    (args.schema as any)?.ui?.route ||
+    `/${slug}/`;
+
+  const baseRoute = String(routeRaw).replace(/\/?$/, "/");
+
+  return { slug, table, primaryKey, baseRoute };
+}
+
+function accionPorModo(mode: Mode) {
+  if (mode === "view") return "ver";
+  if (mode === "edit") return "actualizar";
+  return "crear";
+}
+
+// -----------------------------
+// Componente
+// -----------------------------
 export default function FormClient({
   schema,
   initialData,
   mode,
-  table,
-  primaryKey,
-  id,
+  // Si estás en rutas dinámicas /m/[slug]/..., pásalo para resolver todo perfecto:
+  moduleSlug,
+  // Si ya sabes la ruta (server), pásala para no depender de modulesBySlug
+  baseRoute,
+  // Opcionales para resolución avanzada (treeview, rutas, etc.)
   modulesBySlug,
   schemasBySlug,
-  
-  
 }: {
   schema: ModuleSchema;
   initialData: any;
-  mode: "view" | "edit" | "create";
-  table: string;
-  primaryKey: string;
-  id: string;
-  modulesBySlug?: Record<string, { db?: { table?: string; primaryKey?: string } }>;
+  mode: Mode;
+
+  moduleSlug?: string;
+  baseRoute?: string;
+
+  modulesBySlug?: ModulesBySlug;
   schemasBySlug?: Record<string, ModuleSchema>;
-  
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [pending, start] = useTransition();
-  const resolveRouteFromModules = (source: string) => {
-  if (!modulesBySlug) return null;
-
-  // 1) source como slug
-  const bySlug = modulesBySlug[source] as any;
-  const r1 = bySlug?.route || bySlug?.ui?.route || null;
-  if (r1) return String(r1);
-
-  // 2) source como tabla -> busca quien tenga db.table === source
-  for (const mod of Object.values(modulesBySlug)) {
-    const m: any = mod;
-    if (m?.db?.table === source) {
-      const r2 = m?.route || m?.ui?.route || null;
-      if (r2) return String(r2);
-    }
-  }
-
-  return null;
-};
-
-  
+  const { hasPermiso, loading } = usePerms();
 
   const treeViewProvider = useMemo(() => createSupabaseTreeViewProvider(), []);
-  const [activeTab, setActiveTab] = useState<TabKey>("proyecto");
+
+  const resolved = useMemo(
+    () =>
+      resolveFromSchemaAndModules({
+        schema,
+        moduleSlug,
+        modulesBySlug,
+        fallbackRoute: baseRoute,
+      }),
+    [schema, moduleSlug, modulesBySlug, baseRoute]
+  );
+
+  const requiredAction = accionPorModo(mode);
 
   const onSubmit = (values: any) => {
     start(async () => {
       try {
-        if (mode !== "edit") return;
+        // 1) check UX permiso (la RLS también manda, pero esto evita clicks tontos)
+        if (!hasPermiso(resolved.slug, requiredAction as any)) {
+          alert("No tienes permisos para esta acción.");
+          return;
+        }
 
         const supabase = createClient();
         const sanitized = sanitize(values, schema);
         const payload = pickPersistablePayload(sanitized, schema);
 
-        const { error } = await supabase.from(table).update(payload).eq(primaryKey, id);
-        if (error) throw error;
+        // 2) update / insert
+        if (mode === "edit") {
+          const id = initialData?.[resolved.primaryKey];
+          if (!id) throw new Error("Falta el ID para editar");
 
-        const qs = new URLSearchParams(searchParams.toString());
-        qs.delete("edit");
-        router.replace(`?${qs.toString()}`);
-        router.refresh();
+          const { error } = await supabase
+            .from(resolved.slug)
+            .update(payload)
+            .eq(resolved.primaryKey, id);
+
+          if (error) throw error;
+
+          // limpiar ?edit=true
+          const qs = new URLSearchParams(searchParams.toString());
+          qs.delete("edit");
+          router.replace(`?${qs.toString()}`);
+          router.refresh();
+          return;
+        }
+
+        if (mode === "create") {
+          // insert y volver al detalle
+          // Nota: si tu PK es uuid autogenerado, necesitarás .select() para obtenerlo
+          const { data, error } = await supabase
+            .from(resolved.slug)
+            .insert(payload)
+            .select("*")
+            .maybeSingle();
+
+          if (error) throw error;
+          const newId = (data as any)?.[resolved.primaryKey] ?? (data as any)?.id;
+          if (!newId) {
+            // fallback: refresca y listo
+            router.refresh();
+            return;
+          }
+
+          router.push(`${resolved.baseRoute}${newId}`);
+          router.refresh();
+          return;
+        }
+
+        // view no debería llamar a submit
       } catch (err: any) {
         console.error("Submit error:", err?.message ?? err, err);
         alert(err?.message ?? "Error guardando");
@@ -129,66 +234,33 @@ export default function FormClient({
     });
   };
 
+  // opcional: botones custom de volver/editar (si no los quieres, los quitas)
+  const onBack = () => router.back();
+  const onEdit = () => {
+    // Si estás en view, al editar añade ?edit=true
+    const url = new URL(window.location.href);
+    url.searchParams.set("edit", "true");
+    router.push(url.toString());
+  };
+
+  if (loading) return null;
+
   return (
-    <RequirePerms modulo={table} accion="actualizar">
-  {/**    <ul className="nav nav-tabs mt-3">
-        <li className="nav-item">
-          <button
-            type="button"
-            className={`nav-link bg-secondary text-light ${activeTab === "proyecto" ? "active" : ""}`}
-            onClick={() => setActiveTab("proyecto")}
-          >
-            Proyecto
-          </button>
-        </li>
-
-        <li className="nav-item">
-          <button
-            type="button"
-            className={`nav-link bg-secondary text-light ${activeTab === "arbol" ? "active" : ""}`}
-            onClick={() => setActiveTab("arbol")}
-          >
-            Tareas
-          </button>
-        </li>
-
-        <li className="nav-item">
-          <button
-            type="button"
-            className={`nav-link bg-secondary text-light ${activeTab === "calendario" ? "active" : ""}`}
-            onClick={() => setActiveTab("calendario")}
-          >
-            Calendario
-          </button>
-        </li>
-      </ul>*/} 
-
+    <RequirePerms modulo={resolved.slug} accion={requiredAction as any}>
       <div style={{ opacity: pending ? 0.7 : 1 }}>
-        <div className={`tab-pane fade mt-3 ${activeTab === "proyecto" ? "show active" : ""}`}>
-          {activeTab === "proyecto" && (
-            <Form
-              schema={schema}
-              initialData={initialData}
-              mode={mode}
-              onSubmit={onSubmit}
-              modulesBySlug={modulesBySlug}
-              treeViewProvider={treeViewProvider}
-              treeViewParentRecord={initialData}
-              //nTreeViewRowView={(row) => router.push(`${row.id}`)}
-              //onTreeViewRowEdit={(row) => router.push(`${row.id}?edit=true`)}
-              schemasBySlug={schemasBySlug}
-              
-            />
-          )}
-        </div>
-
-    {/**     <div className={`tab-pane fade mt-3 ${activeTab === "arbol" ? "show active" : ""}`}>
-          {activeTab === "arbol" && <TreeServices proyectoId={id} />}
-        </div>
-
-        <div className={`tab-pane fade mt-3 ${activeTab === "calendario" ? "show active" : ""}`}>
-          {activeTab === "calendario" && <Calendar proyectoId={id} />}
-        </div>*/}
+        <Form
+          schema={schema}
+          initialData={initialData}
+          mode={mode}
+          onSubmit={onSubmit}
+          onBack={onBack}
+          onEdit={onEdit}
+          // treeview
+          modulesBySlug={modulesBySlug}
+          schemasBySlug={schemasBySlug}
+          treeViewProvider={treeViewProvider}
+          treeViewParentRecord={initialData}
+        />
       </div>
     </RequirePerms>
   );
