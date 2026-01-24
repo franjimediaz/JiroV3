@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-type Accion = "ver" | "crear" | "actualizar" | "eliminar" | "*" | string;
+type Accion = "ver" | "crear" | "actualizar" | "eliminar" |"exportar" |"importar" | "*" | string;
 
 function parsePerms(perms: any): Array<{ modulo: string; accion: Accion }> {
   if (!perms) return [];

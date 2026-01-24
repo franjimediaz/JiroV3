@@ -489,6 +489,15 @@ const commitWhereIfValid = (text: string) => {
                   disabled={readOnly}
                 />
               </div>
+              <div className={styles.switchRow}>
+                <label className={styles.label}>filter</label>
+                <input
+                  type="checkbox"
+                  checked={!!field.filter}
+                  onChange={(e) => onChange({ ...field, filter: e.target.checked })}
+                  disabled={readOnly}
+                />
+              </div>
 
               <div className={styles.switchRow}>
                 <label className={styles.label}>visible</label>

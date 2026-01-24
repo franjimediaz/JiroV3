@@ -592,3 +592,48 @@ a {
   padding: 12px 16px;
   
 }
+
+
+
+
+
+.pagination {
+  gap: 4px;
+}
+
+.pagination .page-link {
+  border-radius: 999px;
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: #4b5563;
+}
+
+.pagination .page-link:hover {
+  background: #f3f4f6;
+}
+
+.pagination .page-item.active .page-link {
+  background: #111827;
+  color: white;
+}
+
+.pagination .page-item.disabled .page-link {
+  color: #9ca3af;
+}
+
+.pageSizeSelect {
+  width: 110px;
+  border-radius: 999px;
+  border: none;
+  background-color: #f3f4f6;
+  font-size: 0.8rem;
+  padding: 4px 28px 4px 14px;
+  color: #111827;
+}
+
+.pageSizeSelect:focus {
+  outline: none;
+  background-color: #e5e7eb;
+}
+

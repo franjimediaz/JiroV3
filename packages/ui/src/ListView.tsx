@@ -4,8 +4,11 @@ import React, { useMemo, useState, useEffect } from "react";
 import type {Field, FieldType, ListViewProps, CacheEntry  } from "@repo/types";
 import { ActionMenu } from "./ActionMenu";
 import { dataProvider } from "./providers/DataProvider";
+import  SelectorTabla  from "./Selector";
 
-
+type FilterValue =
+  | string
+  | { value: string; label: string };
 
 export default function ListView({
   schema,
@@ -15,6 +18,8 @@ export default function ListView({
   onEditRow,
   onDeleteRow,
   onCreate,
+  onExport,
+  onImport,
 }: ListViewProps) {
   const primaryKey = schema.db.primaryKey || "id";
   const [showFilters, setShowFilters] = useState(false);
@@ -41,7 +46,11 @@ export default function ListView({
     [schema.fields]
   );
 
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [filters, setFilters] = useState<Record<string, FilterValue>>({});
+
+  const [openSelector, setOpenSelector] = useState<{
+  field: Field;
+} | null>(null);
 
   // Cache para resolver selectorTabla (id -> displayField) en la lista
   const [labelCache, setLabelCache] = useState<Record<string, CacheEntry>>({});
@@ -61,36 +70,71 @@ export default function ListView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ listFields]);
 
-  const handleFilterChange = (fieldName: string, value: string) => {
+  const handleFilterChange = (fieldName: string, value: FilterValue) => {
     setFilters((prev) => ({ ...prev, [fieldName]: value }));
   };
 
   // Aplicar filtros sobre data
   const filteredData = useMemo(() => {
-    if (!filterFields.length) return data;
+  if (!filterFields.length) return data;
 
-    return data.filter((row) => {
-      for (const f of filterFields) {
-        const val = filters[f.name];
-        if (!val) continue;
+  return data.filter((row) => {
+    for (const f of filterFields) {
+      const fv = filters[f.name];
+      if (!fv) continue;
 
-        const cell = row[f.name];
-        if (cell === null || cell === undefined) return false;
+      const cell = row[f.name];
+      if (cell === null || cell === undefined) return false;
 
-        const cellStr = String(cell).toLowerCase();
-        const filterStr = val.toLowerCase().trim();
-        if (!cellStr.includes(filterStr)) return false;
+      // ✅ selectorTabla: filtra por id exacto (lo más lógico)
+      if (f.type === "selectorTabla") {
+        const wanted = typeof fv === "object" ? fv.value : String(fv);
+        if (!wanted) continue;
+        if (String(cell) !== wanted) return false;
+        continue;
       }
-      return true;
-    });
-  }, [data, filterFields, filters]);
+
+      // ✅ resto: contains (tu comportamiento actual)
+      const cellStr = String(cell).toLowerCase();
+      const filterStr =
+        (typeof fv === "string" ? fv : fv.label).toLowerCase().trim();
+
+      if (filterStr && !cellStr.includes(filterStr)) return false;
+    }
+    return true;
+  });
+}, [data, filterFields, filters]);
+
+// ---------------- PAGINACIÓN ----------------
+  const [pageSize, setPageSize] = useState<number>(10); // ✅ por defecto 10
+  const [page, setPage] = useState<number>(1);
+
+  const totalRows = filteredData.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+
+  // Si cambian filtros o pageSize, vuelve a la primera página (evita páginas vacías)
+  useEffect(() => {
+    setPage(1);
+  }, [pageSize, JSON.stringify(filters)]);
+
+  // Si por cualquier razón page queda fuera de rango, corrige
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+    if (page < 1) setPage(1);
+  }, [page, totalPages]);
+
+  const pagedData = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredData.slice(start, start + pageSize);
+  }, [filteredData, page, pageSize]);
+
 
   const icon = schema.ui?.icon;
   const color = schema.ui?.color;
   const tableName = schema.db.table;
 
   return (
-    <div className="card " style={{ borderColor: color || "#5374a1ff" }}>
+    <div className="card" style={{ borderColor: "rgb(136, 135, 135)" }}>
       {/* HEADER */}
       <div className="card-header d-flex justify-content-between  align-items-center">
         <div className="d-flex align-items-center gap-2">
@@ -116,7 +160,7 @@ export default function ListView({
               onClick={onCreate}
             >
               <i className="bi bi-plus-lg me-1" />
-              Nuevo
+              
             </button>
           )}
           {filterFields.length > 0 && (
@@ -129,37 +173,91 @@ export default function ListView({
               <i className={`bi ${showFilters ? "bi-x-lg" : "bi-search"}`} />
             </button>
           )}
+          {onExport && (
+            <button
+              type="button"
+              className="btn btn-sm btn-success"
+              onClick={onCreate}
+            >
+              <i className="bi bi-download" />
+              
+            </button>
+          )}
+          {onImport && (
+            <button
+              type="button"
+              className="btn btn-sm btn-success"
+              onClick={onCreate}
+            >
+              <i className="bi bi-upload" />
+              
+            </button>
+          )}
+
         </div>
       </div>
 
       {/* FILTROS */}
       
-      {filterFields.length > 0 && showFilters &&(
-        <div className="card-body border-bottom">
-          <div className="row g-2">
-            {filterFields.map((f) => (
-              <div key={f.name} className="col-12 col-md-3">
-                <label className="formsearch-label mb-1" style={{ fontSize: 12 }}>
-                  {f.label}
-                </label>
-                <input
-                  type="text"
-                  className="form-control form-control-sm"
-                  placeholder={`Filtrar ${f.label}`}
-                  value={filters[f.name] ?? ""}
-                  onChange={(e) =>
-                    handleFilterChange(f.name, e.target.value)
-                  }
-                />
-              </div>
-            ))}
+      {filterFields.length > 0 && showFilters && (
+          <div className="card-body border-bottom">
+            <div className="row g-2">
+              {filterFields.map((f) => {
+                const val = filters[f.name];
+                const isSelector = f.type === "selectorTabla";
+                const ref = (f as any).ref || {};
+
+                return (
+                  <div key={f.name} className="col-12 col-md-3">
+                    <label
+                      className="formsearch-label mb-1"
+                      style={{ fontSize: 12 }}
+                    >
+                      {f.label}
+                    </label>
+
+                    {isSelector ? (
+                      <SelectorTabla
+                        moduleSlug={ref.moduleSlug}
+                        displayField={ref.displayField}
+                        valueField={ref.valueField || "id"}
+                        filters={ref.filters}
+                        sort={ref.sort}
+                        value={
+                          typeof val === "object" && val !== null
+                            ? val.value
+                            : val || ""
+                        }
+                        onChange={(v) =>
+                          handleFilterChange(f.name, {
+                            value: v,
+                            label: "", // se resolverá por cache interna del selector
+                          })
+                        }
+                        placeholder={`Filtrar ${f.label}`}
+                      />
+                    ) : (
+                      <input
+                        type="text"
+                        className="form-control form-control-sm"
+                        placeholder={`Filtrar ${f.label}`}
+                        value={typeof val === "string" ? val : ""}
+                        onChange={(e) =>
+                          handleFilterChange(f.name, e.target.value)
+                        }
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
 
       {/* TABLA */}
       <div className="table-responsive">
-        <table className="table table-sm mb-0 align-middle">
+        <table className="table table-sm mb-0 align-middle table-hover">
           <thead>
             <tr>
               {listFields.map((f) => (
@@ -186,10 +284,10 @@ export default function ListView({
                 </td>
               </tr>
             ) : (
-              filteredData.map((row, idx) => (
+              pagedData.map((row, idx) => (
                 <tr key={row[primaryKey] ?? idx}>
                   {listFields.map((f) => (
-                    <td key={f.name} className="text-nowrap">
+                    <td key={f.name} className="text-nowrap hover-cell">
                       {renderCell(row[f.name], f, labelCache)}
                     </td>
                   ))}
@@ -225,6 +323,81 @@ export default function ListView({
           </tbody>
         </table>
       </div>
+            {/* FOOTER: page size + paginación */}
+      <div className="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 border-top">
+        <div className="d-flex align-items-center gap-2">
+          <span className="small text-muted">Mostrar</span>
+          <select
+            className="form-select form-select-sm pageSizeSelect"
+            style={{ width: 110 }}
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+          >
+            {[10, 20, 50, 80].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <span className="small text-muted">registros</span>
+
+          <span className="small text-muted ms-2">
+            {totalRows === 0
+              ? "0 resultados"
+              : `${(page - 1) * pageSize + 1}-${Math.min(page * pageSize, totalRows)} de ${totalRows}`}
+          </span>
+        </div>
+
+        {/* Paginación */}
+        <nav aria-label="Paginación" className="ms-md-auto">
+          <ul className="pagination pagination-sm mb-0">
+            <li className={`page-item ${page <= 1 ? "disabled" : ""}`}>
+              <button className="page-link" onClick={() => setPage(1)} disabled={page <= 1}>
+                «
+              </button>
+            </li>
+            <li className={`page-item ${page <= 1 ? "disabled" : ""}`}>
+              <button className="page-link" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+                ‹
+              </button>
+            </li>
+
+            {getPageItems(page, totalPages).map((it, i) => {
+              if (it === "...") {
+                return (
+                  <li key={`dots_${i}`} className="page-item disabled">
+                    <span className="page-link">…</span>
+                  </li>
+                );
+              }
+              const n = it as number;
+              return (
+                <li key={n} className={`page-item ${n === page ? "active" : ""}`}>
+                  <button className="page-link" onClick={() => setPage(n)}>
+                    {n}
+                  </button>
+                </li>
+              );
+            })}
+
+            <li className={`page-item ${page >= totalPages ? "disabled" : ""}`}>
+              <button
+                className="page-link"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+              >
+                ›
+              </button>
+            </li>
+            <li className={`page-item ${page >= totalPages ? "disabled" : ""}`}>
+              <button className="page-link" onClick={() => setPage(totalPages)} disabled={page >= totalPages}>
+                »
+              </button>
+            </li>
+          </ul>
+        </nav>
+      </div>
+
     </div>
   );
 }
@@ -238,7 +411,7 @@ function capitalize(str: string) {
 
 function getSelectorRef(ref: any): { moduleSlug?: string; displayField?: string; valueField?: string } | null {
   if (!ref || typeof ref !== "object") return null;
-  // “displayField” solo existe en SelectorTablaRef
+  
   if ("displayField" in ref) return ref;
   return null;
 }
@@ -255,7 +428,7 @@ async function preloadSelectorLabels(params: {
 }) {
   const { rows, fields, dataProvider, cache, setCache } = params;
 
-  // Agrupamos por referencia (mismo moduleSlug/valueField/displayField + estilo)
+ 
   const pending = new Map<
     string,
     {
@@ -309,7 +482,7 @@ async function preloadSelectorLabels(params: {
       const idStr = String(id);
       const ck = cacheKey(moduleSlug, idStr);
 
-      // Si no tenemos label en cache, lo pedimos
+     
       if (!cache[ck]?.label) bucket.ids.add(idStr);
     }
   }
@@ -318,7 +491,7 @@ async function preloadSelectorLabels(params: {
     const ids = Array.from(b.ids);
     if (!ids.length) continue;
 
-    // Ideal: backend soporta op "in"
+    
     const res = await dataProvider.list({
       moduleSlug: b.moduleSlug,
       filters: [{ field: b.valueField, op: "in", value: ids }],
@@ -365,7 +538,7 @@ function renderCell(value: any, field: Field, labelCache: Record<string, CacheEn
             aria-hidden="true"
           />
         ) : (
-          // emoji / texto
+         
           <span style={{ color: color || "inherit" }}>{icon}</span>
         )
       ) : null}
@@ -437,12 +610,12 @@ function renderCell(value: any, field: Field, labelCache: Record<string, CacheEn
       const moduleSlug = ref?.moduleSlug ? String(ref.moduleSlug) : "";
       const df = ref?.displayField ? String(ref.displayField) : "id";
 
-      // Si ya viene el objeto relacionado:
+      
       if (typeof value === "object" && value !== null) {
         const v: any = value;
         const label = String(v[df] ?? v.id ?? JSON.stringify(v));
 
-        // Si quieres estilo también aquí, necesita que el objeto traiga icon/color
+        
         const hasStyle = !!((field as any).hasStyle ?? (ref as any)?.hasStyle);
         const styleIconField =
           ((field as any).styleIconField ?? (ref as any)?.styleIconField) || "icon";
@@ -455,7 +628,7 @@ function renderCell(value: any, field: Field, labelCache: Record<string, CacheEn
         return label;
       }
 
-      // Normal: viene el ID
+    
       const id = String(value ?? "");
       if (moduleSlug && id) {
         const entry = labelCache[cacheKey(moduleSlug, id)];
@@ -488,3 +661,31 @@ function renderCell(value: any, field: Field, labelCache: Record<string, CacheEn
   }
 }
 
+function getPageItems(current: number, total: number): Array<number | "..."> {
+  // Muestra: 1 ... (c-1) c (c+1) ... total
+  // con recortes para no tener 80 botones si hay muchas páginas.
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+
+  const items: Array<number | "..."> = [];
+  const push = (x: number | "...") => items.push(x);
+
+  push(1);
+
+  const left = Math.max(2, current - 1);
+  const right = Math.min(total - 1, current + 1);
+
+  if (left > 2) push("...");
+
+  for (let i = left; i <= right; i++) push(i);
+
+  if (right < total - 1) push("...");
+
+  push(total);
+
+  // Si current está cerca del inicio/fin, amplía un poco para que no quede raro
+  // (esto es opcional pero mejora UX)
+  const normalized: Array<number | "..."> = [];
+  for (const it of items) normalized.push(it);
+
+  return normalized;
+}

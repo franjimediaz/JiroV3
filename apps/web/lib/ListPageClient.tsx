@@ -100,6 +100,33 @@ export default function ListPageClient({
     router.push(`${baseRoute.replace(/\/?$/, "/")}new`);
   };
 
+  const handleExport = async () => {
+    if (!hasPermiso(moduleSlug, "exportar")) {
+      await inform({
+        title: "Acción no permitida",
+        message: `No tienes permisos para crear un nuevo ${titleSingular}.`,
+        details: [{ label: "Acción", value: "Exportar" }, { label: "Módulo", value: titleSingular }],
+        mode: "info",
+        confirmText: "Aceptar",
+      });
+      return;
+    }
+    router.push(`${baseRoute.replace(/\/?$/, "/")}new`);
+  };
+  const handleImport = async () => {
+    if (!hasPermiso(moduleSlug, "importar")) {
+      await inform({
+        title: "Acción no permitida",
+        message: `No tienes permisos para crear un nuevo ${titleSingular}.`,
+        details: [{ label: "Acción", value: "Importar" }, { label: "Módulo", value: titleSingular }],
+        mode: "info",
+        confirmText: "Aceptar",
+      });
+      return;
+    }
+    router.push(`${baseRoute.replace(/\/?$/, "/")}new`);
+  };
+
   if (loading) return null;
 
   return (
@@ -113,6 +140,8 @@ export default function ListPageClient({
           onEditRow={handleEdit}
           onDeleteRow={handleDelete}
           onCreate={handleCreate}
+          onExport={handleExport}
+          onImport={handleImport}
         />
       </>
     </RequirePerms>

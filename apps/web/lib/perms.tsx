@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
-export type Accion = "ver" | "crear" | "actualizar" | "eliminar" | "*";
+export type Accion = "ver" | "crear" | "actualizar" | "eliminar" |"importar"|"exportar"| "*";
 export type Permiso = { modulo: string; accion: Accion | string };
 
 type Ctx = {

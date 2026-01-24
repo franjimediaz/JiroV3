@@ -210,6 +210,8 @@ export type ListViewProps = {
   onEditRow?: (row: any) => void;
   onDeleteRow?: (row: any) => void;
   onCreate?: () => void;
+  onExport?: () => void;
+  onImport?: () => void;
 };
 export type ActionMenuItem = {
   label: string;
