@@ -14,7 +14,9 @@ export type FormAction =
   | NavigateAction
   | RecalculateAction
   | DuplicateAction
-  | ExternalAction;
+  | ExternalAction
+  | WorkflowAction;
+
 
 type BaseAction = {
   id: string;
@@ -82,6 +84,25 @@ export type ExternalAction = BaseAction & {
   // lo dejamos abierto
   payload?: any;
 };
+export type WorkflowAction = BaseAction & {
+  type: "workflow";
+  workflowKey: string;
+
+  /**
+   * input se guarda en el schema y se envía al backend.
+   * Ej: { source: {...}, target: {...}, maps: {...}, defaults: {...} }
+   */
+  input?: any;
+
+  /**
+   * navegación opcional tras ejecutar:
+   * Ej: "/presupuestos/{{result.id}}?view=1"
+   */
+  after?: {
+    navigateTo?: string; // template
+  };
+};
+
 
 /** ---------------- Component Props ---------------- */
 
@@ -298,6 +319,46 @@ export default function FormActionsBar(props: {
         // hueco para PDF, etc
         throw new Error(`Acción externa "${a.kind}" aún no implementada.`);
       }
+
+      if (a.type === "workflow") {
+        const recordId = String(values?.id || "");
+        if (!recordId) throw new Error("No hay id del registro. Esta acción requiere un registro ya guardado.");
+
+        if (!a.workflowKey) throw new Error("workflowKey requerido en la acción workflow.");
+
+        const payload = {
+          workflowKey: a.workflowKey,
+          context: {
+            recordId,
+            tableSlug: (schema as any)?.slug || (schema as any)?.db?.table, // si tienes slug úsalo; si no, fallback
+          },
+          input: a.input || {},
+        };
+
+        const res = await fetch("/api/workflows/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.error || `Workflow error (${res.status})`);
+        }
+
+        // after.navigateTo (template)
+        const tpl = (a as any).after?.navigateTo;
+        if (tpl) {
+          const href = resolveTemplate(String(tpl), { ...values, result: json.result, meta: json.meta });
+          if (href) go(href);
+        }
+
+        return;
+      }
+
+
     } catch (e: any) {
       setError(e?.message || "Error ejecutando acción");
     } finally {

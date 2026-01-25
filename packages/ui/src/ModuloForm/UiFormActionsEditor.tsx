@@ -10,6 +10,71 @@ type WorkflowCatalogItem = {
   key: string;
   label: string;
 };
+type WorkflowAction = {
+  type: "workflow";
+  workflowKey: string;
+
+  input?: {
+    // Identifica el registro base (padre)
+    parentId?: string; // normalmente "{{id}}"
+
+    // Define la operación genérica "derive"
+    source: {
+      parentTable: string;
+      children?: {
+        table: string;
+        fkToParent: string;
+      };
+    };
+
+    target: {
+      parentTable: string;
+      children?: {
+        table: string;
+        fkToParent: string;
+      };
+    };
+
+    maps: {
+      parent?: Record<string, string>; // destField -> "{{sourceField}}"
+      child?: Record<string, string>;  // destField -> "{{sourceField}}"
+    };
+
+    defaults?: {
+      parent?: Record<string, any>;
+      child?: Record<string, any>;
+    };
+  };
+
+  after?: { navigateTo?: string }; // "/presupuestos/{{result.parent.id}}"
+};
+type DeriveWorkflowInput = {
+  kind: "derive";
+  source: {
+    parentTable: string;        // tabla origen padre (slug o db.table)
+    parentIdTemplate: string;   // default: "{{id}}"
+    children?: {
+      table: string;            // tabla origen hijos
+      fkToParent: string;       // campo FK en tabla hijos (ej: proyectoId)
+    };
+  };
+  target: {
+    parentTable: string;        // tabla destino padre
+    children?: {
+      table: string;            // tabla destino hijos
+      fkToParent: string;       // campo FK destino (ej: presupuestoId)
+    };
+  };
+  maps: {
+    parent?: Record<string, string>; // destField -> srcField
+    child?: Record<string, string>;  // destField -> srcField
+  };
+  defaults?: {
+    parent?: Record<string, any>;
+    child?: Record<string, any>;
+  };
+};
+
 
 export type UiFormAction = {
   id: string;
@@ -30,6 +95,9 @@ export type UiFormAction = {
 
   includeChildren?: boolean;
   omitFields?: any;
+  workflowKey?: string;
+  input?: Record<string, any>;
+  after?: { navigateTo?: string };
 };
 
 type Props = {
@@ -52,6 +120,11 @@ type Props = {
   loadingTableFields?: (table: string) => boolean;
 
   workflowCatalog?: WorkflowCatalogItem[];
+
+  // ✅ workflow
+  workflowKey?: string;
+  input?: Record<string, any>;
+  after?: { navigateTo?: string };
 
 };
 
@@ -124,14 +197,20 @@ export default function UiFormActionsEditor({
   };
 
   const next: UiFormAction =
-    type === "workflow"
-      ? ({
-          ...base,
-          workflowKey: "",
-          input: {},
-          after: { navigateTo: "" }, // si tu type incluye after; si no, bórralo
-        } as any)
-      : base;
+  type === "workflow"
+    ? ({
+        ...base,
+        workflowKey: "derive.createFromParent",
+        input: {
+          kind: "derive",
+          source: { parentTable: "", parentIdTemplate: "{{id}}", children: { table: "", fkToParent: "" } },
+          target: { parentTable: "", children: { table: "", fkToParent: "" } },
+          maps: { parent: {}, child: {} },
+          defaults: { parent: {}, child: {} },
+        } satisfies DeriveWorkflowInput,
+        after: { navigateTo: "" },
+      } as any)
+    : base;
 
   const nextActions = [...actions, next];
   onChange(nextActions);
@@ -412,13 +491,16 @@ export default function UiFormActionsEditor({
                             { field: "tipo", op: "in", value: ["tabla", "subtabla", "vista"] },
                             ]}
                             sort={[{ field: "orden", direction: "asc" }]}
-                            onChange={(e) => {
-                                    const table = e.target.value;
-                                    updateFormAction(
-                                      idx,
-                                      { target: { ...((a as any).target || {}), table } } as any
-                                    );
-                                  }}
+                            onChange={(table: string) => {
+                                const next = (table || "").trim();
+                                const prev = String((a as any).target?.table || "").trim();
+                                if (next === prev) return; // ✅ guard anti-loop
+
+                                updateFormAction(
+                                  idx,
+                                  { target: { ...((a as any).target || {}), table: next } } as any
+                                );
+                              }}
                             />
                               
                             <div>
@@ -524,7 +606,7 @@ export default function UiFormActionsEditor({
                             </div>
                           )}
 
-                          {a.type === "workflow" && (
+                      {/**     {a.type === "workflow" && (
                             <>
                             <div>
                               
@@ -569,6 +651,23 @@ export default function UiFormActionsEditor({
                             
                             </>
                           )}
+                              */}
+
+                        {a.type === "workflow" && (
+                                  <UiFormActionItem
+                                    idx={idx}
+                                    action={a}
+                                    readOnly={readOnly}
+                                    styles={styles}
+                                    IconPicker={IconPicker}
+                                    updateFormAction={updateFormAction}
+                                    removeFormAction={removeFormAction}
+                                    sourceFields={sourceFields}
+                                    getTableFields={getTableFields}
+                                    ensureTableFields={ensureTableFields}
+                                    workflowCatalog={workflowCatalog}
+                                  />
+                                )}
 
                           
                           
@@ -807,62 +906,136 @@ function UiFormActionItem({
       {/* ---- workflow ---- */}
 
       
+    {/*  {a.type === "workflow" && (
+              <>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label className={styles.label}>workflowKey</label>
+
+                  {workflowCatalog && workflowCatalog.length > 0 ? (
+                    <select
+                      className={styles.input}
+                      value={(a as any).workflowKey || ""}
+                      onChange={(e) => updateFormAction(idx, { workflowKey: e.target.value } as any)}
+                      disabled={readOnly}
+                    >
+                      <option value="">— Selecciona workflow —</option>
+                      {workflowCatalog.map((w) => (
+                        <option key={w.key} value={w.key}>
+                          {w.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className={styles.input}
+                      value={(a as any).workflowKey || ""}
+                      onChange={(e) => updateFormAction(idx, { workflowKey: e.target.value } as any)}
+                      disabled={readOnly}
+                      placeholder="Ej: budget.generateFromTasks"
+                    />
+                  )}
+
+                  <div className={styles.hint} style={{ marginTop: 6 }}>
+                    Clave del workflow en backend. Ejemplos: <code>budget.generateFromTasks</code>, <code>invoice.generateFromBudget</code>.
+                  </div>
+                </div>
+
+                <WorkflowInputEditor
+                  value={(a as any).input}
+                  onChange={(next) => updateFormAction(idx, { input: next } as any)}
+                  readOnly={readOnly}
+                  styles={styles}
+                  sourceFields={sourceFieldsForCurrentModule}
+                />
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label className={styles.label}>after.navigateTo (opcional)</label>
+                  <input
+                    className={styles.input}
+                    value={(a as any).after?.navigateTo || ""}
+                    onChange={(e) =>
+                      updateFormAction(idx, { after: { ...((a as any).after || {}), navigateTo: e.target.value } } as any)
+                    }
+                    disabled={readOnly}
+                    placeholder="/budgets/{{result.id}}?view=1"
+                  />
+                </div>
+              </>
+            )}*/}
+
       {a.type === "workflow" && (
-  <>
-    <div style={{ gridColumn: "1 / -1" }}>
-      <label className={styles.label}>workflowKey</label>
+            <>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label className={styles.label}>workflowKey</label>
 
-      {workflowCatalog && workflowCatalog.length > 0 ? (
-        <select
-          className={styles.input}
-          value={(a as any).workflowKey || ""}
-          onChange={(e) => updateFormAction(idx, { workflowKey: e.target.value } as any)}
-          disabled={readOnly}
-        >
-          <option value="">— Selecciona workflow —</option>
-          {workflowCatalog.map((w) => (
-            <option key={w.key} value={w.key}>
-              {w.label}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <input
-          className={styles.input}
-          value={(a as any).workflowKey || ""}
-          onChange={(e) => updateFormAction(idx, { workflowKey: e.target.value } as any)}
-          disabled={readOnly}
-          placeholder="Ej: budget.generateFromTasks"
-        />
-      )}
+                {workflowCatalog && workflowCatalog.length > 0 ? (
+                  <select
+                    className={styles.input}
+                    value={(a as any).workflowKey || ""}
+                    onChange={(e) => updateFormAction(idx, { workflowKey: e.target.value } as any)}
+                    disabled={readOnly}
+                  >
+                    <option value="">— Selecciona workflow —</option>
+                    {workflowCatalog.map((w) => (
+                      <option key={w.key} value={w.key}>
+                        {w.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className={styles.input}
+                    value={(a as any).workflowKey || ""}
+                    onChange={(e) => updateFormAction(idx, { workflowKey: e.target.value } as any)}
+                    disabled={readOnly}
+                    placeholder="Ej: derive.createFromParent"
+                  />
+                )}
 
-      <div className={styles.hint} style={{ marginTop: 6 }}>
-        Clave del workflow en backend. Ejemplos: <code>budget.generateFromTasks</code>, <code>invoice.generateFromBudget</code>.
-      </div>
-    </div>
+                <div className={styles.hint} style={{ marginTop: 6 }}>
+                  Para UX pro usa <code>derive.createFromParent</code>.
+                </div>
+              </div>
 
-    <WorkflowInputEditor
-      value={(a as any).input}
-      onChange={(next) => updateFormAction(idx, { input: next } as any)}
-      readOnly={readOnly}
-      styles={styles}
-      sourceFields={sourceFieldsForCurrentModule}
-    />
+              {/* ✅ Editor PRO para derive */}
+              {String((a as any).workflowKey || "") === "derive.createFromParent" ? (
+                <WorkflowDeriveEditor
+                  idx={idx}
+                  action={a}
+                  readOnly={readOnly}
+                  styles={styles}
+                  updateFormAction={updateFormAction}
+                  getTableFields={getTableFields}
+                  ensureTableFields={ensureTableFields}
+                />
+              ) : (
+                <WorkflowInputEditor
+                  value={(a as any).input}
+                  onChange={(next) => updateFormAction(idx, { input: next } as any)}
+                  readOnly={readOnly}
+                  styles={styles}
+                  sourceFields={sourceFields} // fallback
+                />
+              )}
 
-    <div style={{ gridColumn: "1 / -1" }}>
-      <label className={styles.label}>after.navigateTo (opcional)</label>
-      <input
-        className={styles.input}
-        value={(a as any).after?.navigateTo || ""}
-        onChange={(e) =>
-          updateFormAction(idx, { after: { ...((a as any).after || {}), navigateTo: e.target.value } } as any)
-        }
-        disabled={readOnly}
-        placeholder="/budgets/{{result.id}}?view=1"
-      />
-    </div>
-  </>
-)}
+              <div style={{ gridColumn: "1 / -1", marginTop: 10 }}>
+                <label className={styles.label}>after.navigateTo (opcional)</label>
+                <input
+                  className={styles.input}
+                  value={(a as any).after?.navigateTo || ""}
+                  onChange={(e) =>
+                    updateFormAction(
+                      idx,
+                      { after: { ...((a as any).after || {}), navigateTo: e.target.value } } as any
+                    )
+                  }
+                  disabled={readOnly}
+                  placeholder="/presupuestos/{{result.parent.id}}?view=1"
+                />
+              </div>
+            </>
+          )}
+
 
 
     </>
@@ -1018,6 +1191,455 @@ function DefaultsEditor({
     </div>
   );
 }
+
+function makeDeriveInput(prev: any): DeriveWorkflowInput {
+  const p = prev && typeof prev === "object" ? prev : {};
+  return {
+    kind: "derive",
+    source: {
+      parentTable: p?.source?.parentTable || "",
+      parentIdTemplate: p?.source?.parentIdTemplate || "{{id}}",
+      children: {
+        table: p?.source?.children?.table || "",
+        fkToParent: p?.source?.children?.fkToParent || "",
+      },
+    },
+    target: {
+      parentTable: p?.target?.parentTable || "",
+      children: {
+        table: p?.target?.children?.table || "",
+        fkToParent: p?.target?.children?.fkToParent || "",
+      },
+    },
+    maps: {
+      parent: p?.maps?.parent || {},
+      child: p?.maps?.child || {},
+    },
+    defaults: {
+      parent: p?.defaults?.parent || {},
+      child: p?.defaults?.child || {},
+    },
+  };
+}
+
+function filterFkCandidates(fields: SimpleField[]) {
+  return (fields || []).filter((f) => f.name.toLowerCase().endsWith("id"));
+}
+
+function WorkflowDeriveEditor({
+  idx,
+  action,
+  readOnly,
+  styles,
+  updateFormAction,
+  getTableFields,
+  ensureTableFields,
+}: {
+  idx: number;
+  action: UiFormAction;
+  readOnly?: boolean;
+  styles: Record<string, string>;
+  updateFormAction: (idx: number, patch: Partial<UiFormAction>) => void;
+  getTableFields: (table: string) => SimpleField[];
+  ensureTableFields?: (table: string) => void;
+}) {
+  const input = useMemo(() => makeDeriveInput((action as any).input), [(action as any).input]);
+
+  const sp = input.source.parentTable;
+  const tp = input.target.parentTable;
+  const sc = input.source.children?.table || "";
+  const tc = input.target.children?.table || "";
+
+  // Carga campos al elegir tablas
+  useEffect(() => { if (sp) ensureTableFields?.(sp); }, [sp, ensureTableFields]);
+  useEffect(() => { if (tp) ensureTableFields?.(tp); }, [tp, ensureTableFields]);
+  useEffect(() => { if (sc) ensureTableFields?.(sc); }, [sc, ensureTableFields]);
+  useEffect(() => { if (tc) ensureTableFields?.(tc); }, [tc, ensureTableFields]);
+
+  const spFields = sp ? getTableFields(sp) : [];
+  const tpFields = tp ? getTableFields(tp) : [];
+  const scFields = sc ? getTableFields(sc) : [];
+  const tcFields = tc ? getTableFields(tc) : [];
+
+  const spFkCandidates = filterFkCandidates(scFields);
+  const tcFkCandidates = filterFkCandidates(tcFields);
+
+  const patchInput = (patch: Partial<DeriveWorkflowInput>) => {
+    updateFormAction(idx, { input: { ...input, ...patch } as any });
+  };
+
+  const patchSource = (patch: Partial<DeriveWorkflowInput["source"]>) => {
+    patchInput({ source: { ...input.source, ...patch } });
+  };
+
+  const patchTarget = (patch: Partial<DeriveWorkflowInput["target"]>) => {
+    patchInput({ target: { ...input.target, ...patch } });
+  };
+
+  const patchSourceChildren = (patch: Partial<NonNullable<DeriveWorkflowInput["source"]["children"]>>) => {
+    patchSource({ children: { ...(input.source.children || { table: "", fkToParent: "" }), ...patch } });
+  };
+
+  const patchTargetChildren = (patch: Partial<NonNullable<DeriveWorkflowInput["target"]["children"]>>) => {
+    patchTarget({ children: { ...(input.target.children || { table: "", fkToParent: "" }), ...patch } });
+  };
+
+  const hasChildren =
+    !!input.source.children?.table &&
+    !!input.target.children?.table;
+
+  return (
+    <div style={{ gridColumn: "1 / -2" }}>
+      {/* --------- ORIGEN --------- */}
+      <div className={styles.card} style={{ marginTop: 10 }}>
+        <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 700 }}>Origen</div>
+          <div className={styles.hint}>Define de dónde se toma la info (padre y opcionalmente hijos).</div>
+        </div>
+
+        <div className={styles.grid} style={{ marginTop: 10 }}>
+          <div style={{ gridColumn: "1 / -7" }}>
+            <label className={styles.label}>source.parentTable</label>
+            <Selector
+                moduleSlug="modulos"
+                displayField="nombre"
+                valueField="slug"
+                value={sp || ""}
+                readOnly={readOnly}
+                placeholder="— Seleccionar tabla origen —"
+                label="Tabla origen (padre)"
+                filters={[
+                  { field: "activo", op: "=", value: true },
+                  { field: "tipo", op: "in", value: ["tabla", "subtabla", "vista"] },
+                ]}
+                sort={[{ field: "orden", direction: "asc" }]}
+                onChange={(slugSel: string) => {
+                      const next = (slugSel || "").trim();
+                      const prev = (sp || "").trim();
+
+                      // ✅ evita bucle si Selector dispara onChange con el mismo value
+                      if (next === prev) return;
+
+                      patchInput({
+                        source: {
+                          ...(input.source || {}),
+                          parentTable: next,
+                        },
+                        // limpia dependencias SOLO cuando cambia de verdad
+                        maps: {
+                          ...(input.maps || {}),
+                          parent: {},
+                        },
+                        defaults: {
+                          ...(input.defaults || {}),
+                          parent: {},
+                        },
+                      });
+                    }}
+              />
+
+            <div className={styles.hint} style={{ marginTop: 6 }}>
+              Tip: aquí puedes guardar db.table o slug. Lo importante es que getTableFields() lo soporte.
+            </div>
+          </div>
+
+          <div style={{ gridColumn: "1 / -7" }}>
+            <label className={styles.label}>source.parentIdTemplate</label>
+            <input
+              className={styles.input}
+              value={input.source.parentIdTemplate}
+              disabled={readOnly}
+              onChange={(e) => patchSource({ parentIdTemplate: e.target.value })}
+              placeholder='{{id}}'
+            />
+            <div className={styles.hint} style={{ marginTop: 6 }}>
+              Normalmente será <code>{"{{id}}"}</code>.
+            </div>
+          </div>
+
+          <div style={{ gridColumn: "1 / -7" }}>
+                <Selector
+                  moduleSlug="modulos"
+                  displayField="nombre"
+                  valueField="slug"
+                  value={sc || ""}
+                  readOnly={readOnly}
+                  placeholder="— Seleccionar tabla hijos (opcional) —"
+                  label="Tabla hijos (source.children.table)"
+                  filters={[
+                    { field: "activo", op: "=", value: true },
+                    { field: "tipo", op: "in", value: ["tabla", "subtabla", "vista"] },
+                  ]}
+                  sort={[{ field: "orden", direction: "asc" }]}
+                  onChange={(slugSel: string) => {
+                    const next = (slugSel || "").trim();
+                    const prev = (sc || "").trim();
+
+                    // ✅ guard anti-loop
+                    if (next === prev) return;
+
+                    // ✅ si cambias la tabla de hijos, resetea lo dependiente
+                    patchInput({
+                      source: {
+                        ...(input.source || {}),
+                        children: next ? { table: next, fkToParent: "" } : undefined,
+                      },
+
+                      // limpia mapeos/defaults de child porque cambian los fields
+                      maps: {
+                        ...(input.maps || {}),
+                        child: {},
+                      },
+                      defaults: {
+                        ...(input.defaults || {}),
+                        child: {},
+                      },
+                    });
+                  }}
+                />
+
+                <div className={styles.hint} style={{ marginTop: 6 }}>
+                  Si seleccionas una tabla de hijos, tendrás que definir el campo FK (fkToParent) que apunta al padre.
+                </div>
+              </div>
+
+
+          {sc ? (
+            <div style={{ gridColumn: "1 / -7" }}>
+              <label className={styles.label}>source.children.fkToParent</label>
+              <select
+                className={styles.input}
+                value={input.source.children?.fkToParent || ""}
+                disabled={readOnly}
+                onChange={(e) => patchSourceChildren({ fkToParent: e.target.value })}
+              >
+                <option value="">— Selecciona FK (hijo → padre) —</option>
+                {(spFkCandidates.length ? spFkCandidates : scFields).map((f) => (
+                  <option key={f.name} value={f.name}>
+                    {f.label ? `${f.label} (${f.name})` : f.name}
+                  </option>
+                ))}
+              </select>
+              <div className={styles.hint} style={{ marginTop: 6 }}>
+                Campo en <b>{sc}</b> que apunta al padre (<b>{sp}</b>). Ej: <code>proyectoId</code>.
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* --------- DESTINO --------- */}
+      <div className={styles.card} style={{ marginTop: 10 }}>
+        <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 700 }}>Destino</div>
+          <div className={styles.hint}>Define dónde se crean los registros (padre y opcionalmente hijos).</div>
+        </div>
+
+        <div className={styles.grid} style={{ marginTop: 10 }}>
+            <div style={{ gridColumn: "1 / -7" }}>
+              <label className={styles.label}>target.parentTable</label>
+              
+              <Selector
+                  moduleSlug="modulos"
+                  displayField="nombre"
+                  valueField="slug"
+                  value={tp || ""}
+                  readOnly={readOnly}
+                  placeholder="— Seleccionar tabla destino (padre) —"
+                  label="Tabla destino (padre) - target.parentTable"
+                  filters={[
+                    { field: "activo", op: "=", value: true },
+                    { field: "tipo", op: "in", value: ["tabla", "subtabla", "vista"] },
+                  ]}
+                  sort={[{ field: "orden", direction: "asc" }]}
+                  onChange={(slugSel: string) => {
+                    const next = (slugSel || "").trim();
+                    const prev = (tp || "").trim();
+
+                    // ✅ evita bucles si Selector re-emite el mismo value
+                    if (next === prev) return;
+
+                    patchInput({
+                      target: {
+                        ...(input.target || {}),
+                        parentTable: next,
+                      },
+
+                      // ✅ al cambiar el destino, el mapeo parent ya no es fiable
+                      maps: {
+                        ...(input.maps || {}),
+                        parent: {},
+                      },
+                      defaults: {
+                        ...(input.defaults || {}),
+                        parent: {},
+                      },
+                    });
+                  }}
+                />
+          </div>
+
+          <div style={{ gridColumn: "1 / -7" }}>
+                <Selector
+                  moduleSlug="modulos"
+                  displayField="nombre"
+                  valueField="slug"
+                  value={tc || ""}
+                  readOnly={readOnly}
+                  placeholder="— Seleccionar tabla hijos destino (opcional) —"
+                  label="Tabla hijos destino (target.children.table)"
+                  filters={[
+                    { field: "activo", op: "=", value: true },
+                    { field: "tipo", op: "in", value: ["tabla", "subtabla", "vista"] },
+                  ]}
+                  sort={[{ field: "orden", direction: "asc" }]}
+                  onChange={(slugSel: string) => {
+                    const next = (slugSel || "").trim();
+                    const prev = (tc || "").trim();
+
+                    // ✅ evita bucle si Selector emite el mismo valor
+                    if (next === prev) return;
+
+                    patchInput({
+                      target: {
+                        ...(input.target || {}),
+                        children: next ? { table: next, fkToParent: "" } : undefined,
+                      },
+
+                      // ✅ al cambiar tabla hijos destino, mapeo/defaults de child se invalidan
+                      maps: {
+                        ...(input.maps || {}),
+                        child: {},
+                      },
+                      defaults: {
+                        ...(input.defaults || {}),
+                        child: {},
+                      },
+                    });
+                  }}
+                />
+
+                <div className={styles.hint} style={{ marginTop: 6 }}>
+                  Si seleccionas una tabla de hijos destino, define el FK (fkToParent) que apuntará al padre destino.
+                </div>
+          </div>
+
+
+          {tc ? (
+            <div style={{ gridColumn: "1 / -7" }}>
+              <label className={styles.label}>target.children.fkToParent</label>
+              <select
+                className={styles.input}
+                value={input.target.children?.fkToParent || ""}
+                disabled={readOnly}
+                onChange={(e) => patchTargetChildren({ fkToParent: e.target.value })}
+              >
+                <option value="">— Selecciona FK (hijo → padre destino) —</option>
+                {(tcFkCandidates.length ? tcFkCandidates : tcFields).map((f) => (
+                  <option key={f.name} value={f.name}>
+                    {f.label ? `${f.label} (${f.name})` : f.name}
+                  </option>
+                ))}
+              </select>
+              <div className={styles.hint} style={{ marginTop: 6 }}>
+                Campo en <b>{tc}</b> que apunta al nuevo padre (<b>{tp}</b>). Ej: <code>presupuestoId</code>.
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* --------- MAPEOS --------- */}
+      <div className={styles.card} style={{ marginTop: 10 }}>
+        <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 700 }}>Mapeo de campos</div>
+          <div className={styles.hint}>Destino ← Origen (campo a campo).</div>
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          <div className={styles.hint} style={{ marginBottom: 8 }}>
+            <b>Mapeo padre</b> (de <code>{sp || "source.parentTable"}</code> a <code>{tp || "target.parentTable"}</code>)
+          </div>
+
+          <FieldMapEditor
+            value={input.maps.parent}
+            onChange={(next) => patchInput({ maps: { ...input.maps, parent: next || {} } })}
+            readOnly={readOnly}
+            styles={styles}
+            targetLabel={`Destino (${tp || "—"})`}
+            sourceLabel={`Origen (${sp || "—"})`}
+            sourceFields={spFields}
+            targetFields={tpFields}
+          />
+        </div>
+
+        {hasChildren ? (
+          <div style={{ marginTop: 14 }}>
+            <div className={styles.hint} style={{ marginBottom: 8 }}>
+              <b>Mapeo hijo</b> (de <code>{sc}</code> a <code>{tc}</code>)
+            </div>
+
+            <FieldMapEditor
+              value={input.maps.child}
+              onChange={(next) => patchInput({ maps: { ...input.maps, child: next || {} } })}
+              readOnly={readOnly}
+              styles={styles}
+              targetLabel={`Destino (${tc || "—"})`}
+              sourceLabel={`Origen (${sc || "—"})`}
+              sourceFields={scFields}
+              targetFields={tcFields}
+            />
+          </div>
+        ) : (
+          <div className={styles.hint} style={{ marginTop: 10 }}>
+            Para mapear hijos, rellena <code>source.children.table</code> y <code>target.children.table</code>.
+          </div>
+        )}
+      </div>
+
+      {/* --------- DEFAULTS --------- */}
+      <div className={styles.card} style={{ marginTop: 10 }}>
+        <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 700 }}>Defaults</div>
+          <div className={styles.hint}>Valores por defecto en destino (padre/hijo).</div>
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          <div className={styles.hint} style={{ marginBottom: 8 }}>
+            <b>Defaults padre</b> (en <code>{tp || "target.parentTable"}</code>)
+          </div>
+
+          <DefaultsEditor
+            value={input.defaults?.parent}
+            onChange={(next) => patchInput({ defaults: { ...(input.defaults || {}), parent: next } })}
+            readOnly={readOnly}
+            styles={styles}
+            targetLabel={`Destino (${tp || "—"})`}
+            targetFields={tpFields}
+          />
+        </div>
+
+        {tc ? (
+          <div style={{ marginTop: 14 }}>
+            <div className={styles.hint} style={{ marginBottom: 8 }}>
+              <b>Defaults hijo</b> (en <code>{tc}</code>)
+            </div>
+
+            <DefaultsEditor
+              value={input.defaults?.child}
+              onChange={(next) => patchInput({ defaults: { ...(input.defaults || {}), child: next } })}
+              readOnly={readOnly}
+              styles={styles}
+              targetLabel={`Destino (${tc || "—"})`}
+              targetFields={tcFields}
+            />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 
 
 //----------- Workflow Editor

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect, useRef} from "react";
+import { useState, useTransition, useEffect, useRef, useCallback} from "react";
 import styles from "./modulo-detalle.module.css";
 import  Selector from "../Selector";
 import {IconPicker} from "@repo/ui";
@@ -8,28 +8,12 @@ import type { Field as FieldSchema, FieldType, ModuleSchema, Field, FormSection,
 import {VALID_FIELD_TYPES} from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
 import {FieldRow} from "./FieldRow"
-import UiFormActionsEditor from "./UiFormActionsEditor";
+import UiFormActionsEditor, { type UiFormAction } from "./UiFormActionsEditor";
 
 type PickTarget = "columns" | "groupByField" | "parentFilterField" | "sumField";
 type UiMode = "view" | "edit" | "create";
 type UiActionType = "recalculate" | "createRelated" | "navigate" | "duplicate" | "external" |"workflow";
-type UiFormAction = {
-  id: string;
-  label: string;
-  type: UiActionType;
-  icon?: string;
-  variant?: "primary" | "secondary" | "success" | "warning" | "danger" | "info" | "light" | "dark";
-  showIn?: UiMode[];
-  confirm?: { text?: string };
-  // payloads según type
-  target?: { table?: string };
-  afterCreate?: { navigateTo?: "record" | "list" | "none" };
-  fieldMap?: any;
-  defaults?: any;
-  hrefTemplate?: string;
-  includeChildren?: boolean;
-  omitFields?: any;
-};
+
 
 // ---------- UI---------------
 
@@ -189,27 +173,41 @@ export default function ModuloForm({
   const [pickTarget, setPickTarget] = useState<PickTarget>("columns");
   const [fieldsByTable, setFieldsByTable] = useState<Record<string, { name: string; label?: string }[]>>({});
   const [loadingByTable, setLoadingByTable] = useState<Record<string, boolean>>({});
+  const fieldsCacheRef = useRef<Record<string, { name: string; label?: string }[]>>({});
+  const loadingCacheRef = useRef<Record<string, boolean>>({});
 
-  
+  useEffect(() => {
+  fieldsCacheRef.current = fieldsByTable;
+}, [fieldsByTable]);
 
-  const ensureFieldsLoaded = async (tableSlug: string) => {
-    if (!tableSlug) return;
-    if (!loadFieldsForTable) return;
+useEffect(() => {
+  loadingCacheRef.current = loadingByTable;
+}, [loadingByTable]);
 
-    // cache
-    if (fieldsByTable[tableSlug]) return;
+  const ensureFieldsLoaded = useCallback(async (tableSlug: string) => {
+  const key = (tableSlug || "").trim();
+  if (!key) return;
+  if (!loadFieldsForTable) return;
 
-    setLoadingByTable((p) => ({ ...p, [tableSlug]: true }));
-    try {
-      const fields = await loadFieldsForTable(tableSlug);
-      setFieldsByTable((p) => ({ ...p, [tableSlug]: Array.isArray(fields) ? fields : [] }));
-    } catch (e) {
-      console.error("loadFieldsForTable failed:", tableSlug, e);
-      setFieldsByTable((p) => ({ ...p, [tableSlug]: [] }));
-    } finally {
-      setLoadingByTable((p) => ({ ...p, [tableSlug]: false }));
-    }
-  };
+  // ✅ cache estable (ref), no depende de fieldsByTable
+  if (fieldsCacheRef.current[key]) return;
+
+  // ✅ evita doble fetch si ya está cargando
+  if (loadingCacheRef.current[key]) return;
+
+  setLoadingByTable((p) => ({ ...p, [key]: true }));
+  try {
+    const fields = await loadFieldsForTable(key);
+    const safe = Array.isArray(fields) ? fields : [];
+    setFieldsByTable((p) => ({ ...p, [key]: safe }));
+  } catch (e) {
+    console.error("loadFieldsForTable failed:", key, e);
+    setFieldsByTable((p) => ({ ...p, [key]: [] }));
+  } finally {
+    setLoadingByTable((p) => ({ ...p, [key]: false }));
+  }
+}, [loadFieldsForTable]);
+
   // =========================
   // propsObj parse + migración (legacy ui.formSections -> tabs[firstForm].config.formSections)
   // =========================
@@ -494,18 +492,17 @@ const sourceFields: SimpleField[] = (propsObj.fields || []).map((f: any) => ({
   label: f.label,
 }));
 
-const getTableFields = (tableSlug: string): SimpleField[] => {
+const getTableFields = useCallback((tableSlug: string): SimpleField[] => {
   const key = (tableSlug || "").trim();
   if (!key) return [];
   return fieldsByTable[key] || [];
-};
+}, [fieldsByTable]);
 
-const ensureTableFields = (tableSlug: string) => {
+const ensureTableFields = useCallback((tableSlug: string) => {
   const key = (tableSlug || "").trim();
   if (!key) return;
-  // Reutiliza tu loader (cacheado)
   ensureFieldsLoaded(key);
-};
+}, [ensureFieldsLoaded]);
 
 
 
@@ -713,7 +710,7 @@ const ensureTableFields = (tableSlug: string) => {
                 getTableFields={getTableFields}
                 ensureTableFields={ensureTableFields}
                 workflowCatalog={[
-              { key: "budget.generateFromTasks", label: "Generar presupuesto (snapshot tareas)" },
+              { key: "derive.createFromParent", label: "Generar presupuesto (snapshot tareas)" },
               { key: "invoice.generateFromBudget", label: "Generar factura desde presupuesto" },
             ]}
               />
