@@ -22,7 +22,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
           {/* Sidebar móvil */}
 
-          <SidebarServer variant="offcanvas" offcanvasId="sidebarOffcanvas" />
+          <SidebarServer variant="drawer" />
         </>
       )}
 
