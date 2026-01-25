@@ -7,8 +7,9 @@ import { usePerms } from "@/lib/perms";
 export function SidebarWithPerms(props: {
   items: SidebarItem[];
   variant: "fixed" | "drawer";
-  offcanvasId?: string;
   title?: string;
+  isOpen?: boolean;
+  onClose?: () => void;
 }) {
   const { loading, hasPermiso } = usePerms();
 

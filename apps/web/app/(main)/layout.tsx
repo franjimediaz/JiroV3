@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PermisosProvider } from "@/lib/perms";
 import type { SidebarItem } from "@repo/ui";
 import "../globals.css";
+import MainShell from "./MainShell";
 
 import { SidebarWithPerms } from "./SidebarWithPerms"; // ✅ nuevo wrapper client
 
@@ -105,55 +106,12 @@ export default async function MainLayout({
   const items: SidebarItem[] = error ? [] : buildTree((data ?? []) as ModuloRow[]);
 
   return (
-    <PermisosProvider>
-      <div className={`${geistSans.variable} ${geistMono.variable}`}>
-        <Providers>
-          <nav className="navbar navbar-dark bg-dark">
-            <div className="container-fluid">
-              <button
-                className="btn btn-outline-light d-lg-none"
-                type="button"
-                data-bs-toggle="offcanvas"
-                data-bs-target="#sidebarOffcanvas"
-                aria-controls="sidebarOffcanvas"
-              ></button>
-
-              <a className="navbar-brand ms-lg-2 d-flex align-items-center" href="/">
-                <img
-                  src="/mylogo2.png"
-                  alt="JiRo v2"
-                  height="90"
-                  style={{ objectFit: "contain", width: "auto" }}
-                  className="d-inline-block align-text-top"
-                />
-              </a>
-            </div>
-          </nav>
-
-          <div className="container-fluid layout-min-vh">
-            <div className="row">
-              <div className="col-lg-2 d-none d-lg-block p-0">
-                {/* ✅ ahora pasa permisos vía wrapper client */}
-                <SidebarWithPerms items={items} variant="fixed" />
-              </div>
-
-              {/* Offcanvas (móvil) */}
-              <SidebarWithPerms
-                items={items}
-                variant="drawer"
-                offcanvasId="sidebarOffcanvas"
-              />
-
-              <main className="col-12 col-lg-10 p-3 p-lg-4">
-                <div className="bg-white rounded shadow-sm p-3 p-lg-4">{children}</div>
-                <footer className="text-center mt-4 mb-2 text-muted small">
-                  © {new Date().getFullYear()} JiRo v2 · Next.js + Supabase
-                </footer>
-              </main>
-            </div>
-          </div>
-        </Providers>
-      </div>
-    </PermisosProvider>
-  );
+  <PermisosProvider>
+    <div className={`${geistSans.variable} ${geistMono.variable}`}>
+      <Providers>
+        <MainShell items={items}>{children}</MainShell>
+      </Providers>
+    </div>
+  </PermisosProvider>
+);
 }
