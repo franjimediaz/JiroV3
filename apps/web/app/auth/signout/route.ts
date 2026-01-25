@@ -1,21 +1,17 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export async function POST() {
+export async function POST(req: Request) {
   const supabase = await createClient();
   await supabase.auth.signOut();
 
-  const res = NextResponse.redirect(
-    new URL("/login", process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000")
-  );
+  // 303 = POST -> GET (lo que quieres para ir a /login)
+  const url = new URL("/login", req.url);
+  const res = NextResponse.redirect(url, { status: 303 });
 
-  // Borra cookies típicas de Supabase (sb-*)
-  for (const c of res.cookies.getAll()) {
-    if (c.name.startsWith("sb-")) res.cookies.set(c.name, "", { maxAge: 0, path: "/" });
-  }
-
-  // Por si tu setup usa otros nombres (opcional)
-  res.cookies.set("supabase-auth-token", "", { maxAge: 0, path: "/" });
+  // Borra cookies típicas (ajusta nombres si los tuyos difieren)
+  res.cookies.set("sb-access-token", "", { maxAge: 0, path: "/" });
+  res.cookies.set("sb-refresh-token", "", { maxAge: 0, path: "/" });
 
   return res;
 }
