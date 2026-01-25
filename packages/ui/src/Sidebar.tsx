@@ -5,24 +5,44 @@ import { usePathname } from "next/navigation";
 import type { SidebarItem } from "./types";
 import { isActive, isBranchActive,isExactActive } from "./utils";
 
-export type SidebarVariant = "fixed" | "offcanvas";
+export type SidebarVariant = "fixed" | "drawer";
 
 export function Sidebar({
   items,
   title = "Navegación",
   variant = "fixed",
-  offcanvasId = "sidebarOffcanvas",
+  isOpen = false,
+  onClose,
   canView, // ✅ NUEVO: se inyecta desde fuera
 }: {
   items: SidebarItem[];
   title?: string;
   variant?: SidebarVariant;
-  offcanvasId?: string;
+  isOpen?: boolean
+  onClose?: () => void;
   icon?: string;
   canView?: (slug: string) => boolean; // true si puede VER ese slug
 }) {
   
   const pathname = usePathname();
+    // ✅ cerrar con ESC en drawer
+  useEffect(() => {
+    if (variant !== "drawer" || !isOpen) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose?.();
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [variant, isOpen, onClose]);
+
+  // ✅ cerrar al navegar
+  useEffect(() => {
+    if (variant === "drawer" && isOpen) onClose?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
 
   // 1) Calculamos qué nodos deben estar abiertos por contener la ruta activa
   // ✅ Respeta permisos y sidebar=true (promueve hijos)
@@ -85,37 +105,46 @@ export function Sidebar({
     />
   );
 
-  if (variant === "offcanvas") {
-    return (
-      <div
-        className="offcanvas offcanvas-start"
-        tabIndex={-1}
-        id={offcanvasId}
-        aria-labelledby={`${offcanvasId}-label`}
-      >
-        <div className="offcanvas-header">
-          <h5 className="offcanvas-title" id={`${offcanvasId}-label`}>
-            {title}
-          </h5>
-          <button
-            type="button"
-            className="btn-close"
-            data-bs-dismiss="offcanvas"
-            aria-label="Close"
-          />
-        </div>
+  if (variant === "drawer") {
+      return (
+      <>
+        {/* Overlay */}
+        <div
+          className={`sidebarOverlay ${isOpen ? "show" : ""}`}
+          onClick={() => onClose?.()}
+        />
 
-        <div className="offcanvas-body">
-          <NavTree
-            nodes={items}
-            openSet={openSet}
-            toggleNode={toggleNode}
-            activeSet={activeSet}
-            offcanvasDismiss
-            canView={canView}
-          />
-        </div>
-      </div>
+        {/* Panel */}
+        <aside className={`sidebarDrawer ${isOpen ? "open" : ""}`}>
+          <div className="sidebarDrawerHeader">
+            <h5 className="m-0">{title}</h5>
+
+            <button
+              type="button"
+              className="btnClose"
+              onClick={() => onClose?.()}
+              aria-label="Cerrar"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="sidebarDrawerBody">
+            <NavTree
+              nodes={items}
+              openSet={openSet}
+              toggleNode={toggleNode}
+              activeSet={activeSet}
+              canView={canView}
+              onNavigate={onClose} // ✅ cierra al clicar en link
+            />
+          </div>
+
+          <div className="sidebarDrawerFooter">
+            <SidebarUser />
+          </div>
+        </aside>
+      </>
     );
   }
 
@@ -140,6 +169,7 @@ function NavTree({
   activeSet,
   offcanvasDismiss = false,
   canView,
+  onNavigate,
 }: {
   nodes: SidebarItem[];
   openSet: Set<string>;
@@ -147,6 +177,7 @@ function NavTree({
   activeSet: Set<string>;
   offcanvasDismiss?: boolean;
   canView?: (slug: string) => boolean;
+  onNavigate?: () => void;
 }) {
   return (
     <ul className="nav flex-column">
@@ -189,6 +220,8 @@ function NavItem({
 
 
   const pathname = usePathname();
+
+  
 
   //  Permisos: si no puede "ver", fuera
   
@@ -259,7 +292,7 @@ if (!isFolder) {
             <i className={`bi ${expanded ? "bi-chevron-down" : "bi-chevron-right"}`} />
           </button>
 
-          <div className={`collapse ${expanded ? "show" : ""}`}>
+          <div className={`sidebarCollapse ${expanded ? "show" : ""}`}>
             <ul className="nav flex-column ms-1">
               {/* ✅ Si es carpeta: NO mostrar link a su ruta */}
               {canRenderSelfLink && (
