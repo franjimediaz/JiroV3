@@ -76,11 +76,11 @@ function buildTree(rows: ModuloRow[]): SidebarItem[] {
 
 export default async function SidebarServer({
   variant = "fixed",
-  offcanvasId = "sidebarOffcanvas",
+  
   onlyActive = true,
 }: {
-  variant?: "fixed" | "offcanvas";
-  offcanvasId?: string;
+  variant?: "fixed" | "drawer";
+  
   onlyActive?: boolean;
 }) {
   const supabase = await createClient();
@@ -106,5 +106,5 @@ export default async function SidebarServer({
   const rows = (data ?? []) as ModuloRow[];
   const items = buildTree(rows);
 
-  return <Sidebar items={items} variant={variant} offcanvasId={offcanvasId} />;
+  return <Sidebar items={items} variant={variant} />;
 }
