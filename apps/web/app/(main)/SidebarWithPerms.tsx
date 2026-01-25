@@ -6,7 +6,7 @@ import { usePerms } from "@/lib/perms";
 
 export function SidebarWithPerms(props: {
   items: SidebarItem[];
-  variant: "fixed" | "offcanvas";
+  variant: "fixed" | "drawer";
   offcanvasId?: string;
   title?: string;
 }) {

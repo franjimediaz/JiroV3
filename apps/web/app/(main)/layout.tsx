@@ -140,7 +140,7 @@ export default async function MainLayout({
               {/* Offcanvas (móvil) */}
               <SidebarWithPerms
                 items={items}
-                variant="offcanvas"
+                variant="drawer"
                 offcanvasId="sidebarOffcanvas"
               />
 
