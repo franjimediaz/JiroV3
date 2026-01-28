@@ -4,9 +4,15 @@ const nextConfig = {
     unoptimized: true
   },
   outputFileTracingIncludes: {
+    // ✅ clave más fiable para App Router route handlers
+    "app/api/pdf/generate/route": [
+      "./node_modules/**/@sparticuz/chromium/bin/**",
+      "./node_modules/**/@sparticuz/chromium/build/**",
+    ],
+    // ✅ fallback por si Next usa otra clave interna para ese handler
     "/api/pdf/generate": [
-      // Incluye los brotli/bin de Sparticuz
-      "./node_modules/**/@sparticuz/chromium/**",
+      "./node_modules/**/@sparticuz/chromium/bin/**",
+      "./node_modules/**/@sparticuz/chromium/build/**",
     ],
   },
   async redirects() {
