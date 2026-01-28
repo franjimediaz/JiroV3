@@ -10,10 +10,10 @@
     "lint": "eslint --max-warnings 0",
     "check-types": "next typegen && tsc --noEmit",
     "pw:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium"
-    
   },
   "dependencies": {
     "@repo/ui": "workspace:*",
+    "@sparticuz/chromium": "^143.0.4",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/auth-helpers-react": "^0.5.0",
     "@supabase/ssr": "^0.7.0",
@@ -21,6 +21,7 @@
     "bootstrap-icons": "^1.13.1",
     "next": "^16.1.1",
     "pg": "^8.16.3",
+    "playwright-core": "^1.58.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },

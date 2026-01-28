@@ -85,7 +85,13 @@ export async function GET(req: Request) {
     });
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Error generate" },
+      { ok: false,
+       error: e?.message || "Error generate",
+      stack: e?.stack || null,
+      pwPath: process.env.PLAYWRIGHT_BROWSERS_PATH || null,
+      runtime: process.env.VERCEL ? "vercel" : "local",
+      
+      },
       { status: 500 }
     );
   }
