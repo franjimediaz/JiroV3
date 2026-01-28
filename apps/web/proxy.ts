@@ -66,7 +66,7 @@ export default async function proxy(request: NextRequest) {
 // Qué rutas pasan por el proxy
 export const config = {
   matcher: [
-    // Todo menos estáticos (las rutas públicas ya las filtramos con isPublicPath)
+    
     "/((?!_next/static|_next/image|favicon.ico).*)",
   ],
 };
