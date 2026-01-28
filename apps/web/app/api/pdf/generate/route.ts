@@ -67,6 +67,9 @@ export async function GET(req: Request) {
     console.log("CWD", process.cwd());
     console.log("Has node_modules?", fs.existsSync(path.join(process.cwd(), "node_modules")));
     console.log("RUNTIME PLAYWRIGHT_BROWSERS_PATH =", process.env.PLAYWRIGHT_BROWSERS_PATH);
+    console.log("Exists chromium bin?", fs.existsSync(
+                "/var/task/node_modules/.pnpm/@sparticuz+chromium@143.0.4/node_modules/@sparticuz/chromium/bin"
+              ));
     for (const p of candidates) {
       console.log("Exists", p, fs.existsSync(path.join(process.cwd(), p)));
     }
@@ -90,7 +93,8 @@ export async function GET(req: Request) {
       stack: e?.stack || null,
       pwPath: process.env.PLAYWRIGHT_BROWSERS_PATH || null,
       runtime: process.env.VERCEL ? "vercel" : "local",
-      
+      ExistChronium: fs.existsSync(
+                "/var/task/node_modules/.pnpm/@sparticuz+chromium@143.0.4/node_modules/@sparticuz/chromium/bin"),
       },
       { status: 500 }
     );
