@@ -4,16 +4,10 @@ import { chromium } from "playwright";
 const app = express();
 app.use(express.json({ limit: "5mb" }));
 
-//  Seguridad simple: un secreto compartido entre Vercel y este servicio
 const SERVICE_SECRET = process.env.PDF_SERVICE_SECRET;
 
-// Healthcheck
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-/**
- * POST /generate
- * Body: { html: string, filename?: string, disposition?: "inline"|"attachment" }
- */
 app.post("/generate", async (req, res) => {
   try {
     const auth = req.headers["authorization"] || "";

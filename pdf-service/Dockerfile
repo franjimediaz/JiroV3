@@ -1,13 +1,14 @@
-FROM node:20-bookworm-slim
+FROM mcr.microsoft.com/playwright:v1.58.0-jammy
 
 WORKDIR /app
-COPY package.json package-lock.json* ./
 
-# Si usas npm:
+COPY package.json package-lock.json* ./
 RUN npm install
 
 COPY . .
 
 ENV NODE_ENV=production
+ENV PORT=3000
 EXPOSE 3000
-CMD ["npm","start"]
+
+CMD ["npm", "start"]
