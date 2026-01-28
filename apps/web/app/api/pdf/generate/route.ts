@@ -55,7 +55,7 @@ export async function GET(req: Request) {
 
     // 5) HTML
     const html = renderTemplateToHtml(template, ctx);
-
+    console.log("RUNTIME PLAYWRIGHT_BROWSERS_PATH =", process.env.PLAYWRIGHT_BROWSERS_PATH);
     // 6) PDF
     const pdfBuffer = await htmlToPdfBuffer(html);
     const body = new Uint8Array(pdfBuffer);
