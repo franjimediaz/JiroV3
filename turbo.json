@@ -9,6 +9,10 @@
     "SUPABASE_SERVICE_ROLE"
   ],
   "tasks": {
+    
+    "pw:install": {
+    "cache": false
+  },
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
