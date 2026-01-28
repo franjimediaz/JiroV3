@@ -8,15 +8,15 @@ export async function htmlToPdfBuffer(html: string) {
 
     headless: true,
   });
-
-  try {
-    const page = await browser.newPage();
-    console.log(
+console.log(
     "Local browsers exists?",
     fs.existsSync(
       "node_modules/.pnpm/playwright-core@1.58.0/node_modules/playwright-core/.local-browsers"
     )
   );
+  try {
+    const page = await browser.newPage();
+    
 
     await page.setContent(html, {
       waitUntil: "networkidle",
