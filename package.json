@@ -2,7 +2,7 @@
   "name": "JiroV3",
   "private": true,
   "scripts": {
-    "build": "turbo run build",
+    "build": "playwright install chromium && turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "gen:types": "supabase gen types typescript --linked --schema public > packages/types/supabase.ts",
