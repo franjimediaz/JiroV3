@@ -171,10 +171,32 @@ const uiTabs = useMemo<UiTab[]>(() => {
 
   // ---------------- Valores editables + overrides ----------------
   const [values, setValues] = useState<any>(() => withDefaultValues(schema.fields, initialData));
+  useEffect(() => {
+  // al iniciar/cambiar schema o initialData, fijamos firma para no “recompute por gusto”
+  lastComputedSigRef.current = computeSignature(schema, values);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [schema]);
   const [computing, setComputing] = useState(false);
 
   // Para evitar llamadas excesivas a compute/aggregate
   const aggTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Evita bucles: cuando setValues viene de compute, no queremos re-lanzar compute en cascada
+const applyingComputeRef = useRef(false);
+
+// Firma de los campos computed (solo lo que cambia por compute)
+const lastComputedSigRef = useRef<string>("");
+
+// Compara solo lo relevante (campos con compute)
+function computeSignature(schema: ModuleSchema, record: any) {
+  const out: Record<string, any> = {};
+  for (const f of schema.fields || []) {
+    const c = (f as any).compute;
+    if (!c || c.type === "none") continue;
+    out[f.name] = record?.[f.name];
+  }
+  return JSON.stringify(out);
+}
 
   // ReverseLink fields (se renderizan abajo, y solo en pestañas form)
   const reverseLinkFields = useMemo(
@@ -192,27 +214,50 @@ const uiTabs = useMemo<UiTab[]>(() => {
 
   // Recalcular fórmulas/aggregates cuando cambian values
   useEffect(() => {
-    if (!schema?.fields?.length) return;
+  if (!schema?.fields?.length) return;
 
-    if (aggTimer.current) clearTimeout(aggTimer.current);
-    setComputing(true);
+  // 1) Si venimos de aplicar compute, NO recalcular otra vez (corta el loop)
+  if (applyingComputeRef.current) {
+    applyingComputeRef.current = false;
+    return;
+  }
 
-    aggTimer.current = setTimeout(async () => {
-      try {
-        const computed = await applyCompute({
-          schema,
-          record: values,
-          dataProvider,
-        });
-        setValues(computed);
-        onChange?.(computed);
-      } finally {
-        setComputing(false);
+  // 2) En modo VIEW: por defecto NO lances aggregates (deberían venir persistidos)
+  //    (si luego quieres permitir algún aggregate persist="always", lo afinamos en computeEngine)
+  if (effectiveMode === "view") return;
+
+  if (aggTimer.current) clearTimeout(aggTimer.current);
+  setComputing(true);
+
+  aggTimer.current = setTimeout(async () => {
+    try {
+      const computed = await applyCompute({
+        schema,
+        record: values,
+        dataProvider,
+      });
+
+      // 3) Si el resultado "computed" no cambia los campos calculados, no hagas setValues
+      const sig = computeSignature(schema, computed);
+      if (sig === lastComputedSigRef.current) {
+        // Nada nuevo -> no provocar render extra -> no repetir API
+        return;
       }
-    }, 200);
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schema, JSON.stringify(lightDeps(values))]);
+      lastComputedSigRef.current = sig;
+
+      applyingComputeRef.current = true;
+      setValues(computed);
+      onChange?.(computed);
+    } finally {
+      setComputing(false);
+    }
+  }, 200);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [schema, effectiveMode, JSON.stringify(lightDeps(values))]);
+
+
 
   const handleChange = (name: string, value: any) => {
     setValues((prev: any) => ({ ...prev, [name]: normalizeValue(value) }));
@@ -750,8 +795,8 @@ const treeSchemaFields = useMemo(() => {
       {/* Acciones */}
         <div>
           <div className="d-flex flex-column align-items-end gap-2 mt-3">
-            {/* Botones configurables desde módulos */}
-              <FormActionsBar
+          <div className="d-flex justify-content-end gap-2 mt-3">
+            <FormActionsBar
                 schema={schema}
                 mode={effectiveMode}
                 values={values}
@@ -759,7 +804,8 @@ const treeSchemaFields = useMemo(() => {
                 actions={formActions}
                 resolveRoute={resolveRoute}
               />
-          <div className="d-flex justify-content-end gap-2 mt-3">{renderActions()}</div>
+              {renderActions()}
+          </div>
       </div>
     </div>
     </form>

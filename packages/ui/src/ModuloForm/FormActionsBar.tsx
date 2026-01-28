@@ -81,8 +81,11 @@ export type DuplicateAction = BaseAction & {
 export type ExternalAction = BaseAction & {
   type: "external";
   kind: "pdf" | "email" | "print" | "custom";
-  // lo dejamos abierto
-  payload?: any;
+  endpoint: string;
+  open?: "tab" | "same";
+  
+  
+  params?: Record<string, any>;
 };
 export type WorkflowAction = BaseAction & {
   type: "workflow";
@@ -102,6 +105,25 @@ export type WorkflowAction = BaseAction & {
     navigateTo?: string; // template
   };
 };
+
+
+function tplString(v: any, ctx: any) {
+  if (typeof v !== "string") return v;
+  return v.replace(/\{\{(.*?)\}\}/g, (_, k) => {
+    const key = String(k).trim();
+    return ctx?.[key] ?? "";
+  });
+}
+
+function deepTpl(obj: any, ctx: any): any {
+  if (Array.isArray(obj)) return obj.map((x) => deepTpl(x, ctx));
+  if (obj && typeof obj === "object") {
+    const out: any = {};
+    for (const [k, v] of Object.entries(obj)) out[k] = deepTpl(v, ctx);
+    return out;
+  }
+  return tplString(obj, ctx);
+}
 
 
 /** ---------------- Component Props ---------------- */
@@ -314,11 +336,45 @@ export default function FormActionsBar(props: {
         go(`/${table}`);
         return;
       }
-
+console.log("CLICK ACTION", a);
       if (a.type === "external") {
-        // hueco para PDF, etc
-        throw new Error(`Acción externa "${a.kind}" aún no implementada.`);
-      }
+          // ✅ compat: acepta config antigua (a.kind) y nueva (a.external.kind)
+          const ext = ((a as any).external ?? a) as any;
+          const kind = ext.kind as string | undefined;
+
+          // params pueden venir en a.params (como en tu log) o en ext.params
+          const paramsObj = (a as any).params ?? ext.params ?? {};
+          const endpoint = ext.endpoint || (a as any).endpoint || "/api/pdf/generate";
+          const open = ext.open || (a as any).open || "tab";
+
+          if (a.confirm?.text) {
+            const ok = window.confirm(a.confirm.text);
+            if (!ok) return;
+          }
+
+          if (kind === "pdf") {
+            const ctx = { ...values, id: values?.id };
+            const params = deepTpl(paramsObj, ctx);
+
+            const url = new URL(endpoint, window.location.origin);
+            for (const [k, v] of Object.entries(params)) {
+              if (v === undefined || v === null || v === "") continue;
+              url.searchParams.set(k, String(v));
+            }
+
+            window.open(
+              url.toString(),
+              open === "same" ? "_self" : "_blank",
+              "noopener,noreferrer"
+            );
+            return;
+          }
+
+          // otros kinds (email/print/custom) por ahora no hacen nada
+          return;
+        }
+
+
 
       if (a.type === "workflow") {
         const recordId = String(values?.id || "");

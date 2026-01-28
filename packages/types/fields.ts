@@ -441,9 +441,15 @@ export type DuplicateAction = BaseFormAction & {
  * 5) Acciones externas (placeholder)
  */
 export type ExternalAction = BaseFormAction & {
-  type: "external";
-  kind: "pdf" | "email" | "print" | "custom";
-  payload?: Record<string, unknown>;
+    kind?: "pdf" | "url" | "email" | "print";
+    pdf?: {
+    templateSlug?: string;      // slug en pdf_templates
+    recordIdTemplate?: string;  // "{{id}}" por defecto
+    open?: "tab" | "same";      // opcional
+  };
+    endpoint?: string; // ej: "/api/pdf/generate"
+    open?: "tab" | "same";
+    params?: Record<string, any>;
 };
 
 export type FormAction =

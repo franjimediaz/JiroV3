@@ -2,47 +2,52 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolvePdfContext } from "@/lib/pdf/resolvePdfContext";
 import { renderTemplateToHtml } from "@/lib/pdf/renderTemplateToHtml";
+import { parseTemplateRow, deriveLabelResolversFromTemplate } from "../_helpers";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const slug = searchParams.get("template");
-  const recordId = searchParams.get("id");
+  try {
+    const { searchParams } = new URL(req.url);
+    const slug = searchParams.get("template");
+    const id = searchParams.get("id");
 
-  if (!slug || !recordId) {
-    return NextResponse.json({ error: "template e id requeridos" }, { status: 400 });
+    if (!slug || !id) {
+      return NextResponse.json({ ok: false, error: "template e id requeridos" }, { status: 400 });
+    }
+
+    const supabase = await createClient();
+    const { data: tplRow, error } = await supabase
+      .from("pdf_templates")
+      .select("*")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    if (!tplRow) return NextResponse.json({ ok: false, error: "Template no encontrado" }, { status: 404 });
+
+    const { related, template } = parseTemplateRow(tplRow);
+
+    // ✅ SIN hardcode: se deriva desde el template
+    const labelResolvers = deriveLabelResolversFromTemplate(template);
+
+    const ctx = await resolvePdfContext({
+      sourceTable: tplRow.source_table,
+      recordId: id,
+      related,
+      labelResolvers,
+    });
+
+    const html = renderTemplateToHtml(template, ctx);
+
+    return new NextResponse(html, {
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e?.message || "Error preview" }, { status: 500 });
   }
-
-  const supabase = await createClient();
-  const { data: tpl, error } = await supabase
-    .from("pdf_templates")
-    .select("*")
-    .eq("slug", slug)
-    .maybeSingle();
-
-  if (error || !tpl) {
-    return NextResponse.json({ error: error?.message || "Template no encontrado" }, { status: 404 });
-  }
-
-  const ctx = await resolvePdfContext({
-    sourceTable: tpl.source_table,
-    recordId,
-    related: Array.isArray(tpl.related) ? tpl.related : [],
-  });
-
-  // debug útil (ver terminal)
-  console.log("preview ctx.record keys:", Object.keys(ctx.record || {}));
-
-  const html = renderTemplateToHtml(tpl.template, ctx);
-
-  return new NextResponse(html, {
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
-      pragma: "no-cache",
-      expires: "0",
-    },
-  });
 }

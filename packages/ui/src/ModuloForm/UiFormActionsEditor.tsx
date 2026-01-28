@@ -631,11 +631,74 @@ export default function UiFormActionsEditor({
                           )}
 
                           {/* ---- external ---- */}
+                        
+
                           {a.type === "external" && (
-                            <div style={{ gridColumn: "1 / -1" }} className={styles.hint}>
-                              Acción externa (PDF/email/print) — la dejamos lista para implementar más adelante.
+                          <>
+                            <div>
+                              <label className={styles.label}>kind</label>
+                              <select
+                                className={styles.input}
+                                value={(a as any).kind || "pdf"}
+                                disabled={readOnly}
+                                onChange={(e) => updateFormAction(idx, { kind: e.target.value as any } as any)}
+                              >
+                                {["pdf", "email", "print", "custom"].map(k => <option key={k} value={k}>{k}</option>)}
+                              </select>
                             </div>
-                          )}
+
+                            <div style={{ gridColumn: "1 / -1" }}>
+                              <label className={styles.label}>endpoint</label>
+                              <input
+                                className={styles.input}
+                                value={(a as any).endpoint || "/api/pdf/generate"}
+                                disabled={readOnly}
+                                onChange={(e) => updateFormAction(idx, { endpoint: e.target.value } as any)}
+                              />
+                            </div>
+
+                            {((a as any).kind || "pdf") === "pdf" && (
+                              <>
+                                <div style={{ gridColumn: "1 / -1" }}>
+                                  <Selector
+                                    moduleSlug="pdf_templates"
+                                    displayField="name"      // o el campo que tengas (ej: "slug" o "nombre")
+                                    valueField="slug"
+                                    value={(a as any).params?.template || ""}
+                                    readOnly={readOnly}
+                                    label="Plantilla PDF (slug)"
+                                    onChange={(slugSel: string) => {
+                                      updateFormAction(idx, {
+                                        params: {
+                                          ...((a as any).params || {}),
+                                          template: slugSel,
+                                          id: "{{id}}",
+                                        },
+                                      } as any);
+                                    }}
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className={styles.label}>params.id</label>
+                                  <input
+                                    className={styles.input}
+                                    value={(a as any).params?.id || "{{id}}"}
+                                    disabled={readOnly}
+                                    onChange={(e) =>
+                                      updateFormAction(idx, {
+                                        params: { ...((a as any).params || {}), id: e.target.value },
+                                      } as any)
+                                    }
+                                  />
+                                </div>
+                              </>
+                            )}
+                          </>
+                        )}
+
+
+
 
                           {/* ---- recalculate ---- */}
                           {a.type === "recalculate" && (

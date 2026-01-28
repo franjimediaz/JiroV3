@@ -9,6 +9,7 @@ export { default as ModuloForm } from "./ModuloForm/ModuloForm";
 export { default as ModulosTree } from "./ModuloForm/ModulosTree";
 export { default as CreateModule } from "./ModuloForm/CreateModule";
 export {default as ModalConfirm } from "./modals/ModalConfirm";
+export {default as RichTextEditor } from "./RichTextEditor";
 export { default as Form } from "./Form";
 export * from "./engines/safeEval";
 export * from "./engines/computeEngine";
