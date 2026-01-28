@@ -1,5 +1,4 @@
 import { chromium } from "playwright";
-import fs from "node:fs";
 
 export async function htmlToPdfBuffer(html: string) {
   const browser = await chromium.launch({
@@ -8,12 +7,7 @@ export async function htmlToPdfBuffer(html: string) {
 
     headless: true,
   });
-console.log(
-    "Local browsers exists?",
-    fs.existsSync(
-      "node_modules/.pnpm/playwright-core@1.58.0/node_modules/playwright-core/.local-browsers"
-    )
-  );
+
   try {
     const page = await browser.newPage();
     
