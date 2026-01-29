@@ -11,7 +11,7 @@ import ReverseLinkTable from "./ReverseLinkTable";
 import  TreeView  from "./TreeView";
 import FormActionsBar from "./ModuloForm/FormActionsBar";
 import type { FormAction } from "./ModuloForm/FormActionsBar";
-
+import RichTextEditor from "./RichTextEditor";
 
 type Mode = "view" | "edit" | "create";
 
@@ -1127,7 +1127,17 @@ if (type === "iconpicker") {
         onChange={(v) => onChange(v)} />
       );
 }
-
+  if (field.ui?.variant === "richtext") {
+    console.log("RTE readOnly?", readOnly, "mode", field.name);
+    return (
+      <RichTextEditor
+        value={String(value ?? "")}
+        readOnly={readOnly}
+        placeholder={field.placeholder || "Escribe aquí…"}
+        onChange={(html) => onChange(html)}
+      />
+    );
+  }
 
   // text / textarea / formula (formula suele ser readOnly salvo override)
   if (field.ui?.variant === "textarea" || type === "textarea") {
@@ -1141,6 +1151,7 @@ if (type === "iconpicker") {
       />
     );
   }
+
 
   return (
     <input

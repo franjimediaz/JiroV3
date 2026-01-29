@@ -837,6 +837,16 @@ function save() {
                       updateBlock(selectedBlock.id, "text", { value: html })
                     }
                   />
+                  <textarea
+                      className="form-control"
+                      value={selectedBlock.value || ""}
+                      readOnly={readOnly}
+                      rows={8}
+                      onChange={(e) =>
+                        updateBlock(selectedBlock.id, "text", { value: e.target.value })
+                      }
+                      placeholder="Escribe aquí…"
+                    />
                   <div className="form-text mt-2">
                     Se guarda como HTML.
                   </div>

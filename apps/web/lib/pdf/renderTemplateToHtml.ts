@@ -6,6 +6,7 @@
 // - estilos por columna (align, width, color, bold, background, fontSize)
 // - bloque budgetPartidas (Partida -> tareas -> materiales)
 // - bindings: {{record.xxx}}, {{branding.xxx}}, {{now}}, {{item.xxx}} en tablas (repeat)
+import sanitizeHtml from "sanitize-html";
 
 type AnyObj = Record<string, any>;
 
@@ -57,6 +58,14 @@ function groupBy<T = any>(rows: T[], keyFn: (row: T) => string) {
   }
   return map;
 }
+function unescapeHtml(s: string) {
+  return s
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#039;", "'");
+}
 
 type BlockStyle = {
   fontSize?: number; // px
@@ -101,6 +110,48 @@ function tplRaw(input: any, ctx: AnyObj) {
     return val === undefined || val === null ? "" : String(val);
   });
 }
+
+function safeHtml(html: any) {
+  return sanitizeHtml(String(html ?? ""), {
+    allowedTags: [
+      "p", "br", "strong", "b", "em", "i", "u", "s",
+      "ul", "ol", "li",
+      "h1", "h2", "h3", "h4",
+      "blockquote",
+      "a",
+      "table", "thead", "tbody", "tr", "th", "td",
+      "span", "div"
+    ],
+    allowedAttributes: {
+      a: ["href", "target", "rel"],
+      "*": ["style"],
+    },
+    // opcional, recomendado:
+    transformTags: {
+      a: sanitizeHtml.simpleTransform("a", { target: "_blank", rel: "noopener noreferrer" }),
+    },
+  });
+}
+
+function renderCell(cellTpl: any, ctx: AnyObj, col: any) {
+  const isRich = col?.variant === "richtext" || col?.richtext === true;
+
+  // 1) Resolver bindings (funciona con {{...}} y también con {{{...}}} si los usas)
+  // Nota: tpl() resuelve {{...}}. Si quieres también {{{...}}}, hacemos un “doble pase”.
+  const resolved = tpl(tplRaw(cellTpl ?? "", ctx), ctx);
+
+  if (true) {
+    const s = String(resolved ?? "");
+    const raw = unescapeHtml(String(resolved ?? ""));
+  
+    //return `<div style="border:1px solid red ">DEBUG: ${escHtml(s)}</div>`;
+    return safeHtml(raw);
+  }
+
+  // 3) Texto normal escapado
+  return escHtml(resolved);
+}
+
 
 
 /**
@@ -473,22 +524,32 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
   }
 
   if (type === "text") {
-    const value = escHtml(tpl(block.value ?? "", ctx));
-    const variant = block.variant || block.styleVariant || block.style || block.textStyle;
-    const v = typeof variant === "string" ? variant : block?.stylePreset;
-    const cls =
-      v === "h1"
-        ? "txt-h1"
-        : v === "h2"
-        ? "txt-h2"
-        : v === "muted"
-        ? "txt-muted"
-        : v === "small"
-        ? "txt-small"
-        : "txt-normal";
+  const isRich =
+    block.ui?.variant === "richtext" ||
+    block.variant === "richtext" ||
+    block.richtext === true;
 
-    return `<div class="txt ${cls}"${styleToInline(block.style)}>${value}</div>`;
+  const resolved = tpl(tplRaw(block.value ?? "", ctx), ctx);
+
+  if (isRich) {
+    return `
+      <div class="txt txt-rich"${styleToInline(block.style)}>
+        <div class="rte">
+          ${safeHtml(resolved)}
+        </div>
+      </div>
+    `;
   }
+
+  // TEXTO NORMAL (aquí sí es texto)
+  const value = escHtml(resolved);
+  return `
+    <div class="txt txt-normal"${styleToInline(block.style)}>
+      ${value}
+    </div>
+  `;
+}
+
 
   if (type === "divider") {
     return `<hr class="div" />`;
@@ -576,7 +637,8 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
                 const cellTpl = override === null || override === undefined ? (c.value ?? "") : override;
 
                 // En manual NO hay item, solo ctx (record/branding/now...)
-                const v = escHtml(tpl(cellTpl, ctx));
+                const v = renderCell(cellTpl, ctx, c);
+                
                 const tdInline = colStyleToInline(colStyle);
                 return `<td${tdInline}>${v}</td>`;
               })
@@ -584,36 +646,36 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
             return `<tr>${tds}</tr>`;
           })
           .join("")
-      : // ---- MODO REPEAT: igual que tenías ----
+      : 
         repeatRows
           .map((row: any) => {
             const rowCtx = { ...ctx, item: row };
             const tds = cols
               .map((c: any) => {
                 const colStyle: ColumnStyle = c.style && typeof c.style === "object" ? c.style : {};
-                const v = escHtml(tpl(c.value ?? "", rowCtx));
+                const v = renderCell(c.value ?? "", rowCtx, c);
                 const tdInline = colStyleToInline(colStyle);
                 return `<td${tdInline}>${v}</td>`;
               })
               .join("");
             return `<tr>${tds}</tr>`;
           })
-          .join("");
+          .join("")
 
-    return `
-      <div class="tbl"${styleToInline(block.style)}>
-        ${title ? `<div class="tbl-title">${title}</div>` : ""}
-        <div class="tbl-wrap" ${wrapInline}>
-          <div style="--tbl-border:${borderColor}; --tbl-headbg:${headerBg}; --tbl-headfg:${headerText};">
-            <table class="${tableCls}">
-              <thead><tr>${thead}</tr></thead>
-              <tbody>${tbody}</tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    `;
-  }
+            return `
+              <div class="tbl"${styleToInline(block.style)}>
+                ${title ? `<div class="tbl-title">${title}</div>` : ""}
+                <div class="tbl-wrap" ${wrapInline}>
+                  <div style="--tbl-border:${borderColor}; --tbl-headbg:${headerBg}; --tbl-headfg:${headerText};">
+                    <table class="${tableCls}">
+                      <thead><tr>${thead}</tr></thead>
+                      <tbody>${tbody}</tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            `;
+          }
 
 
   if (type === "budgetPartidas") {
@@ -724,6 +786,13 @@ export function renderTemplateToHtml(template: any, ctx: AnyObj) {
   .txt-muted { color: var(--muted); }
   .txt-h1 { font-size: ${theme.baseFontSize + 10}px; font-weight: 800; line-height: 1.1; }
   .txt-h2 { font-size: ${theme.baseFontSize + 6}px; font-weight: 800; line-height: 1.15; }
+  .txt-rich { white-space: normal; }
+  .txt-rich p { margin: 0 0 8px; }
+  .txt-rich ul, .txt-rich ol { margin: 6px 0 6px 18px; padding: 0; }
+  .txt-rich li { margin: 2px 0; }
+  .txt-rich table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  .txt-rich th, .txt-rich td { border: 1px solid var(--tbl-border); padding: 6px; }
+  .txt-rich th { background: var(--tbl-headbg); color: var(--tbl-headfg); }
 
   /* Section */
   .sec { margin-top: 14px; }
@@ -735,6 +804,29 @@ export function renderTemplateToHtml(template: any, ctx: AnyObj) {
     margin-bottom: 8px;
   }
   .sec-body { display:flex; flex-direction:column; gap:8px; }
+
+  .rte { white-space: normal; }
+
+.rte p { margin: 0 0 8px; }
+.rte p:last-child { margin-bottom: 0; }
+
+.rte ul, .rte ol {
+  margin: 6px 0 6px 18px;
+  padding: 0;
+}
+
+.rte li { margin: 2px 0; }
+
+.rte table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+
+.rte th, .rte td {
+  border: 1px solid var(--tbl-border);
+  padding: 6px;
+}
 
   /* Table */
   .tbl { margin-top: 10px; }

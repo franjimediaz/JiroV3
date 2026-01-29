@@ -53,7 +53,7 @@ export async function POST(req: Request) {
 
     const { data, error } = await query;
 
-    // 👇 ESTE es el error real (antes se te quedaba oculto)
+
     if (error) {
       console.error("[/api/aggregate] supabase error:", error);
       return NextResponse.json(

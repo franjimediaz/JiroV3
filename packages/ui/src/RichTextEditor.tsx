@@ -118,7 +118,7 @@ export default function RichTextEditor({
   return (
     <div>
       {/* Toolbar */}
-      <div className="d-flex flex-wrap gap-2 mb-2">
+      <div className="d-flex flex-wrap gap-2 mb-2 p-2 border rounded bg-light position-sticky">
         {/* Headings */}
         <div className="btn-group" role="group" aria-label="headings">
           <Btn
@@ -280,13 +280,10 @@ export default function RichTextEditor({
       </div>
 
       {/* Editor */}
-      <div className="border rounded p-2" style={{ minHeight: 180 }}>
+      <div className="border rounded p-2 bg-white" style={{ minHeight: 180 }}>
         <EditorContent editor={editor} />
       </div>
 
-      <div className="form-text mt-2">
-        Se guarda como HTML. (Tablas, enlaces, formato…)
-      </div>
     </div>
   );
 }
