@@ -71,7 +71,15 @@ type BlockStyle = {
   fontSize?: number;
   bold?: boolean;
   align?: "left" | "center" | "right";
+  italic?: boolean;
   padding?: number;
+  borderRadius?: number; // px
+  borderColor?: string;
+  borderWidth?: number; // px
+  borderStyle?: "solid" | "dashed" | "dotted" | "none";
+};
+type CardStyle = BlockStyle & {
+  shadow?: "none" | "sm" | "md";
 };
 type LookupConfig = {
   refTable: string;        // tabla donde vive el UUID
@@ -134,11 +142,46 @@ type BudgetPartidasBlock = {
   partidaTitleTpl?: string;
   groupByLookup?: LookupConfig;
 };
+type CardsLayout = {
+  cols?: number; 
+  gap?: number;  // px
+};
+
+type CardBlock = {
+  title?: string;
+  subtitle?: string;
+  style?: CardStyle;      // estilo por tarjeta
+  blocks?: PdfBlock[];    // contenido dentro de la tarjeta
+};
+
+type CardsBlock =
+  | {
+      id: string;
+      type: "cards";
+      title?: string;
+      layout?: CardsLayout;
+      style?: BlockStyle;     // estilo del contenedor
+      cardStyle?: CardStyle;  // estilo base para todas las tarjetas
+      // modo estático
+      cards: CardBlock[];
+    }
+  | {
+      id: string;
+      type: "cards";
+      title?: string;
+      layout?: CardsLayout;
+      style?: BlockStyle;
+      cardStyle?: CardStyle;
+      // modo repeat (dinámico)
+      repeat: string;         // ej: "related.contactos"
+      card: CardBlock;        // plantilla de tarjeta
+    };
 type PdfBlock =
   | { id: string; type: "header"; title: string; subtitle?: string; style?: BlockStyle }
   | { id: string; type: "text"; value: string; variant?: "normal" | "h1" | "h2" | "muted"; style?: BlockStyle }
   | { id: string; type: "divider" }
   | BudgetPartidasBlock
+  | CardsBlock
   | {
       id: string;
       type: "table";
@@ -244,6 +287,11 @@ function withDefaultsLookup(lk: Partial<LookupSpec>): LookupSpec {
     outField: (lk.outField ?? (field ? `${field}__label` : "")).trim() || undefined,
   };
 }
+function shadowToCss(sh?: "none" | "sm" | "md") {
+  if (sh === "sm") return "0 1px 2px rgba(0,0,0,.08)";
+  if (sh === "md") return "0 8px 20px rgba(0,0,0,.10)";
+  return "none";
+}
 
 /* ------------------------------------------------------------------ */
 /* ------------------------- MAIN COMPONENT -------------------------- */
@@ -337,6 +385,41 @@ function addBlock(type: PdfBlock["type"]) {
       ? { id: uid(), type: "text", value: "Texto", variant: "normal" }
       : type === "divider"
       ? { id: uid(), type: "divider" }
+      : type === "cards"
+      ? {
+          id: uid(),
+          type: "cards",
+          title: "Tarjetas",
+          layout: { cols: 2, gap: 12 },
+          cardStyle: {
+            background: "#ffffff",
+            borderColor: "#e5e7eb",
+            borderWidth: 1,
+            borderStyle: "solid",
+            borderRadius: 14,
+            padding: 12,
+            shadow: "none",
+          },
+          cards: [
+            {
+              title: "Empresa",
+              subtitle: "{{branding.nombre}}",
+              style: { background: "#f8fafc" },
+              blocks: [
+                { id: uid(), type: "text", value: "CIF: {{branding.cif}}", variant: "muted" },
+                { id: uid(), type: "text", value: "{{branding.direccion}}", variant: "normal" },
+              ],
+            },
+            {
+              title: "Cliente",
+              subtitle: "{{record.cliente_nombre}}",
+              blocks: [
+                { id: uid(), type: "text", value: "DNI: {{record.cliente_dni}}", variant: "muted" },
+                { id: uid(), type: "text", value: "{{record.cliente_direccion}}", variant: "normal" },
+              ],
+            },
+          ],
+        }
       : type === "budgetPartidas"
       ? {
           id: uid(),
@@ -537,6 +620,9 @@ function save() {
                     </button>
                     <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("budgetPartidas")}>
                       + Partidas
+                    </button>
+                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("cards")}>
+                      + Tarjetas
                     </button>
                 </div>
                 )}
@@ -853,7 +939,7 @@ function save() {
                 </div>
               </div>
             )}
-                      {selectedBlock && selectedBlock.type === "header" && (
+            {selectedBlock && selectedBlock.type === "header" && (
                 <div className="card">
                     <div className="card-header">Header</div>
                     <div className="card-body">
@@ -1797,6 +1883,228 @@ function save() {
                       </div>
                     </div>
             )}
+            {selectedBlock && selectedBlock.type === "cards" && (
+                <div className="card">
+                  <div className="card-header">Tarjetas</div>
+
+                  <div className="card-body">
+                    {/* título */}
+                    <div className="mb-3">
+                      <label className="form-label">Título</label>
+                      <input
+                        className="form-control"
+                        value={selectedBlock.title ?? ""}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "cards", { title: e.target.value } as any)}
+                      />
+                    </div>
+
+                    {/* layout */}
+                    <div className="row g-2 mb-3">
+                      <div className="col-6">
+                        <label className="form-label">Columnas</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={4}
+                          className="form-control"
+                          value={selectedBlock.layout?.cols ?? 2}
+                          disabled={readOnly}
+                          onChange={(e) =>
+                            updateBlock(selectedBlock.id, "cards", {
+                              layout: { ...(selectedBlock.layout || {}), cols: Number(e.target.value || 2) },
+                            } as any)
+                          }
+                        />
+                      </div>
+                      <div className="col-6">
+                        <label className="form-label">Gap (px)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={40}
+                          className="form-control"
+                          value={selectedBlock.layout?.gap ?? 12}
+                          disabled={readOnly}
+                          onChange={(e) =>
+                            updateBlock(selectedBlock.id, "cards", {
+                              layout: { ...(selectedBlock.layout || {}), gap: Number(e.target.value || 12) },
+                            } as any)
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    {/* repeat (si quieres permitir dinámico) */}
+                    {"repeat" in selectedBlock && (
+                      <div className="mb-3">
+                        <label className="form-label">Repeat (opcional)</label>
+                        <input
+                          className="form-control"
+                          value={selectedBlock.repeat ?? ""}
+                          disabled={readOnly}
+                          onChange={(e) => updateBlock(selectedBlock.id, "cards", { repeat: e.target.value } as any)}
+                          placeholder='Ej: related.contactos'
+                        />
+                        <div className="form-text">
+                          Si pones repeat, se usan tarjetas dinámicas con <code>{"{{item.campo}}"}</code>.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* estilo base de tarjeta */}
+                    <div className="border rounded p-2 mb-3">
+                      <div className="fw-semibold mb-2">Estilo base de tarjeta</div>
+
+                      <div className="row g-2">
+                        <div className="col-6">
+                          <label className="form-label">Fondo</label>
+                          <input
+                            type="color"
+                            className="form-control form-control-color"
+                            value={selectedBlock.cardStyle?.background ?? "#ffffff"}
+                            disabled={readOnly}
+                            onChange={(e) =>
+                              updateBlock(selectedBlock.id, "cards", {
+                                cardStyle: { ...(selectedBlock.cardStyle || {}), background: e.target.value },
+                              } as any)
+                            }
+                          />
+                        </div>
+
+                        <div className="col-6">
+                          <label className="form-label">Borde</label>
+                          <input
+                            type="color"
+                            className="form-control form-control-color"
+                            value={selectedBlock.cardStyle?.borderColor ?? "#e5e7eb"}
+                            disabled={readOnly}
+                            onChange={(e) =>
+                              updateBlock(selectedBlock.id, "cards", {
+                                cardStyle: { ...(selectedBlock.cardStyle || {}), borderColor: e.target.value, borderWidth: 1, borderStyle: "solid" },
+                              } as any)
+                            }
+                          />
+                        </div>
+
+                        <div className="col-6">
+                          <label className="form-label">Padding</label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={40}
+                            className="form-control"
+                            value={selectedBlock.cardStyle?.padding ?? 12}
+                            disabled={readOnly}
+                            onChange={(e) =>
+                              updateBlock(selectedBlock.id, "cards", {
+                                cardStyle: { ...(selectedBlock.cardStyle || {}), padding: Number(e.target.value || 12) },
+                              } as any)
+                            }
+                          />
+                        </div>
+
+                        <div className="col-6">
+                          <label className="form-label">Sombra</label>
+                          <select
+                            className="form-select"
+                            value={selectedBlock.cardStyle?.shadow ?? "none"}
+                            disabled={readOnly}
+                            onChange={(e) =>
+                              updateBlock(selectedBlock.id, "cards", {
+                                cardStyle: { ...(selectedBlock.cardStyle || {}), shadow: e.target.value as any },
+                              } as any)
+                            }
+                          >
+                            <option value="none">none</option>
+                            <option value="sm">sm</option>
+                            <option value="md">md</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* listado de tarjetas (modo estático) */}
+                    {"cards" in selectedBlock && (
+                      <div className="border rounded p-2">
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                          <div className="fw-semibold">Tarjetas</div>
+
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-primary"
+                              onClick={() => {
+                                const next = [...(selectedBlock.cards ?? [])];
+                                next.push({
+                                  title: "Nueva tarjeta",
+                                  subtitle: "",
+                                  blocks: [{ id: uid(), type: "text", value: "Contenido", variant: "normal" }],
+                                });
+                                updateBlock(selectedBlock.id, "cards", { cards: next } as any);
+                              }}
+                            >
+                              + Añadir tarjeta
+                            </button>
+                          )}
+                        </div>
+
+                        {(selectedBlock.cards ?? []).map((c: any, idx: number) => (
+                          <div key={idx} className="border rounded p-2 mb-2">
+                            <div className="row g-2 align-items-end">
+                              <div className="col-5">
+                                <label className="form-label small mb-1">Title</label>
+                                <input
+                                  className="form-control form-control-sm"
+                                  value={c.title ?? ""}
+                                  disabled={readOnly}
+                                  onChange={(e) => {
+                                    const next = [...selectedBlock.cards];
+                                    next[idx] = { ...next[idx], title: e.target.value };
+                                    updateBlock(selectedBlock.id, "cards", { cards: next } as any);
+                                  }}
+                                />
+                              </div>
+                              <div className="col-6">
+                                <label className="form-label small mb-1">Subtitle</label>
+                                <input
+                                  className="form-control form-control-sm"
+                                  value={c.subtitle ?? ""}
+                                  disabled={readOnly}
+                                  onChange={(e) => {
+                                    const next = [...selectedBlock.cards];
+                                    next[idx] = { ...next[idx], subtitle: e.target.value };
+                                    updateBlock(selectedBlock.id, "cards", { cards: next } as any);
+                                  }}
+                                />
+                              </div>
+                              <div className="col-1">
+                                {!readOnly && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-danger w-100"
+                                    onClick={() => {
+                                      const next = selectedBlock.cards.filter((_: any, i: number) => i !== idx);
+                                      updateBlock(selectedBlock.id, "cards", { cards: next } as any);
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="alert alert-light small mt-2 mb-0">
+                              Dentro de esta tarjeta, mete bloques (text/table/divider/partidas).  
+                              *Tip*: si quieres “solo datos” sin HTML raro, usa el textarea normal en los `text`.
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
 
 

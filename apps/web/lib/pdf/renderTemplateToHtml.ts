@@ -503,6 +503,26 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
   `;
 }
 
+function safeInlineRich(html: any) {
+  // permite negrita/italica/saltos, pero sin romper layout
+  // Si quieres más tags, amplía aquí.
+  const clean = sanitizeHtml(String(html ?? ""), {
+    allowedTags: ["b", "strong", "i", "em", "u", "br", "span"],
+    allowedAttributes: {
+      span: ["style"],
+    },
+    allowedStyles: {
+      span: {
+        color: [/^#([0-9a-f]{3}|[0-9a-f]{6})$/i],
+        "font-weight": [/^\d+$/],
+      },
+    },
+  });
+
+  return clean;
+}
+
+
 function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalizeTheme>): string {
   const type = block?.type;
 
@@ -549,6 +569,74 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
     </div>
   `;
 }
+  if (type === "cards") {
+    const title = escHtml(tpl(block.title ?? "", ctx));
+
+    const layout = block.layout && typeof block.layout === "object" ? block.layout : {};
+    const colsRaw = layout.cols;
+    const cols =
+      colsRaw === 1 || colsRaw === 2 || colsRaw === 3 || colsRaw === 4 ? colsRaw : 2;
+
+    const gapRaw = layout.gap;
+    const gap =
+      typeof gapRaw === "number" && Number.isFinite(gapRaw) ? Math.max(0, Math.min(40, gapRaw)) : 12;
+
+    const baseCardStyle = block.cardStyle && typeof block.cardStyle === "object" ? block.cardStyle : {};
+    const cards = Array.isArray(block.cards) ? block.cards : [];
+
+    const cardsHtml = cards
+      .map((c: any) => {
+        const cTitle = escHtml(tpl(c.title ?? "", ctx));
+
+        // estilo final de la tarjeta = base + override por tarjeta
+        const cStyle = {
+          ...baseCardStyle,
+          ...(c.style && typeof c.style === "object" ? c.style : {}),
+        };
+
+        // contenido: lines o html
+        let content = "";
+
+        if (Array.isArray(c.lines) && c.lines.length) {
+          content = c.lines
+            .map((line: any) => {
+              // resolvemos bindings y dejamos html inline safe
+              const resolved = tpl(tplRaw(line ?? "", ctx), ctx);
+              return `<div class="card-line">${safeInlineRich(resolved)}</div>`;
+            })
+            .join("");
+        } else if (typeof c.html === "string" && c.html.trim()) {
+          // si te interesa permitir un html “más rico” aquí, puedes sanitizar diferente
+          const resolved = tpl(tplRaw(c.html ?? "", ctx), ctx);
+          // ojo: aquí dejamos tags más amplios pero controlados
+          const clean = sanitizeHtml(String(resolved ?? ""), {
+            allowedTags: ["p", "br", "b", "strong", "i", "em", "u", "ul", "ol", "li", "span"],
+            allowedAttributes: { span: ["style"] },
+          });
+          content = `<div class="card-html">${clean}</div>`;
+        } else {
+          content = `<div class="card-empty">Sin contenido</div>`;
+        }
+
+        return `
+          <div class="cards-card"${styleToInline(cStyle)}>
+            ${cTitle ? `<div class="cards-card-title">${cTitle}</div>` : ""}
+            <div class="cards-card-body">${content}</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    return `
+      <div class="cards"${styleToInline(block.style)}>
+        ${title ? `<div class="cards-title">${title}</div>` : ""}
+        <div class="cards-grid" style="--cards-cols:${cols}; --cards-gap:${gap}px;">
+          ${cardsHtml}
+        </div>
+      </div>
+    `;
+  }
+
 
 
   if (type === "divider") {
@@ -975,6 +1063,40 @@ export function renderTemplateToHtml(template: any, ctx: AnyObj) {
     padding: 0 0 8px;
     border-bottom: 1px solid var(--tbl-border, #e5e7eb);
   }
+      /* Cards */
+  .cards { margin-top: 12px; }
+  .cards-title { font-weight: 800; margin: 2px 0 10px; font-size: ${theme.baseFontSize + 2}px; }
+
+  .cards-grid{
+    display: grid;
+    grid-template-columns: repeat(var(--cards-cols, 2), minmax(0, 1fr));
+    gap: var(--cards-gap, 12px);
+    align-items: stretch;
+  }
+
+  .cards-card{
+    border: 1px solid var(--tbl-border);
+    border-radius: var(--radius);
+    background: #fff;
+    padding: 12px;
+    box-shadow: var(--shadow);
+  }
+
+  .cards-card-title{
+    font-weight: 800;
+    margin-bottom: 6px;
+    font-size: ${theme.baseFontSize + 1}px;
+  }
+
+  .cards-card-body{ display:flex; flex-direction:column; gap: 4px; }
+
+  .card-line{ line-height: 1.25; }
+  .card-empty{ color: var(--muted); font-style: italic; }
+
+  /* si usas html dentro */
+  .card-html p{ margin: 0 0 8px; }
+  .card-html ul, .card-html ol{ margin: 6px 0 6px 18px; padding: 0; }
+
 
 </style>
 `;
