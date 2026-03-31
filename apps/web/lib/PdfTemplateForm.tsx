@@ -19,6 +19,10 @@ type Relation = {
   table: string;
   fkField: string;
 };
+type TableCatalog = {
+  table: string;
+  fields: string[];
+};
 
 type Theme = {
   fontFamily: "inter" | "roboto" | "times" | "georgia";
@@ -301,7 +305,7 @@ export default function PdfTemplateForm({
   initialData,
   mode,
 }: {
-  initialData: any;
+  initialData: any & { tableCatalog?: TableCatalog[] };
   mode: Mode;
 }) {
   const router = useRouter();
@@ -315,6 +319,23 @@ export default function PdfTemplateForm({
   const [sourceTable, setSourceTable] = useState(initialData?.source_table ?? "");
   const [isActive, setIsActive] = useState(!!initialData?.is_active);
   const [testId, setTestId] = useState(initialData?.test_record_id ?? "");
+  const tableCatalog = useMemo<TableCatalog[]>(
+    () => (Array.isArray(initialData?.tableCatalog) ? initialData.tableCatalog : []),
+    [initialData?.tableCatalog]
+  );
+  const tableOptions = useMemo(
+    () => Array.from(new Set(tableCatalog.map((t) => (t.table || "").trim()).filter(Boolean))).sort(),
+    [tableCatalog]
+  );
+  const fieldsByTable = useMemo<Record<string, string[]>>(() => {
+    const out: Record<string, string[]> = {};
+    for (const item of tableCatalog) {
+      const t = (item?.table || "").trim();
+      if (!t) continue;
+      out[t] = Array.from(new Set((item.fields || []).map((f) => (f || "").trim()).filter(Boolean))).sort();
+    }
+    return out;
+  }, [tableCatalog]);
 
   /* ----------------------- RELATIONS ------------------------ */
   const [relations, setRelations] = useState<Relation[]>(
@@ -682,32 +703,50 @@ function save() {
 
                             <div className="col-12 col-md-5">
                                 <label className="form-label small mb-1">Tabla</label>
-                                <input
-                                className="form-control form-control-sm"
-                                value={rel.table}
-                                disabled={readOnly}
-                                onChange={(e) => {
+                                <select
+                                  className="form-select form-select-sm"
+                                  value={rel.table}
+                                  disabled={readOnly}
+                                  onChange={(e) => {
                                     const next = relations.slice();
-                                    next[idx] = { ...next[idx], table: e.target.value };
+                                    next[idx] = { ...next[idx], table: e.target.value, fkField: "" };
                                     setRelations(next);
-                                }}
-                                placeholder='Ej: "budget_task"'
-                                />
+                                  }}
+                                >
+                                  <option value="">(elige tabla)</option>
+                                  {!tableOptions.includes(rel.table) && rel.table ? (
+                                    <option value={rel.table}>{rel.table}</option>
+                                  ) : null}
+                                  {tableOptions.map((t) => (
+                                    <option key={t} value={t}>
+                                      {t}
+                                    </option>
+                                  ))}
+                                </select>
                             </div>
 
                             <div className="col-12 col-md-3">
                                 <label className="form-label small mb-1">FK field</label>
-                                <input
-                                className="form-control form-control-sm"
-                                value={rel.fkField}
-                                disabled={readOnly}
-                                onChange={(e) => {
+                                <select
+                                  className="form-select form-select-sm"
+                                  value={rel.fkField}
+                                  disabled={readOnly || !rel.table}
+                                  onChange={(e) => {
                                     const next = relations.slice();
                                     next[idx] = { ...next[idx], fkField: e.target.value };
                                     setRelations(next);
-                                }}
-                                placeholder='Ej: "presupuestoId"'
-                                />
+                                  }}
+                                >
+                                  <option value="">(elige campo)</option>
+                                  {!fieldsByTable[rel.table]?.includes(rel.fkField) && rel.fkField ? (
+                                    <option value={rel.fkField}>{rel.fkField}</option>
+                                  ) : null}
+                                  {(fieldsByTable[rel.table] ?? []).map((f) => (
+                                    <option key={f} value={f}>
+                                      {f}
+                                    </option>
+                                  ))}
+                                </select>
                             </div>
 
                             <div className="col-12 col-md-1">
@@ -778,6 +817,15 @@ function save() {
                   <div className="d-flex flex-column gap-2">
                     {(template.lookups ?? []).map((lk, idx) => {
                       const val = withDefaultsLookup(lk);
+                      const relatedTable =
+                        val.in === "related" ? relations.find((r) => r.key === val.relatedKey)?.table || "" : "";
+                      const lookupInputFields =
+                        val.in === "record"
+                          ? fieldsByTable[sourceTable] ?? []
+                          : relatedTable
+                          ? fieldsByTable[relatedTable] ?? []
+                          : [];
+                      const lookupRefFields = val.refTable ? fieldsByTable[val.refTable] ?? [] : [];
 
                       const updateLookup = (patch: Partial<LookupSpec>) => {
                         const next = [...(template.lookups ?? [])];
@@ -837,13 +885,22 @@ function save() {
 
                             <div className="col-6">
                               <label className="form-label small mb-1">field (uuid)</label>
-                              <input
-                                className="form-control form-control-sm"
+                              <select
+                                className="form-select form-select-sm"
                                 value={val.field}
                                 disabled={readOnly}
-                                onChange={(e) => updateLookup({ field: e.target.value })}
-                                placeholder="Ej: material"
-                              />
+                                onChange={(e) => updateLookup({ field: e.target.value, outField: `${e.target.value}__label` })}
+                              >
+                                <option value="">(elige campo)</option>
+                                {!lookupInputFields.includes(val.field) && val.field ? (
+                                  <option value={val.field}>{val.field}</option>
+                                ) : null}
+                                {lookupInputFields.map((f) => (
+                                  <option key={f} value={f}>
+                                    {f}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
 
                             <div className="col-6">
@@ -859,35 +916,63 @@ function save() {
 
                             <div className="col-6">
                               <label className="form-label small mb-1">refTable</label>
-                              <input
-                                className="form-control form-control-sm"
+                              <select
+                                className="form-select form-select-sm"
                                 value={val.refTable}
                                 disabled={readOnly}
-                                onChange={(e) => updateLookup({ refTable: e.target.value })}
-                                placeholder="Ej: materiales"
-                              />
+                                onChange={(e) =>
+                                  updateLookup({ refTable: e.target.value, refLabelField: "", refIdField: "id" })
+                                }
+                              >
+                                <option value="">(elige tabla)</option>
+                                {!tableOptions.includes(val.refTable) && val.refTable ? (
+                                  <option value={val.refTable}>{val.refTable}</option>
+                                ) : null}
+                                {tableOptions.map((t) => (
+                                  <option key={t} value={t}>
+                                    {t}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
 
                             <div className="col-6">
                               <label className="form-label small mb-1">refLabelField</label>
-                              <input
-                                className="form-control form-control-sm"
+                              <select
+                                className="form-select form-select-sm"
                                 value={val.refLabelField}
-                                disabled={readOnly}
+                                disabled={readOnly || !val.refTable}
                                 onChange={(e) => updateLookup({ refLabelField: e.target.value })}
-                                placeholder="Ej: nombre"
-                              />
+                              >
+                                <option value="">(elige campo label)</option>
+                                {!lookupRefFields.includes(val.refLabelField) && val.refLabelField ? (
+                                  <option value={val.refLabelField}>{val.refLabelField}</option>
+                                ) : null}
+                                {lookupRefFields.map((f) => (
+                                  <option key={f} value={f}>
+                                    {f}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
 
                             <div className="col-12">
                               <label className="form-label small mb-1">refIdField</label>
-                              <input
-                                className="form-control form-control-sm"
+                              <select
+                                className="form-select form-select-sm"
                                 value={val.refIdField ?? "id"}
-                                disabled={readOnly}
+                                disabled={readOnly || !val.refTable}
                                 onChange={(e) => updateLookup({ refIdField: e.target.value || "id" })}
-                                placeholder="id"
-                              />
+                              >
+                                {!lookupRefFields.includes(val.refIdField ?? "id") ? (
+                                  <option value={val.refIdField ?? "id"}>{val.refIdField ?? "id"}</option>
+                                ) : null}
+                                {lookupRefFields.map((f) => (
+                                  <option key={f} value={f}>
+                                    {f}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                           </div>
 

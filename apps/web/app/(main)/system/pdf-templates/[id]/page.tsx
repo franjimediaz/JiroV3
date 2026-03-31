@@ -15,6 +15,30 @@ async function getPdfTemplateById(id: string) {
   return { data, error: error?.message ?? null };
 }
 
+async function getTableCatalog() {
+  const { data } = await supabaseAdmin.from("modulos").select("slug, props");
+  const byTable = new Map<string, Set<string>>();
+
+  for (const row of data ?? []) {
+    const props = (row as any)?.props || {};
+    const table = String(props?.db?.table || (row as any)?.slug || "").trim();
+    if (!table) continue;
+
+    const fields = Array.isArray(props?.fields) ? props.fields : [];
+    if (!byTable.has(table)) byTable.set(table, new Set<string>());
+
+    for (const f of fields) {
+      const name = String((f as any)?.name || "").trim();
+      if (!name) continue;
+      byTable.get(table)!.add(name);
+    }
+  }
+
+  return Array.from(byTable.entries())
+    .map(([table, fields]) => ({ table, fields: Array.from(fields).sort() }))
+    .sort((a, b) => a.table.localeCompare(b.table));
+}
+
 export default async function PdfTemplateUnifiedPage(props: {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ edit?: string }>;
@@ -25,6 +49,7 @@ export default async function PdfTemplateUnifiedPage(props: {
 
   const isNew = id === "new";
   const isEdit = isNew || edit === "true";
+  const tableCatalog = await getTableCatalog();
 
   // (opcional) require auth
   const supabase = await createClient();
@@ -48,6 +73,7 @@ export default async function PdfTemplateUnifiedPage(props: {
       related: [],
       template: { page: { size: "A4", margin: 24 }, blocks: [] },
       test_record_id: "",
+      tableCatalog,
     };
 
     return (
@@ -88,7 +114,7 @@ export default async function PdfTemplateUnifiedPage(props: {
 
   return (
     <main className="container-fluid py-4">
-      <PdfTemplateForm initialData={tpl} mode={mode} />
+      <PdfTemplateForm initialData={{ ...tpl, tableCatalog }} mode={mode} />
     </main>
   );
 }
