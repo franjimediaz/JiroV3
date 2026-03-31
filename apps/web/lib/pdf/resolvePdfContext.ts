@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import type { ModuleSchema } from "@repo/types";
 
 
 type RelatedSpec = {
@@ -74,7 +75,7 @@ async function addLabelsToRows(args: {
     return label ? { ...r, [outField]: label } : r;
   });
 }
-
+type AnyObj = Record<string, any>;
 
 // Helpers
 function isUuidLike(v: any) {
@@ -149,6 +150,47 @@ async function enrichRowsWithLabels(
   return rows;
 }
 
+async function getSchemaFromDb(params: { supabase: any; moduleSlug: string }) {
+  const { supabase, moduleSlug } = params;
+
+  // Ajusta el nombre si tu tabla no se llama "modulos"
+  const { data, error } = await supabase
+    .from("modulos")
+    .select("props")
+    .eq("slug", moduleSlug)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`resolvePdfContext: error cargando schema ${moduleSlug}: ${error.message}`);
+  }
+
+  const schema = data?.props as ModuleSchema | undefined;
+  if (!schema) {
+    throw new Error(`resolvePdfContext: no existe schema para slug "${moduleSlug}" en tabla modulos`);
+  }
+
+  return schema;
+}
+
+async function getOneFromDb(params: { supabase: any; table: string; id: string }) {
+  const { supabase, table, id } = params;
+
+  const { data, error } = await supabase
+    .from(table)
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    // No petamos por completo por una relación rota: devolvemos null
+    console.warn(`resolvePdfContext: getOneFromDb error (${table} id=${id}):`, error.message);
+    return null;
+  }
+
+  return data ?? null;
+}
+
+
 async function enrichRecordWithLabels(
   record: any,
   specs: Array<{ field: string; table: string; labelField: string }>
@@ -160,6 +202,263 @@ async function enrichRecordWithLabels(
   await enrichRowsWithLabels(arr, specs);
   return arr[0];
 }
+
+function getSchemaFields(schema: ModuleSchema): any[] {
+  // Intenta varias formas comunes sin romper
+  const s: any = schema as any;
+
+  if (Array.isArray(s.fields)) return s.fields;
+  if (Array.isArray(s.campos)) return s.campos;
+
+  // a veces viene como schema.props.fields
+  if (Array.isArray(s.props?.fields)) return s.props.fields;
+
+  // fallback
+  return [];
+}
+
+function inferAliasFromFieldName(name: string) {
+  // customerId -> customer
+  if (name.endsWith("Id") && name.length > 2) return name.slice(0, -2);
+  return name;
+}
+
+function getRefFromField(field: any): { moduleSlug?: string; displayField?: string } | null {
+  // Soportar varias formas típicas:
+  // field.ref.moduleSlug
+  // field.ref.table
+  // field.selector.ref...
+  const f = field ?? {};
+  const ref = f.ref ?? f.selector?.ref ?? null;
+  if (!ref) return null;
+
+  const moduleSlug = ref.moduleSlug ?? ref.slug ?? ref.table ?? ref.module ?? undefined;
+  const displayField = ref.displayField ?? ref.labelField ?? ref.display ?? undefined;
+
+  if (!moduleSlug) return null;
+  return { moduleSlug, displayField };
+}
+
+async function hydrateBelongsToTree(opts: {
+  supabase: any;
+  rootModuleSlug: string;
+  record: AnyObj;
+  depth?: number;
+}) {
+  const { supabase, rootModuleSlug } = opts;
+  const depth = typeof opts.depth === "number" ? opts.depth : 2;
+
+  // Cache por render (clave: `${moduleSlug}:${id}`)
+  const recordCache = new Map<string, AnyObj | null>();
+  const schemaCache = new Map<string, ModuleSchema>();
+
+  async function getSchemaCached(slug: string) {
+    if (schemaCache.has(slug)) return schemaCache.get(slug)!;
+    const s = await getSchemaFromDb({ supabase, moduleSlug: slug });
+    schemaCache.set(slug, s);
+    return s;
+  }
+
+  async function getOneCached(table: string, id: string) {
+    const key = `${table}:${id}`;
+    if (recordCache.has(key)) return recordCache.get(key)!;
+    const rec = await getOneFromDb({ supabase, table, id });
+    recordCache.set(key, rec);
+    return rec;
+  }
+
+  async function hydrateOne(moduleSlug: string, rec: AnyObj, d: number): Promise<AnyObj> {
+    if (!rec || d <= 0) return rec;
+
+    const schema = await getSchemaCached(moduleSlug);
+    const fields = getSchemaFields(schema);
+
+    // Copia para no mutar el original
+    const out: AnyObj = { ...rec };
+
+    for (const field of fields) {
+      const fieldName = field?.name;
+      if (!fieldName || typeof fieldName !== "string") continue;
+
+      const ref = getRefFromField(field);
+      if (!ref?.moduleSlug) continue;
+
+      // valor FK (ej: customerId)
+      const fkValue = out[fieldName];
+      if (!fkValue || typeof fkValue !== "string") continue;
+
+      const alias = field.alias ?? inferAliasFromFieldName(fieldName);
+
+      // Evita machacar si ya existe
+      if (out[alias] && typeof out[alias] === "object") continue;
+
+      // 👇 aquí asumimos que ref.moduleSlug == nombre de tabla en supabase
+      const child = await getOneCached(ref.moduleSlug, fkValue);
+      out[alias] = child ? await hydrateOne(ref.moduleSlug, child, d - 1) : null;
+
+      // opcional: label directo si existe displayField
+      if (ref.displayField && child && out[`${alias}__label`] == null) {
+        out[`${alias}__label`] = child?.[ref.displayField] ?? "";
+      }
+    }
+
+    return out;
+  }
+
+  return hydrateOne(rootModuleSlug, opts.record, depth);
+}
+
+let allSchemasCache: Record<string, ModuleSchema> | null = null;
+let allSchemasCacheAt = 0;
+
+async function loadAllSchemasFromDb(params: { supabase: any }) {
+  const now = Date.now();
+  if (allSchemasCache && now - allSchemasCacheAt < 60_000) return allSchemasCache;
+
+  const { supabase } = params;
+
+  const { data, error } = await supabase
+    .from("modulos")
+    .select("slug,props");
+
+  if (error) {
+    throw new Error(`resolvePdfContext: error cargando modulos: ${error.message}`);
+  }
+
+  const map: Record<string, ModuleSchema> = {};
+  for (const row of data || []) {
+    const slug = (row as any)?.slug;
+    const props = (row as any)?.props;
+    if (slug && props && typeof props === "object") {
+      map[String(slug)] = props as ModuleSchema;
+    }
+  }
+
+  allSchemasCache = map;
+  allSchemasCacheAt = now;
+  return map;
+}
+
+
+
+type InverseRef = {
+  childModule: string;  // slug de la tabla hija
+  fkField: string;      // campo en la hija que apunta al padre (ej: presupuestoId)
+  alias: string;        // nombre de la colección en py (por defecto childModule)
+};
+
+function buildInverseRefs(all: Record<string, ModuleSchema>) {
+  // parentSlug -> [ { childModule, fkField, alias } ]
+  const inv = new Map<string, InverseRef[]>();
+
+  for (const [childSlug, schema] of Object.entries(all)) {
+    const fields = getSchemaFields(schema);
+
+    for (const field of fields) {
+      const fieldName = field?.name;
+      if (!fieldName || typeof fieldName !== "string") continue;
+
+      const ref = getRefFromField(field);
+      if (!ref?.moduleSlug) continue;
+
+      const parentSlug = ref.moduleSlug;
+
+      if (!inv.has(parentSlug)) inv.set(parentSlug, []);
+
+      inv.get(parentSlug)!.push({
+        childModule: childSlug,
+        fkField: fieldName,
+        alias: (field.backrefAlias ?? childSlug) as string, // opcional si quieres renombrar
+      });
+    }
+  }
+
+  return inv;
+}
+async function fetchChildrenByFk(params: {
+  supabase: any;
+  table: string;
+  fkField: string;
+  parentId: string;
+}) {
+  const { supabase, table, fkField, parentId } = params;
+
+  // intento FK normal: fkField = parentId
+  let res = await supabase
+    .from(table)
+    .select("*")
+    .eq(fkField, parentId);
+
+  // si falla por FK array (uuid[]), reintenta con contains
+  if (res.error) {
+    const msg = String(res.error.message || "");
+    const code = String(res.error.code || "");
+    const looksLikeArrayFk = msg.includes("malformed array literal") || code === "22P02";
+
+    if (looksLikeArrayFk) {
+      res = await supabase
+        .from(table)
+        .select("*")
+        .contains(fkField, [parentId]);
+    }
+  }
+
+  if (res.error) {
+    // No petamos todo el PDF por una colección
+    console.warn(`resolvePdfContext: fetchChildren error (${table}.${fkField}):`, res.error.message);
+    return [];
+  }
+
+  return Array.isArray(res.data) ? res.data : [];
+}
+async function hydrateHasManyCollections(opts: {
+  supabase: any;
+  rootModuleSlug: string;
+  parentId: string;
+  py: AnyObj; // el objeto py ya creado
+}) {
+  const { supabase, rootModuleSlug, parentId, py } = opts;
+
+  const allSchemas = await loadAllSchemasFromDb({ supabase });
+  const inverse = buildInverseRefs(allSchemas);
+
+  const refs = inverse.get(rootModuleSlug) || [];
+  if (refs.length === 0) return py;
+
+  // agrupar por alias por si varios FKs quisieran el mismo alias
+  const grouped = new Map<string, InverseRef[]>();
+  for (const r of refs) {
+    if (!grouped.has(r.alias)) grouped.set(r.alias, []);
+    grouped.get(r.alias)!.push(r);
+  }
+
+  for (const [alias, candidates] of grouped.entries()) {
+    // Si ya existe (por ejemplo lo setearon antes), no lo machacamos
+    if (Array.isArray(py[alias])) continue;
+
+    // Si hay varios candidatos (poco común), los concatenamos
+    let all: any[] = [];
+    for (const c of candidates) {
+      const rows = await fetchChildrenByFk({
+        supabase,
+        table: c.childModule,
+        fkField: c.fkField,
+        parentId,
+      });
+      all = all.concat(rows);
+    }
+
+    py[alias] = all;
+  }
+
+  return py;
+}
+
+
+  
+
+  
+
 
 export async function resolvePdfContext(args: ResolveArgs) {
   const supabase = await createClient();
@@ -176,15 +475,48 @@ export async function resolvePdfContext(args: ResolveArgs) {
 
   // 2) Relaciones
   const related: Record<string, any[]> = {};
-  for (const r of args.related || []) {
-    const { data, error } = await supabase
-      .from(r.table)
-      .select("*")
-      .eq(r.fkField, args.recordId);
 
-    if (error) throw new Error(`resolvePdfContext: error related ${r.key}: ${error.message}`);
+  for (const r of args.related || []) {
+    // 2.1) intento FK "normal"
+    let data: any[] | null = null;
+    let error: any = null;
+
+    {
+      const res = await supabase
+        .from(r.table)
+        .select("*")
+        .eq(r.fkField, args.recordId);
+
+      data = res.data ?? null;
+      error = res.error ?? null;
+    }
+
+    // 2.2) si falla por array, reintenta como FK uuid[]
+    if (error) {
+      const msg = String(error.message || "");
+      const code = String(error.code || "");
+
+      const looksLikeArrayFk =
+        msg.includes("malformed array literal") || code === "22P02";
+
+      if (looksLikeArrayFk) {
+        const res2 = await supabase
+          .from(r.table)
+          .select("*")
+          .contains(r.fkField, [args.recordId]); // 👈 clave
+
+        data = res2.data ?? null;
+        error = res2.error ?? null;
+      }
+    }
+
+    if (error) {
+      throw new Error(`resolvePdfContext: error related ${r.key}: ${error.message}`);
+    }
+
     related[r.key] = Array.isArray(data) ? data : [];
   }
+
 
   // 3) Branding
   const { data: branding } = await supabase
@@ -211,9 +543,22 @@ export async function resolvePdfContext(args: ResolveArgs) {
       }
     }
   }
+  const py = await hydrateBelongsToTree({
+    supabase,
+    rootModuleSlug: args.sourceTable, // asumimos que coincide con el slug del módulo
+    record,
+    depth: 2,
+  });
+  await hydrateHasManyCollections({
+    supabase,
+    rootModuleSlug: args.sourceTable,
+    parentId: args.recordId,
+    py,
+  });
 
   return {
     record,
+    py,
     related,
     branding: branding || {},
     now: new Date().toISOString(),

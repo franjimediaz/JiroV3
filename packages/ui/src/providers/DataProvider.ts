@@ -72,9 +72,11 @@ function resolveTpl(v: any, record: any) {
   });
 }
 
+
 export const dataProvider: DataProvider & {
   getSchema: (moduleSlug: string) => Promise<ModuleSchema>;
   create: (input: CreateInput) => Promise<CreateResult>;
+  getOne: (moduleSlug: string, id: string) => Promise<any | null>;
 } = {
   async aggregate(input: AggregateInput, record: any, _context?: Record<string, any>) {
     // 1) Resolver where usando el record actual (placeholders)
@@ -173,4 +175,26 @@ export const dataProvider: DataProvider & {
     if (!schema) throw new Error(`getSchema: no existe módulo con slug "${moduleSlug}"`);
     return schema;
   },
+  
+  async getOne(moduleSlug: string, id: string) {
+  if (!id) return null;
+
+  const list = this.list; // <- puede ser undefined según TS
+  if (!list) {
+    throw new Error("dataProvider.getOne: dataProvider.list no está definido");
+  }
+
+  const res = await list({
+    moduleSlug,
+    filters: [{ field: "id", op: "eq", value: id }],
+    limit: 1,
+    hasStyle: false,
+  } as any);
+
+  return Array.isArray(res?.data) && res.data.length ? res.data[0] : null;
+},
+
+
+
+  
 };
