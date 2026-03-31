@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { upsertPdfTemplateAction, deletePdfTemplateAction } from "./actions/pdfTemplates";
+import { useRouter } from "next/navigation";
+import { upsertPdfTemplateAction } from "./actions/pdfTemplates";
 import { RichTextEditor} from "@repo/ui";
-import dynamic from "next/dynamic";
 import "react-quill/dist/quill.snow.css";
 
 
@@ -59,12 +59,12 @@ type Theme = {
         materialMuted?: string;
         totalBg?: string;
 
-        // extras “pro” opcionales
+        // extras â€œproâ€ opcionales
         taskBorder?: string;
         taskBg?: string;
         taskRadius?: number;
         chapterRadius?: number;
-        showTaskBox?: boolean; // si quieres tareas “en cards” o plano
+        showTaskBox?: boolean; // si quieres tareas â€œen cardsâ€ o plano
       }
     >;
   };
@@ -136,7 +136,7 @@ type BudgetPartidasBlock = {
   materialTotalField?: string;
   showSubtotals?: boolean;
 
-  // ✅ NUEVO (opcional, safe)
+  // âœ… NUEVO (opcional, safe)
   variant?: BudgetPartidasVariantName; // ej: "classic"
   variantOverrides?: BudgetPartidasVariantOverrides; // override por bloque
 
@@ -166,7 +166,7 @@ type CardsBlock =
       layout?: CardsLayout;
       style?: BlockStyle;     // estilo del contenedor
       cardStyle?: CardStyle;  // estilo base para todas las tarjetas
-      // modo estático
+      // modo estÃ¡tico
       cards: CardBlock[];
     }
   | {
@@ -176,7 +176,7 @@ type CardsBlock =
       layout?: CardsLayout;
       style?: BlockStyle;
       cardStyle?: CardStyle;
-      // modo repeat (dinámico)
+      // modo repeat (dinÃ¡mico)
       repeat: string;         // ej: "related.contactos"
       card: CardBlock;        // plantilla de tarjeta
     };
@@ -216,13 +216,6 @@ type PdfBlock =
 /* ------------------------------------------------------------------ */
 
 const uid = () => Math.random().toString(36).slice(2);
-const ReactQuill = dynamic(
-  async () => {
-    const mod = await import("react-quill");
-    return mod.default;
-  },
-  { ssr: false }
-);
 const defaultTheme: Theme = {
   fontFamily: "inter",
   baseFontSize: 12,
@@ -249,6 +242,78 @@ const defaultTheme: Theme = {
   },
 };
 
+type PreviewContext = Record<string, any>;
+
+function singletonRelatedRows(ctx: PreviewContext | null | undefined) {
+  const related = ctx?.related;
+  if (!related || typeof related !== "object") return [];
+
+  const relatedEntries = Object.entries(related as Record<string, unknown[]>);
+
+  return relatedEntries
+    .filter(([, rows]) => rows.length === 1 && rows[0] && typeof rows[0] === "object")
+    .map(([key, rows]) => ({ key, row: rows[0] as PreviewContext }));
+}
+
+function preferredLabel(row: PreviewContext) {
+  for (const key of ["name", "title", "label"]) {
+    if (row?.[key] !== undefined && row?.[key] !== null && row?.[key] !== "") return row[key];
+  }
+  return undefined;
+}
+
+function lookupRelatedFallback(ctx: PreviewContext | null | undefined, field: string) {
+  const singletons = singletonRelatedRows(ctx);
+  const matches: any[] = [];
+
+  for (const { key, row } of singletons) {
+    if (field === key) {
+      const label = preferredLabel(row);
+      if (label !== undefined) matches.push(label);
+      continue;
+    }
+
+    if (field.startsWith(`${key}_`)) {
+      const nestedField = field.slice(key.length + 1);
+      if (nestedField in row) matches.push(row[nestedField]);
+      continue;
+    }
+
+    const initial = key.charAt(0);
+    if (initial && field.startsWith(`${initial}_`)) {
+      const nestedField = field.slice(2);
+      if (nestedField in row) matches.push(row[nestedField]);
+      continue;
+    }
+
+    if (field in row) matches.push(row[field]);
+  }
+
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function getByPath(obj: any, path: string) {
+  const parts = String(path).split(".");
+  const direct = parts.reduce((acc: any, key: string) => (acc && key in acc ? acc[key] : undefined), obj);
+  if (direct !== undefined) return direct;
+
+  if (parts.length === 2 && (parts[0] === "record" || parts[0] === "item")) {
+    return lookupRelatedFallback(obj, parts[1]);
+  }
+
+  return undefined;
+}
+
+function applyBindings(input: string, ctx: PreviewContext | null | undefined) {
+  if (typeof input !== "string") return "";
+  if (!ctx) return input;
+
+  return input.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, raw) => {
+    const value = getByPath(ctx, String(raw).trim());
+    return value === undefined || value === null ? "" : String(value);
+  });
+}
+
 function ensureTemplate(raw: any): Template {
   // si viene como string (por columna text), intenta parsear
   let t = raw;
@@ -259,7 +324,7 @@ function ensureTemplate(raw: any): Template {
   const blocks = Array.isArray(t?.blocks) ? t.blocks : [];
   const page = t?.page && typeof t.page === "object" ? t.page : {};
   const theme = t?.theme && typeof t.theme === "object" ? t.theme : {};
-  const lookups = Array.isArray(t?.lookups) ? t.lookups : []; // ✅ NUEVO
+  const lookups = Array.isArray(t?.lookups) ? t.lookups : []; // âœ… NUEVO
 
   return {
     page: {
@@ -275,7 +340,7 @@ function ensureTemplate(raw: any): Template {
       },
     },
     blocks,
-    lookups, // ✅ NUEVO
+    lookups, // âœ… NUEVO
   };
 }
 
@@ -291,12 +356,6 @@ function withDefaultsLookup(lk: Partial<LookupSpec>): LookupSpec {
     outField: (lk.outField ?? (field ? `${field}__label` : "")).trim() || undefined,
   };
 }
-function shadowToCss(sh?: "none" | "sm" | "md") {
-  if (sh === "sm") return "0 1px 2px rgba(0,0,0,.08)";
-  if (sh === "md") return "0 8px 20px rgba(0,0,0,.10)";
-  return "none";
-}
-
 /* ------------------------------------------------------------------ */
 /* ------------------------- MAIN COMPONENT -------------------------- */
 /* ------------------------------------------------------------------ */
@@ -309,7 +368,6 @@ export default function PdfTemplateForm({
   mode: Mode;
 }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const readOnly = mode === "view";
   const [pending, start] = useTransition();
 
@@ -317,7 +375,7 @@ export default function PdfTemplateForm({
   const [name, setName] = useState(initialData?.name ?? "");
   const [slug, setSlug] = useState(initialData?.slug ?? "");
   const [sourceTable, setSourceTable] = useState(initialData?.source_table ?? "");
-  const [isActive, setIsActive] = useState(!!initialData?.is_active);
+  const [isActive] = useState(!!initialData?.is_active);
   const [testId, setTestId] = useState(initialData?.test_record_id ?? "");
   const tableCatalog = useMemo<TableCatalog[]>(
     () => (Array.isArray(initialData?.tableCatalog) ? initialData.tableCatalog : []),
@@ -355,6 +413,8 @@ export default function PdfTemplateForm({
   );
   const [tab, setTab] = useState<"builder" | "theme" | "preview">("builder");
   const [previewTick, setPreviewTick] = useState(0);
+  const [previewCtx, setPreviewCtx] = useState<PreviewContext | null>(null);
+  const [previewCtxError, setPreviewCtxError] = useState<string | null>(null);
 
   const selectedBlock = useMemo(
     () => template.blocks.find((b) => b.id === selectedBlockId),
@@ -368,12 +428,45 @@ export default function PdfTemplateForm({
         )}&t=${previewTick}`
       : null;
 
-  const generateTemplate =
-    slug && testId
-      ? `/api/pdf/generate?template=${encodeURIComponent(slug)}&id=${encodeURIComponent(
-          testId
-        )}&t=${previewTick}`
-      : null;
+  useEffect(() => {
+    if (!slug || !testId) {
+      setPreviewCtx(null);
+      setPreviewCtxError(null);
+      return;
+    }
+
+    const ac = new AbortController();
+
+    (async () => {
+      try {
+        setPreviewCtxError(null);
+        const res = await fetch("/api/pdf/context", {
+          method: "POST",
+          credentials: "include",
+          signal: ac.signal,
+          cache: "no-store",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            sourceTable,
+            recordId: testId,
+            related: relations,
+            template,
+          }),
+        });
+        const json = await res.json();
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.error || "No se pudo cargar el contexto de preview");
+        }
+        setPreviewCtx((json?.ctx ?? null) as PreviewContext | null);
+      } catch (e: any) {
+        if (ac.signal.aborted) return;
+        setPreviewCtx(null);
+        setPreviewCtxError(e?.message || "No se pudo cargar el contexto de preview");
+      }
+    })();
+
+    return () => ac.abort();
+  }, [slug, testId, previewTick, sourceTable, relations, template]);
 
   /* ------------------------------------------------------------------ */
   /* ----------------------------- ACTIONS ----------------------------- */
@@ -448,7 +541,7 @@ function addBlock(type: PdfBlock["type"]) {
           title: "Presupuesto por partidas",
           mode: "groupByTaskField",
 
-          // ✅ tu caso real
+          // âœ… tu caso real
           tareasKey: relations[0]?.key ?? "tid",
           groupByField: "service",
           groupTitleTpl: "Partida {{groupLabel}}",
@@ -456,9 +549,9 @@ function addBlock(type: PdfBlock["type"]) {
           materialesKey: relations[1]?.key ?? "materiales",
           materialesFkToTarea: "taskId",
 
-          // ✅ usa title porque tú en tareas usas item.title
-          tareaTitleTpl: "– {{item.title}}",
-          materialLineTpl: "• {{item.nombre}} x{{item.cantidad}} — {{item.total}} €",
+          // Usa title porque en tareas se usa item.title
+          tareaTitleTpl: "- {{item.title}}",
+          materialLineTpl: "- {{item.nombre}} x{{item.cantidad}} - {{item.total}} €",
 
           tareaTotalField: "total",
           materialTotalField: "total",
@@ -472,13 +565,52 @@ function addBlock(type: PdfBlock["type"]) {
           tableStyle: { zebra: true, dense: false },
           layout: { widthPct: 100, align: "left" },
           columns: [
-            { label: "Descripción", value: "{{item.descripcion}}" },
+            { label: "Descripcion", value: "{{item.descripcion}}" },
             { label: "Total", value: "{{item.total}} €", align: "right" },
           ],
         };
 
   setTemplate((t) => ({ ...t, blocks: [...t.blocks, block] }));
   setSelectedBlockId(block.id);
+}
+
+function updateStaticCard(
+  blockId: string,
+  cards: CardBlock[],
+  cardIndex: number,
+  patch: Partial<CardBlock>
+) {
+  const next = [...cards];
+  next[cardIndex] = { ...(next[cardIndex] ?? {}), ...patch };
+  updateBlock(blockId, "cards", { cards: next } as any);
+}
+
+function updateStaticCardBlocks(
+  blockId: string,
+  cards: CardBlock[],
+  cardIndex: number,
+  blocks: PdfBlock[]
+) {
+  updateStaticCard(blockId, cards, cardIndex, { blocks });
+}
+
+function updateRepeatCardTemplate(blockId: string, card: CardBlock, patch: Partial<CardBlock>) {
+  updateBlock(blockId, "cards", { card: { ...card, ...patch } } as any);
+}
+
+function plainTextPreview(value: string) {
+  return String(value ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function prettyJson(value: unknown) {
+  try {
+    return JSON.stringify(value ?? null, null, 2);
+  } catch {
+    return String(value ?? "");
+  }
 }
 
 function deleteBlock(id: string) {
@@ -497,7 +629,7 @@ function deleteBlock(id: string) {
 function moveBlockUp(id: string) {
   setTemplate((t) => {
     const idx = t.blocks.findIndex((b) => b.id === id);
-    if (idx <= 0) return t; // ya está arriba
+    if (idx <= 0) return t; // ya estÃ¡ arriba
 
     const next = t.blocks.slice();
     [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
@@ -509,7 +641,7 @@ function moveBlockUp(id: string) {
 function moveBlockDown(id: string) {
   setTemplate((t) => {
     const idx = t.blocks.findIndex((b) => b.id === id);
-    if (idx === -1 || idx >= t.blocks.length - 1) return t; // ya está abajo
+    if (idx === -1 || idx >= t.blocks.length - 1) return t; // ya estÃ¡ abajo
 
     const next = t.blocks.slice();
     [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
@@ -550,12 +682,12 @@ function save() {
       <div className="d-flex justify-content-between align-items-center">
         <div>
           <h2 className="mb-0">{mode === "create" ? "Nueva plantilla PDF" : name}</h2>
-          <div className="text-muted small">{readOnly ? "Vista" : "Edición"}</div>
+          <div className="text-muted small">{readOnly ? "Vista" : "EdiciÃ³n"}</div>
         </div>
 
         <div className="d-flex gap-2">
           <button type="button" className="btn btn-secondary" onClick={() => router.back()}>
-            ← Volver
+            â† Volver
           </button>
 
           {!readOnly && (
@@ -669,7 +801,7 @@ function save() {
                         ])
                         }
                     >
-                        + Añadir relación
+                        + AÃ±adir relaciÃ³n
                     </button>
                     )}
                 </div>
@@ -677,7 +809,7 @@ function save() {
                 <div className="card-body">
                     {relations.length === 0 ? (
                     <div className="text-muted">
-                        No hay relaciones definidas. Añade una para poder repetir tablas.
+                        No hay relaciones definidas. AÃ±ade una para poder repetir tablas.
                     </div>
                     ) : (
                     <div className="d-flex flex-column gap-2">
@@ -757,7 +889,7 @@ function save() {
                                     onClick={() => setRelations((r) => r.filter((_, i) => i !== idx))}
                                     title="Eliminar"
                                 >
-                                    ✕
+                                    âœ•
                                 </button>
                                 )}
                             </div>
@@ -765,7 +897,7 @@ function save() {
                             <div className="col-12">
                                 <div className="alert alert-light small mb-0">
                                 Uso en tabla: <code>repeat</code> ={" "}
-                                <code>{`related.${rel.key || "key"}`}</code> ·
+                                <code>{`related.${rel.key || "key"}`}</code> Â·
                                 Dentro de columnas: <code>{"{{item.campo}}"}</code>
                                 </div>
                             </div>
@@ -805,7 +937,7 @@ function save() {
                       updateTemplate({ lookups: next });
                     }}
                   >
-                    + Añadir
+                    + AÃ±adir
                   </button>
                 )}
               </div>
@@ -843,7 +975,7 @@ function save() {
                         <div key={idx} className="border rounded p-2">
                           <div className="d-flex justify-content-between align-items-center mb-2">
                             <div className="small fw-semibold">
-                              Lookup #{idx + 1} → <code>{val.outField ?? `${val.field || "campo"}__label`}</code>
+                              Lookup #{idx + 1} â†’ <code>{val.outField ?? `${val.field || "campo"}__label`}</code>
                             </div>
                             {!readOnly && (
                               <button type="button" className="btn btn-sm btn-outline-danger" onClick={removeLookup}>
@@ -1016,7 +1148,7 @@ function save() {
                       onChange={(e) =>
                         updateBlock(selectedBlock.id, "text", { value: e.target.value })
                       }
-                      placeholder="Escribe aquí…"
+                      placeholder="Escribe aquÃ­â€¦"
                     />
                   <div className="form-text mt-2">
                     Se guarda como HTML.
@@ -1029,7 +1161,7 @@ function save() {
                     <div className="card-header">Header</div>
                     <div className="card-body">
                     <div className="mb-3">
-                        <label className="form-label">Título</label>
+                        <label className="form-label">TÃ­tulo</label>
                         <input
                         className="form-control"
                         value={selectedBlock.title}
@@ -1039,7 +1171,7 @@ function save() {
                     </div>
 
                     <div className="mb-3">
-                        <label className="form-label">Subtítulo</label>
+                        <label className="form-label">SubtÃ­tulo</label>
                         <input
                         className="form-control"
                         value={selectedBlock.subtitle ?? ""}
@@ -1049,7 +1181,7 @@ function save() {
                     </div>
 
                     <div className="alert alert-info small mb-0">
-                        Variables: <code>{"{{record.campo}}"}</code> · <code>{"{{now}}"}</code>
+                        Variables: <code>{"{{record.campo}}"}</code> Â· <code>{"{{now}}"}</code>
                     </div>
                     </div>
                 </div>
@@ -1059,7 +1191,7 @@ function save() {
                     <div className="card-header">Divider</div>
                     <div className="card-body">
                     <div className="text-muted small">
-                        Este bloque es una línea separadora. No tiene propiedades.
+                        Este bloque es una lÃ­nea separadora. No tiene propiedades.
                     </div>
                     </div>
                 </div>
@@ -1069,7 +1201,7 @@ function save() {
                     <div className="card-header">Tabla</div>
                     <div className="card-body">
                     <div className="mb-3">
-                        <label className="form-label">Título</label>
+                        <label className="form-label">TÃ­tulo</label>
                         <input
                         className="form-control"
                         value={selectedBlock.title ?? ""}
@@ -1141,11 +1273,11 @@ function save() {
                               })
                             }
                           />
-                          <div className="form-text">Ej: 40 para totales (más estrecha)</div>
+                          <div className="form-text">Ej: 40 para totales (mÃ¡s estrecha)</div>
                         </div>
 
                         <div className="col-12 col-md-6">
-                          <label className="form-label">Alineación</label>
+                          <label className="form-label">AlineaciÃ³n</label>
                           <select
                             className="form-select"
                             value={selectedBlock.layout?.align ?? "left"}
@@ -1261,7 +1393,7 @@ function save() {
                                     updateBlock(selectedBlock.id, "table", { columns: next });
                                 }}
                                 >
-                                ✕
+                                âœ•
                                 </button>
                             )}
                             </div>
@@ -1273,7 +1405,7 @@ function save() {
                             <div>
                               <div className="fw-semibold">Filas manuales (opcional)</div>
                               <div className="text-muted small">
-                                Si defines filas aquí, la tabla usa estas filas. Si una celda es <code>null</code>,
+                                Si defines filas aquÃ­, la tabla usa estas filas. Si una celda es <code>null</code>,
                                 se usa el <code>value</code> de la columna como fallback.
                               </div>
                             </div>
@@ -1303,7 +1435,7 @@ function save() {
                                   }}
                                   disabled={readOnly}
                                 >
-                                  + Añadir fila
+                                  + AÃ±adir fila
                                 </button>
                               </div>
                             )}
@@ -1312,7 +1444,7 @@ function save() {
                           <div className="card-body">
                             {(((selectedBlock as any).rows ?? []) as any[]).length === 0 ? (
                               <div className="text-muted">
-                                No hay filas manuales. La tabla usará <code>repeat</code>.
+                                No hay filas manuales. La tabla usarÃ¡ <code>repeat</code>.
                               </div>
                             ) : (
                               <div className="d-flex flex-column gap-2">
@@ -1374,7 +1506,7 @@ function save() {
                                                   className="form-control form-control-sm"
                                                   value={v ?? ""}
                                                   disabled={readOnly}
-                                                  placeholder="(vacío = usar fallback)"
+                                                  placeholder="(vacÃ­o = usar fallback)"
                                                   onChange={(e) => {
                                                     const txt = e.target.value;
                                                     const next = fixed.slice();
@@ -1393,7 +1525,7 @@ function save() {
                                                       patchRow(next);
                                                     }}
                                                   >
-                                                    ↺
+                                                    â†º
                                                   </button>
                                                 )}
                                               </div>
@@ -1412,7 +1544,7 @@ function save() {
                             )}
 
                             <div className="alert alert-light small mt-3 mb-0">
-                              Consejo: para totales, pon <code>repeat</code> vacío y usa filas manuales + layout (45% derecha).
+                              Consejo: para totales, pon <code>repeat</code> vacÃ­o y usa filas manuales + layout (45% derecha).
                             </div>
                           </div>
                         </div>
@@ -1433,7 +1565,7 @@ function save() {
                       <div className="card-body">
                         {/* -------- Title -------- */}
                         <div className="mb-3">
-                          <label className="form-label">Título del bloque</label>
+                          <label className="form-label">TÃ­tulo del bloque</label>
                           <input
                             className="form-control"
                             value={selectedBlock.title ?? ""}
@@ -1450,7 +1582,7 @@ function save() {
                             <label className="form-label">Related: Tareas</label>
                             <select
                               className="form-select"
-                              value={selectedBlock.tareasKey ?? ""}  // ✅ no rompe si falta
+                              value={selectedBlock.tareasKey ?? ""}  // âœ… no rompe si falta
                               disabled={readOnly}
                               onChange={(e) =>
                                 updateBlock(selectedBlock.id, "budgetPartidas", { tareasKey: e.target.value })
@@ -1493,7 +1625,7 @@ function save() {
                             <label className="form-label">Agrupar por campo de tarea</label>
                             <input
                               className="form-control"
-                              value={selectedBlock.groupByField ?? ""} // ✅ no rompe si falta
+                              value={selectedBlock.groupByField ?? ""} // âœ… no rompe si falta
                               disabled={readOnly}
                               onChange={(e) =>
                                 updateBlock(selectedBlock.id, "budgetPartidas", { groupByField: e.target.value })
@@ -1501,16 +1633,16 @@ function save() {
                               placeholder="Ej: service o serviceId"
                             />
                             <div className="form-text">
-                              Si es UUID, el renderer usará{" "}
+                              Si es UUID, el renderer usarÃ¡{" "}
                               <code>{(selectedBlock.groupByField ?? "campo") + "__label"}</code> si existe.
                             </div>
                           </div>
 
                           <div className="col-12 col-md-6">
-                            <label className="form-label">Título de la partida</label>
+                            <label className="form-label">TÃ­tulo de la partida</label>
                             <input
                               className="form-control"
-                              value={selectedBlock.groupTitleTpl ?? ""} // ✅ no rompe si falta
+                              value={selectedBlock.groupTitleTpl ?? ""} // âœ… no rompe si falta
                               disabled={readOnly}
                               onChange={(e) =>
                                 updateBlock(selectedBlock.id, "budgetPartidas", { groupTitleTpl: e.target.value })
@@ -1527,7 +1659,7 @@ function save() {
                               <div className="card-header">Estilo del bloque (variant)</div>
                               <div className="card-body">
                                 {(() => {
-                                  // variants disponibles: si existen en theme, úsalas; si no, fallback
+                                  // variants disponibles: si existen en theme, Ãºsalas; si no, fallback
                                   const variantsFromTheme = Object.keys(
                                     (template as any)?.theme?.budgetPartidas?.variants ?? {}
                                   );
@@ -1561,7 +1693,7 @@ function save() {
                                             ))}
                                           </select>
                                           <div className="form-text">
-                                            Esto solo afecta a este bloque. El renderer aplicará <code>bp-{currentVariant}</code> y variables CSS.
+                                            Esto solo afecta a este bloque. El renderer aplicarÃ¡ <code>bp-{currentVariant}</code> y variables CSS.
                                           </div>
                                         </div>
 
@@ -1729,12 +1861,12 @@ function save() {
                                       onChange={(e) => patchOv({ showTaskBox: e.target.checked })}
                                     />
                                     <label className="form-check-label">
-                                      Mostrar tareas en “caja” (card)
+                                      Mostrar tareas en â€œcajaâ€ (card)
                                     </label>
                                   </div>
 
                                   <div className="alert alert-light small mt-3 mb-0">
-                                    Estos overrides solo afectan a <b>este bloque</b>. Si lo dejas vacío, se usa el preset del theme.
+                                    Estos overrides solo afectan a <b>este bloque</b>. Si lo dejas vacÃ­o, se usa el preset del theme.
                                   </div>
                                 </>
                               );
@@ -1765,7 +1897,7 @@ function save() {
                                       },
                                     } as any);
                                   } else {
-                                    // ✅ no toca legacy fields; solo quita lookup
+                                    // âœ… no toca legacy fields; solo quita lookup
                                     updateBlock(selectedBlock.id, "budgetPartidas", {
                                       groupByLookup: undefined,
                                     } as any);
@@ -1773,7 +1905,7 @@ function save() {
                                 }}
                               />
                               <label className="form-check-label">
-                                El campo de agrupación es un UUID y necesito mostrar su nombre
+                                El campo de agrupaciÃ³n es un UUID y necesito mostrar su nombre
                               </label>
                             </div>
 
@@ -1866,10 +1998,10 @@ function save() {
 
                         {/* -------- Materials FK -------- */}
                         <div className="mb-3 mt-3">
-                          <label className="form-label">FK en Materiales → Tarea</label>
+                          <label className="form-label">FK en Materiales â†’ Tarea</label>
                           <input
                             className="form-control"
-                            value={selectedBlock.materialesFkToTarea ?? ""} // ✅ no rompe si falta
+                            value={selectedBlock.materialesFkToTarea ?? ""} // âœ… no rompe si falta
                             disabled={readOnly}
                             onChange={(e) =>
                               updateBlock(selectedBlock.id, "budgetPartidas", { materialesFkToTarea: e.target.value })
@@ -1883,26 +2015,26 @@ function save() {
                           <label className="form-label">Texto de Tarea</label>
                           <input
                             className="form-control"
-                            value={selectedBlock.tareaTitleTpl ?? ""} // ✅ no rompe si falta
+                            value={selectedBlock.tareaTitleTpl ?? ""} // âœ… no rompe si falta
                             disabled={readOnly}
                             onChange={(e) =>
                               updateBlock(selectedBlock.id, "budgetPartidas", { tareaTitleTpl: e.target.value })
                             }
-                            placeholder="Ej: – {{item.title}}"
+                            placeholder="Ej: - {{item.title}}"
                           />
                           <div className="form-text">item = tarea</div>
                         </div>
 
                         <div className="mb-3">
-                          <label className="form-label">Línea de Material</label>
+                          <label className="form-label">Linea de Material</label>
                           <input
                             className="form-control"
-                            value={selectedBlock.materialLineTpl ?? ""} // ✅ no rompe si falta
+                            value={selectedBlock.materialLineTpl ?? ""} // âœ… no rompe si falta
                             disabled={readOnly}
                             onChange={(e) =>
                               updateBlock(selectedBlock.id, "budgetPartidas", { materialLineTpl: e.target.value })
                             }
-                            placeholder="Ej: • {{item.nombre}} x{{item.cantidad}} — {{item.total}} €"
+                            placeholder="Ej: - {{item.nombre}} x{{item.cantidad}} - {{item.total}} €"
                           />
                           <div className="form-text">item = material</div>
                         </div>
@@ -1973,9 +2105,65 @@ function save() {
                   <div className="card-header">Tarjetas</div>
 
                   <div className="card-body">
-                    {/* título */}
+                    {!testId && (
+                      <div className="alert alert-warning small">
+                        Define un <b>ID prueba</b> para resolver variables como <code>{"{{record.c_name}}"}</code> en el constructor.
+                      </div>
+                    )}
+                    {previewCtxError && (
+                      <div className="alert alert-danger small">
+                        No se pudo cargar el contexto de prueba: {previewCtxError}
+                      </div>
+                    )}
+                    {previewCtx && (
+                      <details className="mb-3">
+                        <summary className="small fw-semibold" style={{ cursor: "pointer" }}>
+                          Debug runtime context
+                        </summary>
+                        <div className="border rounded p-2 mt-2 bg-light">
+                          <div className="small text-muted mb-2">
+                            related keys: {Object.keys((previewCtx as any).related ?? {}).join(", ") || "(ninguna)"}
+                          </div>
+                          <div className="row g-2">
+                            <div className="col-12 col-md-6">
+                              <label className="form-label small mb-1">record</label>
+                              <textarea
+                                className="form-control form-control-sm font-monospace"
+                                rows={12}
+                                readOnly
+                                value={prettyJson((previewCtx as any).record)}
+                              />
+                            </div>
+                            <div className="col-12 col-md-6">
+                              <label className="form-label small mb-1">singleton related rows</label>
+                              <textarea
+                                className="form-control form-control-sm font-monospace"
+                                rows={12}
+                                readOnly
+                                value={prettyJson(
+                                  singletonRelatedRows(previewCtx).reduce((acc, item) => {
+                                    acc[item.key] = item.row;
+                                    return acc;
+                                  }, {} as Record<string, unknown>)
+                                )}
+                              />
+                            </div>
+                            <div className="col-12">
+                              <label className="form-label small mb-1">raw related</label>
+                              <textarea
+                                className="form-control form-control-sm font-monospace"
+                                rows={10}
+                                readOnly
+                                value={prettyJson((previewCtx as any).related)}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </details>
+                    )}
+                    {/* tÃ­tulo */}
                     <div className="mb-3">
-                      <label className="form-label">Título</label>
+                      <label className="form-label">TÃ­tulo</label>
                       <input
                         className="form-control"
                         value={selectedBlock.title ?? ""}
@@ -2020,7 +2208,7 @@ function save() {
                       </div>
                     </div>
 
-                    {/* repeat (si quieres permitir dinámico) */}
+                    {/* repeat (si quieres permitir dinÃ¡mico) */}
                     {"repeat" in selectedBlock && (
                       <div className="mb-3">
                         <label className="form-label">Repeat (opcional)</label>
@@ -2032,7 +2220,7 @@ function save() {
                           placeholder='Ej: related.contactos'
                         />
                         <div className="form-text">
-                          Si pones repeat, se usan tarjetas dinámicas con <code>{"{{item.campo}}"}</code>.
+                          Si pones repeat, se usan tarjetas dinÃ¡micas con <code>{"{{item.campo}}"}</code>.
                         </div>
                       </div>
                     )}
@@ -2109,7 +2297,7 @@ function save() {
                       </div>
                     </div>
 
-                    {/* listado de tarjetas (modo estático) */}
+                    {/* listado de tarjetas (modo estÃ¡tico) */}
                     {"cards" in selectedBlock && (
                       <div className="border rounded p-2">
                         <div className="d-flex justify-content-between align-items-center mb-2">
@@ -2129,7 +2317,7 @@ function save() {
                                 updateBlock(selectedBlock.id, "cards", { cards: next } as any);
                               }}
                             >
-                              + Añadir tarjeta
+                              + AÃ±adir tarjeta
                             </button>
                           )}
                         </div>
@@ -2149,6 +2337,9 @@ function save() {
                                     updateBlock(selectedBlock.id, "cards", { cards: next } as any);
                                   }}
                                 />
+                                <div className="form-text">
+                                  Resuelto: <span className="text-dark">{applyBindings(c.title ?? "", previewCtx) || "(vacÃ­o)"}</span>
+                                </div>
                               </div>
                               <div className="col-6">
                                 <label className="form-label small mb-1">Subtitle</label>
@@ -2162,6 +2353,9 @@ function save() {
                                     updateBlock(selectedBlock.id, "cards", { cards: next } as any);
                                   }}
                                 />
+                                <div className="form-text">
+                                  Resuelto: <span className="text-dark">{applyBindings(c.subtitle ?? "", previewCtx) || "(vacÃ­o)"}</span>
+                                </div>
                               </div>
                               <div className="col-1">
                                 {!readOnly && (
@@ -2173,18 +2367,242 @@ function save() {
                                       updateBlock(selectedBlock.id, "cards", { cards: next } as any);
                                     }}
                                   >
-                                    ✕
+                                    âœ•
                                   </button>
                                 )}
                               </div>
                             </div>
 
+                            <div className="border rounded p-2 mt-2 bg-light-subtle">
+                              <div className="d-flex justify-content-between align-items-center mb-2">
+                                <div className="fw-semibold small mb-0">Contenido de la tarjeta</div>
+                                {!readOnly && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-primary"
+                                    onClick={() => {
+                                      const blocks = Array.isArray(c.blocks) ? c.blocks : [];
+                                      updateStaticCardBlocks(selectedBlock.id, selectedBlock.cards ?? [], idx, [
+                                        ...blocks,
+                                        { id: uid(), type: "text", value: "Contenido", variant: "normal" },
+                                      ]);
+                                    }}
+                                  >
+                                    + Texto
+                                  </button>
+                                )}
+                              </div>
+
+                              {Array.isArray(c.blocks) && c.blocks.length ? (
+                                <div className="d-flex flex-column gap-2">
+                                  {c.blocks.map((inner: any, innerIdx: number) => {
+                                    const innerBlocks = Array.isArray(c.blocks) ? c.blocks : [];
+                                    const updateInner = (patch: any) => {
+                                      const next = [...innerBlocks];
+                                      next[innerIdx] = { ...next[innerIdx], ...patch };
+                                      updateStaticCardBlocks(selectedBlock.id, selectedBlock.cards ?? [], idx, next);
+                                    };
+
+                                    const removeInner = () => {
+                                      const next = innerBlocks.filter((_: any, i: number) => i !== innerIdx);
+                                      updateStaticCardBlocks(selectedBlock.id, selectedBlock.cards ?? [], idx, next);
+                                    };
+
+                                    return (
+                                      <div key={inner.id ?? innerIdx} className="border rounded p-2 bg-white">
+                                        <div className="d-flex justify-content-between align-items-center mb-2">
+                                          <span className="badge text-bg-secondary">{inner.type}</span>
+                                          {!readOnly && (
+                                            <button
+                                              type="button"
+                                              className="btn btn-sm btn-outline-danger"
+                                              onClick={removeInner}
+                                            >
+                                              Eliminar
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        {inner.type === "text" ? (
+                                          <>
+                                            <textarea
+                                              className="form-control form-control-sm"
+                                              rows={3}
+                                              value={inner.value ?? ""}
+                                              readOnly={readOnly}
+                                              onChange={(e) => updateInner({ value: e.target.value })}
+                                            />
+                                            <div className="form-text">
+                                              Preview: <span className="text-dark">{plainTextPreview(applyBindings(inner.value ?? "", previewCtx)) || "(vacÃ­o)"}</span>
+                                            </div>
+                                          </>
+                                        ) : inner.type === "divider" ? (
+                                          <div className="small text-muted">LÃ­nea divisoria</div>
+                                        ) : inner.type === "table" ? (
+                                          <div className="small text-muted">
+                                            Tabla: {inner.title || "(sin tÃ­tulo)"} Â· columnas {(inner.columns ?? []).length}
+                                          </div>
+                                        ) : inner.type === "budgetPartidas" ? (
+                                          <div className="small text-muted">
+                                            Partidas: {inner.title || "(sin tÃ­tulo)"}
+                                          </div>
+                                        ) : inner.type === "header" ? (
+                                          <div className="small text-muted">
+                                            Header: {inner.title || "(sin tÃ­tulo)"}
+                                          </div>
+                                        ) : (
+                                          <div className="small text-muted">Bloque interno configurado</div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="small text-muted">Sin contenido dentro de la tarjeta.</div>
+                              )}
+
+                              <div className="form-text mt-2 mb-0">
+                                Los bloques internos ya se ven aquÃ­; los de tipo <code>text</code> tambiÃ©n se pueden editar directamente.
+                              </div>
+                            </div>
+
                             <div className="alert alert-light small mt-2 mb-0">
                               Dentro de esta tarjeta, mete bloques (text/table/divider/partidas).  
-                              *Tip*: si quieres “solo datos” sin HTML raro, usa el textarea normal en los `text`.
+                              *Tip*: si quieres â€œsolo datosâ€ sin HTML raro, usa el textarea normal en los `text`.
                             </div>
                           </div>
                         ))}
+                      </div>
+                    )}
+                    {"card" in selectedBlock && (
+                      <div className="border rounded p-2 mt-3">
+                        <div className="fw-semibold mb-2">Plantilla de tarjeta dinÃ¡mica</div>
+                        <div className="row g-2 align-items-end">
+                          <div className="col-6">
+                            <label className="form-label small mb-1">Title</label>
+                            <input
+                              className="form-control form-control-sm"
+                              value={selectedBlock.card?.title ?? ""}
+                              disabled={readOnly}
+                              onChange={(e) =>
+                                updateRepeatCardTemplate(selectedBlock.id, selectedBlock.card, { title: e.target.value })
+                              }
+                            />
+                            <div className="form-text">
+                              Resuelto: <span className="text-dark">{applyBindings(selectedBlock.card?.title ?? "", {
+                                ...(previewCtx ?? {}),
+                                item:
+                                  (typeof selectedBlock.repeat === "string" &&
+                                  Array.isArray(getByPath(previewCtx, selectedBlock.repeat)))
+                                    ? getByPath(previewCtx, selectedBlock.repeat)?.[0]
+                                    : undefined,
+                              }) || "(vacÃ­o)"}</span>
+                            </div>
+                          </div>
+                          <div className="col-6">
+                            <label className="form-label small mb-1">Subtitle</label>
+                            <input
+                              className="form-control form-control-sm"
+                              value={selectedBlock.card?.subtitle ?? ""}
+                              disabled={readOnly}
+                              onChange={(e) =>
+                                updateRepeatCardTemplate(selectedBlock.id, selectedBlock.card, { subtitle: e.target.value })
+                              }
+                            />
+                            <div className="form-text">
+                              Resuelto: <span className="text-dark">{applyBindings(selectedBlock.card?.subtitle ?? "", {
+                                ...(previewCtx ?? {}),
+                                item:
+                                  (typeof selectedBlock.repeat === "string" &&
+                                  Array.isArray(getByPath(previewCtx, selectedBlock.repeat)))
+                                    ? getByPath(previewCtx, selectedBlock.repeat)?.[0]
+                                    : undefined,
+                              }) || "(vacÃ­o)"}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="border rounded p-2 mt-2 bg-light-subtle">
+                          <div className="d-flex justify-content-between align-items-center mb-2">
+                            <div className="fw-semibold small mb-0">Contenido de la plantilla</div>
+                            {!readOnly && (
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-primary"
+                                onClick={() =>
+                                  updateRepeatCardTemplate(selectedBlock.id, selectedBlock.card, {
+                                    blocks: [
+                                      ...(selectedBlock.card?.blocks ?? []),
+                                      { id: uid(), type: "text", value: "Contenido {{item.campo}}", variant: "normal" },
+                                    ],
+                                  })
+                                }
+                              >
+                                + Texto
+                              </button>
+                            )}
+                          </div>
+
+                          {Array.isArray(selectedBlock.card?.blocks) && selectedBlock.card.blocks.length ? (
+                            <div className="d-flex flex-column gap-2">
+                              {selectedBlock.card.blocks.map((inner: any, innerIdx: number) => {
+                                const innerBlocks = Array.isArray(selectedBlock.card?.blocks) ? selectedBlock.card.blocks : [];
+                                const updateInner = (patch: any) => {
+                                  const next = [...innerBlocks];
+                                  next[innerIdx] = { ...next[innerIdx], ...patch };
+                                  updateRepeatCardTemplate(selectedBlock.id, selectedBlock.card, { blocks: next });
+                                };
+
+                                const removeInner = () => {
+                                  const next = innerBlocks.filter((_: any, i: number) => i !== innerIdx);
+                                  updateRepeatCardTemplate(selectedBlock.id, selectedBlock.card, { blocks: next });
+                                };
+
+                                return (
+                                  <div key={inner.id ?? innerIdx} className="border rounded p-2 bg-white">
+                                    <div className="d-flex justify-content-between align-items-center mb-2">
+                                      <span className="badge text-bg-secondary">{inner.type}</span>
+                                      {!readOnly && (
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-outline-danger"
+                                          onClick={removeInner}
+                                        >
+                                          Eliminar
+                                        </button>
+                                      )}
+                                    </div>
+                                    {inner.type === "text" ? (
+                                      <>
+                                        <textarea
+                                          className="form-control form-control-sm"
+                                          rows={3}
+                                          value={inner.value ?? ""}
+                                          readOnly={readOnly}
+                                          onChange={(e) => updateInner({ value: e.target.value })}
+                                        />
+                                        <div className="form-text">
+                                          <span className="text-dark">{plainTextPreview(applyBindings(inner.value ?? "", {
+                                            ...(previewCtx ?? {}),
+                                            item:
+                                              (typeof selectedBlock.repeat === "string" &&
+                                              Array.isArray(getByPath(previewCtx, selectedBlock.repeat)))
+                                                ? getByPath(previewCtx, selectedBlock.repeat)?.[0]
+                                                : undefined,
+                                          })) || "(vacÃ­o)"}</span>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <div className="small text-muted">Bloque interno configurado</div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="small text-muted">Sin contenido en la plantilla dinÃ¡mica.</div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2207,7 +2625,7 @@ function save() {
                     onClick={() => moveBlockUp(selectedBlock.id)}
                     title="Subir bloque"
                     >
-                    ↑
+                    â†‘
                     </button>
 
                     <button
@@ -2216,20 +2634,20 @@ function save() {
                     onClick={() => moveBlockDown(selectedBlock.id)}
                     title="Bajar bloque"
                     >
-                    ↓
+                    â†“
                     </button>
 
                     <button
                     type="button"
                     className="btn btn-outline-danger btn-sm ms-auto"
                     onClick={() => {
-                        if (confirm("¿Eliminar este bloque?")) {
+                        if (confirm("Â¿Eliminar este bloque?")) {
                         deleteBlock(selectedBlock.id);
                         }
                     }}
                     title="Eliminar bloque"
                     >
-                    🗑 Eliminar
+                    ðŸ—‘ Eliminar
                     </button>
                 </div>
                 )}
@@ -2283,7 +2701,7 @@ function save() {
 
                 {/* Base font */}
                 <div className="col-12 col-md-4">
-                  <label className="form-label">Tamaño base (px)</label>
+                  <label className="form-label">TamaÃ±o base (px)</label>
                   <input
                     type="number"
                     className="form-control"
@@ -2301,7 +2719,7 @@ function save() {
 
                 {/* Page margin */}
                 <div className="col-12 col-md-4">
-                  <label className="form-label">Margen página (px)</label>
+                  <label className="form-label">Margen pÃ¡gina (px)</label>
                   <input
                     type="number"
                     className="form-control"
@@ -2323,7 +2741,7 @@ function save() {
 
                 {/* Colores base */}
                 <div className="col-12 col-md-3">
-                  <label className="form-label">Fondo página</label>
+                  <label className="form-label">Fondo pÃ¡gina</label>
                   <input
                     type="color"
                     className="form-control form-control-color"
@@ -2545,7 +2963,7 @@ function save() {
                       })
                     }
                   />
-                  <div className="form-text">Solo si zebra está activo</div>
+                  <div className="form-text">Solo si zebra estÃ¡ activo</div>
                 </div>
               </div>
             </div>
@@ -2568,3 +2986,4 @@ function save() {
     </form>
   );
 }
+

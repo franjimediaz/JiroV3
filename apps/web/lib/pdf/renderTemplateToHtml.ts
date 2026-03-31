@@ -1,7 +1,8 @@
-// /lib/pdf/renderTemplateToHtml.ts
-// Renderer “pro” con:
-// - theme global (fuente, colores, header bg, tabla, zebra, bordes, márgenes)
-// - estilos por bloque (color, fondo, tamaño, negrita, itálica, align, padding, borderRadius)
+﻿// /lib/pdf/renderTemplateToHtml.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// Renderer â€œproâ€ con:
+// - theme global (fuente, colores, header bg, tabla, zebra, bordes, mÃ¡rgenes)
+// - estilos por bloque (color, fondo, tamaÃ±o, negrita, itÃ¡lica, align, padding, borderRadius)
 // - estilos por tabla (dense, zebra, headerBg override, borderColor override)
 // - estilos por columna (align, width, color, bold, background, fontSize)
 // - bloque budgetPartidas (Partida -> tareas -> materiales)
@@ -9,24 +10,104 @@
 import sanitizeHtml from "sanitize-html";
 
 type AnyObj = Record<string, any>;
+const EURO_HTML = "&#8364;";
+
+function repairMojibake(input: any) {
+  if (input === undefined || input === null) return input;
+  return String(input)
+    .replaceAll("â‚¬", "€")
+    .replaceAll("â€”", "—")
+    .replaceAll("â€“", "–")
+    .replaceAll("â€¢", "•")
+    .replaceAll("â€œ", '"')
+    .replaceAll("â€", '"')
+    .replaceAll("â€˜", "'")
+    .replaceAll("â€™", "'")
+    .replaceAll("Ã¡", "á")
+    .replaceAll("Ã©", "é")
+    .replaceAll("Ã­", "í")
+    .replaceAll("Ã³", "ó")
+    .replaceAll("Ãº", "ú")
+    .replaceAll("Ã±", "ñ")
+    .replaceAll("Ã", "Á")
+    .replaceAll("Ã‰", "É")
+    .replaceAll("Ã", "Í")
+    .replaceAll("Ã“", "Ó")
+    .replaceAll("Ãš", "Ú")
+    .replaceAll("Ã‘", "Ñ");
+}
+
+function singletonRelatedRows(ctx: AnyObj) {
+  const related = ctx?.related;
+  if (!related || typeof related !== "object") return [];
+
+  const relatedEntries = Object.entries(related as Record<string, unknown[]>);
+
+  return relatedEntries
+    .filter(([, rows]) => rows.length === 1 && rows[0] && typeof rows[0] === "object")
+    .map(([key, rows]) => ({ key, row: rows[0] as AnyObj }));
+}
+
+function preferredLabel(row: AnyObj) {
+  for (const key of ["name", "title", "label"]) {
+    if (row?.[key] !== undefined && row?.[key] !== null && row?.[key] !== "") return row[key];
+  }
+  return undefined;
+}
+
+function lookupRelatedFallback(ctx: AnyObj, field: string) {
+  const singletons = singletonRelatedRows(ctx);
+  const matches: any[] = [];
+
+  for (const { key, row } of singletons) {
+    if (field === key) {
+      const label = preferredLabel(row);
+      if (label !== undefined) matches.push(label);
+      continue;
+    }
+
+    if (field.startsWith(`${key}_`)) {
+      const nestedField = field.slice(key.length + 1);
+      if (nestedField in row) matches.push(row[nestedField]);
+      continue;
+    }
+
+    const initial = key.charAt(0);
+    if (initial && field.startsWith(`${initial}_`)) {
+      const nestedField = field.slice(2);
+      if (nestedField in row) matches.push(row[nestedField]);
+      continue;
+    }
+
+    if (field in row) matches.push(row[field]);
+  }
+
+  return matches.length === 1 ? matches[0] : undefined;
+}
 
 function getByPath(obj: any, path: string) {
-  return String(path)
-    .split(".")
-    .reduce((acc: any, k: string) => (acc && k in acc ? acc[k] : undefined), obj);
+  const parts = String(path).split(".");
+  const direct = parts.reduce((acc: any, k: string) => (acc && k in acc ? acc[k] : undefined), obj);
+  if (direct !== undefined) return direct;
+
+  if (parts.length === 2 && (parts[0] === "record" || parts[0] === "item")) {
+    return lookupRelatedFallback(obj, parts[1]);
+  }
+
+  return undefined;
 }
 
 function tpl(input: any, ctx: AnyObj) {
   if (typeof input !== "string") return input;
-  return input.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, raw) => {
+  return repairMojibake(input.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, raw) => {
     const key = String(raw).trim();
     const val = getByPath(ctx, key);
     return val === undefined || val === null ? "" : String(val);
-  });
+  }));
 }
 
 function escHtml(s: any) {
-  return String(s)
+  return repairMojibake(String(s))
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -104,11 +185,11 @@ function tplRaw(input: any, ctx: AnyObj) {
   if (typeof input !== "string") return input;
 
   // {{{ path }}} => raw (sin escapar)
-  return input.replace(/\{\{\{\s*([^}]+?)\s*\}\}\}/g, (_m, raw) => {
+  return repairMojibake(input.replace(/\{\{\{\s*([^}]+?)\s*\}\}\}/g, (_m, raw) => {
     const key = String(raw).trim();
     const val = getByPath(ctx, key);
     return val === undefined || val === null ? "" : String(val);
-  });
+  }));
 }
 
 function safeHtml(html: any) {
@@ -133,29 +214,18 @@ function safeHtml(html: any) {
   });
 }
 
-function renderCell(cellTpl: any, ctx: AnyObj, col: any) {
-  const isRich = col?.variant === "richtext" || col?.richtext === true;
-
-  // 1) Resolver bindings (funciona con {{...}} y también con {{{...}}} si los usas)
-  // Nota: tpl() resuelve {{...}}. Si quieres también {{{...}}}, hacemos un “doble pase”.
+function renderCell(cellTpl: any, ctx: AnyObj) {
+  // 1) Resolver bindings (funciona con {{...}} y tambiÃ©n con {{{...}}} si los usas)
+  // Nota: tpl() resuelve {{...}}. Si quieres tambiÃ©n {{{...}}}, hacemos un â€œdoble paseâ€.
   const resolved = tpl(tplRaw(cellTpl ?? "", ctx), ctx);
-
-  if (true) {
-    const s = String(resolved ?? "");
-    const raw = unescapeHtml(String(resolved ?? ""));
-  
-    //return `<div style="border:1px solid red ">DEBUG: ${escHtml(s)}</div>`;
-    return safeHtml(raw);
-  }
-
-  // 3) Texto normal escapado
-  return escHtml(resolved);
+  const raw = unescapeHtml(String(resolved ?? ""));
+  return safeHtml(raw);
 }
 
 
 
 /**
- * ✅ Theme ampliado SIN romper plantillas viejas:
+ * âœ… Theme ampliado SIN romper plantillas viejas:
  * - mutedColor nuevo (si no existe, cae a #6b7280)
  * - radius/sombra opcional (pro, pero safe defaults)
  */
@@ -164,7 +234,7 @@ type Theme = {
   baseFontSize?: number;
 
   textColor?: string;
-  mutedColor?: string; // ✅ nuevo
+  mutedColor?: string; // âœ… nuevo
   primaryColor?: string;
 
   pageBg?: string;
@@ -175,8 +245,8 @@ type Theme = {
 
   dividerColor?: string;
 
-  radius?: number; // ✅ nuevo opcional
-  shadow?: "none" | "sm" | "md"; // ✅ nuevo opcional
+  radius?: number; // âœ… nuevo opcional
+  shadow?: "none" | "sm" | "md"; // âœ… nuevo opcional
 
   table?: {
     headerBg?: string;
@@ -205,12 +275,12 @@ type Theme = {
         materialMuted?: string;
         totalBg?: string;
 
-        // extras “pro” opcionales
+        // extras â€œproâ€ opcionales
         taskBorder?: string;
         taskBg?: string;
         taskRadius?: number;
         chapterRadius?: number;
-        showTaskBox?: boolean; // si quieres tareas “en cards” o plano
+        showTaskBox?: boolean; // si quieres tareas â€œen cardsâ€ o plano
       }
     >;
   };
@@ -247,7 +317,7 @@ const mergedVariants: Record<string, any> = {
   compact: { ...defaultVariant, showTaskBox: false },
   boxed: { ...defaultVariant, taskBg: "#f9fafb", taskBorder: "#d1d5db" },
   minimal: { ...defaultVariant, chapterBg: "transparent", totalBg: "transparent", showTaskBox: false },
-  ...variants, // el usuario puede añadir los suyos
+  ...variants, // el usuario puede aÃ±adir los suyos
 };
 
   return {
@@ -255,7 +325,7 @@ const mergedVariants: Record<string, any> = {
     baseFontSize: theme.baseFontSize ?? 12,
 
     textColor: theme.textColor ?? "#111827",
-    mutedColor: theme.mutedColor ?? "#6b7280", // ✅
+    mutedColor: theme.mutedColor ?? "#6b7280", // âœ…
     primaryColor: theme.primaryColor ?? "#2563eb",
 
     pageBg: theme.pageBg ?? "#ffffff",
@@ -266,8 +336,8 @@ const mergedVariants: Record<string, any> = {
 
     dividerColor: theme.dividerColor ?? "#e5e7eb",
 
-    radius: typeof theme.radius === "number" ? theme.radius : 12, // ✅ default pro
-    shadow: theme.shadow ?? "none", // ✅ default seguro
+    radius: typeof theme.radius === "number" ? theme.radius : 12, // âœ… default pro
+    shadow: theme.shadow ?? "none", // âœ… default seguro
 
     table: {
       headerBg: table.headerBg ?? "#f3f4f6",
@@ -344,8 +414,8 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
   const materialesKey = block.materialesKey ? String(block.materialesKey) : "";
   const materialesFkToTarea = String(block.materialesFkToTarea || "taskId");
 
-  const tareaTitleTpl = String(block.tareaTitleTpl || "– {{item.nombre}}");
-  const materialLineTpl = String(block.materialLineTpl || "• {{item.nombre}}");
+  const tareaTitleTpl = String(block.tareaTitleTpl || "- {{item.nombre}}");
+  const materialLineTpl = String(block.materialLineTpl || "- {{item.nombre}}");
 
   const tareaTotalField = block.tareaTotalField ? String(block.tareaTotalField) : "";
   const materialTotalField = block.materialTotalField ? String(block.materialTotalField) : "";
@@ -362,9 +432,6 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
 
   
 
-  const o = (block.variantOverrides && typeof block.variantOverrides === "object")
-    ? block.variantOverrides
-    : {};
 
 
 
@@ -408,7 +475,7 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
           const tTotalHtml = tareaTotalField
           
 
-            ? `<div class="bp-t-total">${escHtml(tTotal.toFixed(2))} €</div>`
+            ? `<div class="bp-t-total">${escHtml(tTotal.toFixed(2))} ${EURO_HTML}</div>`
             : "";
 
           return `
@@ -440,7 +507,7 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
         showSubtotals && (tareaTotalField || materialTotalField)
           ? `<div class="bp-subtotal">
                <span>Subtotal</span>
-               <strong>${escHtml(subtotal.toFixed(2))} €</strong>
+               <strong>${escHtml(subtotal.toFixed(2))} ${EURO_HTML}</strong>
              </div>`
           : "";
 
@@ -460,7 +527,7 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
     tareaTotalField || materialTotalField
       ? `<div class="bp-grand">
            <span>Total</span>
-           <strong>${escHtml(totalGeneral.toFixed(2))} €</strong>
+           <strong>${escHtml(totalGeneral.toFixed(2))} ${EURO_HTML}</strong>
          </div>`
       : "";
   const variant = String(block.variant || "classic");
@@ -505,7 +572,7 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
 
 function safeInlineRich(html: any) {
   // permite negrita/italica/saltos, pero sin romper layout
-  // Si quieres más tags, amplía aquí.
+  // Si quieres mÃ¡s tags, amplÃ­a aquÃ­.
   const clean = sanitizeHtml(String(html ?? ""), {
     allowedTags: ["b", "strong", "i", "em", "u", "br", "span"],
     allowedAttributes: {
@@ -561,7 +628,7 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
     `;
   }
 
-  // TEXTO NORMAL (aquí sí es texto)
+  // TEXTO NORMAL (aquÃ­ sÃ­ es texto)
   const value = escHtml(resolved);
   return `
     <div class="txt txt-normal"${styleToInline(block.style)}>
@@ -582,50 +649,54 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
       typeof gapRaw === "number" && Number.isFinite(gapRaw) ? Math.max(0, Math.min(40, gapRaw)) : 12;
 
     const baseCardStyle = block.cardStyle && typeof block.cardStyle === "object" ? block.cardStyle : {};
-    const cards = Array.isArray(block.cards) ? block.cards : [];
+    const staticCards = Array.isArray(block.cards) ? block.cards : [];
 
-    const cardsHtml = cards
-      .map((c: any) => {
-        const cTitle = escHtml(tpl(c.title ?? "", ctx));
+    const renderCard = (card: any, cardCtx: AnyObj) => {
+      const cTitle = escHtml(tpl(card?.title ?? "", cardCtx));
+      const cSubtitle = escHtml(tpl(card?.subtitle ?? "", cardCtx));
+      const cStyle = {
+        ...baseCardStyle,
+        ...(card?.style && typeof card.style === "object" ? card.style : {}),
+      };
 
-        // estilo final de la tarjeta = base + override por tarjeta
-        const cStyle = {
-          ...baseCardStyle,
-          ...(c.style && typeof c.style === "object" ? c.style : {}),
-        };
+      let content = "";
 
-        // contenido: lines o html
-        let content = "";
+      if (Array.isArray(card?.blocks) && card.blocks.length) {
+        content = card.blocks.map((inner: any) => renderBlock(inner, cardCtx, theme)).join("");
+      } else if (Array.isArray(card?.lines) && card.lines.length) {
+        content = card.lines
+          .map((line: any) => {
+            const resolved = tpl(tplRaw(line ?? "", cardCtx), cardCtx);
+            return `<div class="card-line">${safeInlineRich(resolved)}</div>`;
+          })
+          .join("");
+      } else if (typeof card?.html === "string" && card.html.trim()) {
+        const resolved = tpl(tplRaw(card.html ?? "", cardCtx), cardCtx);
+        const clean = sanitizeHtml(String(resolved ?? ""), {
+          allowedTags: ["p", "br", "b", "strong", "i", "em", "u", "ul", "ol", "li", "span"],
+          allowedAttributes: { span: ["style"] },
+        });
+        content = `<div class="card-html">${clean}</div>`;
+      } else {
+        content = `<div class="card-empty">Sin contenido</div>`;
+      }
 
-        if (Array.isArray(c.lines) && c.lines.length) {
-          content = c.lines
-            .map((line: any) => {
-              // resolvemos bindings y dejamos html inline safe
-              const resolved = tpl(tplRaw(line ?? "", ctx), ctx);
-              return `<div class="card-line">${safeInlineRich(resolved)}</div>`;
-            })
-            .join("");
-        } else if (typeof c.html === "string" && c.html.trim()) {
-          // si te interesa permitir un html “más rico” aquí, puedes sanitizar diferente
-          const resolved = tpl(tplRaw(c.html ?? "", ctx), ctx);
-          // ojo: aquí dejamos tags más amplios pero controlados
-          const clean = sanitizeHtml(String(resolved ?? ""), {
-            allowedTags: ["p", "br", "b", "strong", "i", "em", "u", "ul", "ol", "li", "span"],
-            allowedAttributes: { span: ["style"] },
-          });
-          content = `<div class="card-html">${clean}</div>`;
-        } else {
-          content = `<div class="card-empty">Sin contenido</div>`;
-        }
-
-        return `
+      return `
           <div class="cards-card"${styleToInline(cStyle)}>
             ${cTitle ? `<div class="cards-card-title">${cTitle}</div>` : ""}
+            ${cSubtitle ? `<div class="cards-card-subtitle">${cSubtitle}</div>` : ""}
             <div class="cards-card-body">${content}</div>
           </div>
         `;
-      })
-      .join("");
+    };
+
+    const cardsHtml = (
+      typeof block.repeat === "string" && block.repeat.trim() && block.card
+        ? (((getByPath(ctx, block.repeat) as any[]) || []).map((item: any) =>
+            renderCard(block.card, { ...ctx, item })
+          ))
+        : staticCards.map((card: any) => renderCard(card, ctx))
+    ).join("");
 
     return `
       <div class="cards"${styleToInline(block.style)}>
@@ -662,7 +733,7 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
     const repeatRows = (getByPath(ctx, repeatPath) as any[]) || [];
     const cols = Array.isArray(block.columns) ? block.columns : [];
 
-    // ✅ NUEVO: layout de tabla (ancho + align)
+    // âœ… NUEVO: layout de tabla (ancho + align)
     const layout = block.layout && typeof block.layout === "object" ? block.layout : {};
     const widthPctRaw = layout.widthPct;
     const widthPct =
@@ -707,7 +778,7 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
       })
       .join("");
 
-    // ✅ NUEVO: filas manuales
+    // âœ… NUEVO: filas manuales
     const manualRows = Array.isArray(block.rows) ? block.rows : [];
     const hasManual = manualRows.length > 0;
 
@@ -720,12 +791,12 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
               .map((c: any, i: number) => {
                 const colStyle: ColumnStyle = c.style && typeof c.style === "object" ? c.style : {};
 
-                // ✅ regla: si la celda es null/undefined => fallback a value de la columna
+                // âœ… regla: si la celda es null/undefined => fallback a value de la columna
                 const override = values[i];
                 const cellTpl = override === null || override === undefined ? (c.value ?? "") : override;
 
                 // En manual NO hay item, solo ctx (record/branding/now...)
-                const v = renderCell(cellTpl, ctx, c);
+                const v = renderCell(cellTpl, ctx);
                 
                 const tdInline = colStyleToInline(colStyle);
                 return `<td${tdInline}>${v}</td>`;
@@ -741,7 +812,7 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
             const tds = cols
               .map((c: any) => {
                 const colStyle: ColumnStyle = c.style && typeof c.style === "object" ? c.style : {};
-                const v = renderCell(c.value ?? "", rowCtx, c);
+                const v = renderCell(c.value ?? "", rowCtx);
                 const tdInline = colStyleToInline(colStyle);
                 return `<td${tdInline}>${v}</td>`;
               })
@@ -1088,6 +1159,12 @@ export function renderTemplateToHtml(template: any, ctx: AnyObj) {
     font-size: ${theme.baseFontSize + 1}px;
   }
 
+  .cards-card-subtitle{
+    color: var(--muted);
+    margin: -2px 0 6px;
+    font-size: ${theme.baseFontSize}px;
+  }
+
   .cards-card-body{ display:flex; flex-direction:column; gap: 4px; }
 
   .card-line{ line-height: 1.25; }
@@ -1104,3 +1181,5 @@ export function renderTemplateToHtml(template: any, ctx: AnyObj) {
   const body = blocks.map((b: any) => renderBlock(b, ctx, theme)).join("");
   return `<!doctype html><html><head><meta charset="utf-8">${css}</head><body>${body}</body></html>`;
 }
+
+

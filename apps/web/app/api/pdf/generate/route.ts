@@ -13,6 +13,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const slug = searchParams.get("template");
     const recordId = searchParams.get("id");
+    const cacheBust = searchParams.get("t") || Date.now().toString();
 
     if (!slug || !recordId) {
       return NextResponse.json(
@@ -28,7 +29,6 @@ export async function GET(req: Request) {
       .from("pdf_templates")
       .select("*")
       .eq("slug", slug)
-      .eq("is_active", true)
       .maybeSingle();
 
     if (error) {
@@ -74,7 +74,7 @@ export async function GET(req: Request) {
       },
       body: JSON.stringify({
         html,
-        filename: `${slug}-${recordId}.pdf`,
+        filename: `${slug}-${recordId}-${cacheBust}.pdf`,
         disposition: "inline", // cambia a "attachment" para descarga directa
       }),
     });
@@ -94,7 +94,7 @@ export async function GET(req: Request) {
     return new NextResponse(body, {
       headers: {
         "content-type": "application/pdf",
-        "content-disposition": `inline; filename="${slug}-${recordId}.pdf"`,
+        "content-disposition": `inline; filename="${slug}-${recordId}-${cacheBust}.pdf"`,
         "cache-control": "no-store",
       },
     });
