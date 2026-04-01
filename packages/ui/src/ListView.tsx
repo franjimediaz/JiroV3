@@ -261,14 +261,15 @@ export default function ListView({
         <table className="table table-sm mb-0 align-middle table-hover">
           <thead>
             <tr>
+              {(onViewRow || onEditRow || onDeleteRow) && (
+                <th className="text-start text-nowrap" style={{ background: color || "#5374a1ff" }}>#</th>
+              )}
               {listFields.map((f) => (
                 <th key={f.name} className="text-nowrap" style={{ background: color || "#5374a1ff" }}>
                   {f.label}
                 </th>
               ))}
-              {(onViewRow || onEditRow || onDeleteRow) && (
-                <th className="text-end text-nowrap" style={{ background: color || "#5374a1ff" }}>Acciones</th>
-              )}
+              
             </tr>
           </thead>
           <tbody>
@@ -286,15 +287,10 @@ export default function ListView({
               </tr>
             ) : (
               pagedData.map((row, idx) => (
+                
                 <tr key={row[primaryKey] ?? idx}>
-                  {listFields.map((f) => (
-                    <td key={f.name} className="text-nowrap hover-cell">
-                      {renderCell(row[f.name], f, labelCache)}
-                    </td>
-                  ))}
-
                   {(onViewRow || onEditRow || onDeleteRow) && (
-                    <td className="text-end text-nowrap">
+                    <td className="text-start text-nowrap">
                       <ActionMenu
                         items={[
                           onViewRow && {
@@ -318,6 +314,13 @@ export default function ListView({
                     </td>
 
                   )}
+                  {listFields.map((f) => (
+                    <td key={f.name} className="text-nowrap hover-cell">
+                      {renderCell(row[f.name], f, labelCache)}
+                    </td>
+                  ))}
+
+                  
                 </tr>
               ))
             )}
