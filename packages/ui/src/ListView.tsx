@@ -262,7 +262,7 @@ export default function ListView({
           <thead>
             <tr>
               {(onViewRow || onEditRow || onDeleteRow) && (
-                <th className="text-start text-nowrap" style={{ background: color || "#5374a1ff" }}>#</th>
+                <th className="text-start text-nowrap" style={{ background: color || "#5374a1ff" }}></th>
               )}
               {listFields.map((f) => (
                 <th key={f.name} className="text-nowrap" style={{ background: color || "#5374a1ff" }}>
