@@ -4,12 +4,22 @@ import type { Field, FieldType } from "@repo/types";
 import { IconPicker } from "./IconPicker";
 import Selector from "./Selector";
 import RichTextEditor from "./RichTextEditor";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 type Props = {
   field: Field;
   value: any;
   onChange: (v: any) => void;
   readOnly?: boolean;
+};
+type UploadedFileValue = {
+  bucket: string;
+  path: string;
+  url: string | null;
+  name: string;
+  size?: number;
+  mimeType?: string;
+  kind?: "file" | "image";
 };
 
 function toInputDate(value?: string) {
@@ -24,6 +34,146 @@ function toInputDateTimeLocal(value?: string) {
   const pad = (n: number) => String(n).padStart(2, "0");
 
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+async function uploadSingleFile(
+  file: File,
+  kind: "file" | "image",
+  folder = "general"
+): Promise<UploadedFileValue> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("kind", kind);
+  formData.append("folder", folder);
+
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data?.error || "No se pudo subir el archivo");
+  }
+
+  return {
+    bucket: data.bucket,
+    path: data.path,
+    url: data.url,
+    name: data.name || file.name,
+    size: data.size || file.size,
+    mimeType: data.mimeType || file.type,
+    kind,
+  };
+}
+function defaultForType(t: FieldType): any {
+  switch (t) {
+    case "number":
+    case "money":
+    case "percent":
+      return 0;
+    case "boolean":
+      return false;
+    case "multiselect":
+      return [];
+    case "file":
+    case "image":
+      return "";
+    default:
+      return "";
+  }
+}
+
+function FileFieldInput({
+  field,
+  value,
+  onChange,
+  readOnly,
+}: {
+  field: Field;
+  value: UploadedFileValue | "" | null;
+  onChange: (v: any) => void;
+  readOnly?: boolean;
+}) {
+  const [uploading, setUploading] = React.useState(false);
+  const isImage = field.type === "image";
+
+  const fileValue =
+    value && typeof value === "object" ? value as UploadedFileValue : null;
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploading(true);
+      const uploaded = await uploadSingleFile(file, isImage ? "image" : "file");
+      onChange(uploaded);
+    } catch (err) {
+      console.error(err);
+      alert("Error al subir el archivo");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  return (
+    <div className="d-flex flex-column gap-2">
+      {!readOnly && (
+        <input
+          type="file"
+          className="form-control"
+          accept={isImage ? "image/*" : undefined}
+          onChange={handleFileChange}
+          disabled={readOnly || uploading}
+        />
+      )}
+
+      {uploading && (
+        <div className="small text-muted">Subiendo archivo...</div>
+      )}
+
+      {fileValue?.url && (
+        <div className="border rounded p-2 bg-light">
+          <div className="small fw-semibold">{fileValue.name}</div>
+
+          {isImage && (
+            <img
+              src={fileValue.url}
+              alt={fileValue.name || "Imagen subida"}
+              style={{
+                maxWidth: "220px",
+                maxHeight: "220px",
+                objectFit: "cover",
+                borderRadius: 8,
+                marginTop: 8,
+              }}
+            />
+          )}
+
+          {!isImage && (
+            <a href={fileValue.url} target="_blank" rel="noreferrer">
+              Ver documento
+            </a>
+          )}
+
+          {!readOnly && (
+            <div className="mt-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-danger"
+                onClick={() => onChange("")}
+              >
+                Quitar
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function FieldInput({ field, value, onChange, readOnly }: Props) {
@@ -129,14 +279,12 @@ export default function FieldInput({ field, value, onChange, readOnly }: Props) 
 
   if (type === "file" || type === "image") {
     return (
-      <input
-        type="text"
-        className="form-control"
-        value={value ?? ""}
-        placeholder={field.placeholder || "URL de archivo (pendiente uploader)"}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={readOnly}
-      />
+      <FileFieldInput
+      field={field}
+      value={value}
+      onChange={onChange}
+      readOnly={readOnly}
+    />
     );
   }
 
