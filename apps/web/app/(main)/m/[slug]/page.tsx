@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import type { ModuleSchema } from "@repo/types";
 import ListPageClient from "@/lib/ListPageClient";
 import { fetchAllModulesIndex, fetchModuleRowBySlug } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";

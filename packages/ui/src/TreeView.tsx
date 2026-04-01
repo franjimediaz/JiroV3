@@ -110,7 +110,6 @@ function unwrapResolveTable(v: any): ResolveTableFn | undefined {
   if (typeof v?.resolveTable === "function") return v.resolveTable as ResolveTableFn;
   return undefined;
 }
-
 function unwrapResolveRoute(v: any): ResolveRouteFn | undefined {
   if (!v) return undefined;
   if (typeof v === "function") return v as ResolveRouteFn;
@@ -263,14 +262,12 @@ function cleanBaseRoute(base: string) {
   if (b.length > 1 && b.endsWith("/")) b = b.slice(0, -1);
   return b;
 }
-
 function joinRoute(base: string, id: any) {
   const b = cleanBaseRoute(base);
   const rid = String(id ?? "").trim();
   if (!b || !rid) return null;
   return `${b}/${encodeURIComponent(rid)}`;
 }
-
 function getByPath(obj: any, path: string) {
   if (!obj || !path) return undefined;
   const parts = path.split(".").map((p) => p.trim()).filter(Boolean);

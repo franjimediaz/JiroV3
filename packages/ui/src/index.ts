@@ -11,6 +11,7 @@ export { default as CreateModule } from "./ModuloForm/CreateModule";
 export {default as ModalConfirm } from "./modals/ModalConfirm";
 export {default as RichTextEditor } from "./RichTextEditor";
 export { default as Form } from "./Form";
+export { default as FieldInput } from "./FieldInput";
 export * from "./engines/safeEval";
 export * from "./engines/computeEngine";
 export * from "./providers/DataProvider";

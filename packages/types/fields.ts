@@ -166,6 +166,7 @@ export type UiTab =
                       };
 export type ModuleSchema = {
   db: {
+    name?:string;
     table: string;
     softDelete?: boolean;
     primaryKey?: string;

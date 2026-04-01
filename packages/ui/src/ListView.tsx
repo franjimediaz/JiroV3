@@ -132,6 +132,7 @@ export default function ListView({
   const icon = schema.ui?.icon;
   const color = schema.ui?.color;
   const tableName = schema.db.table;
+  const tableTitle = schema.db?.name;
 
   return (
     <div className="card" style={{ borderColor: "rgb(136, 135, 135)" }}>
@@ -143,7 +144,7 @@ export default function ListView({
             <div className="fw-semibold " style={{ fontSize: 14 }}>
               {capitalize(tableName)}
             </div>
-            <div className="small text-muted">Tabla: {tableName}</div>
+            
           </div>
         </div>
 
