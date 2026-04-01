@@ -442,7 +442,7 @@ export default async function Home() {
 
         <footer className="mt-4 pt-2 small" style={{ color: "#94a3b8" }}>
           © {new Date().getFullYear()} JiRo v3 · Inicio conectado a módulos reales
-        </footer>
+-´Ç        </footer>
       </div>
     </main>
   );
