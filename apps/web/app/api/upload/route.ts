@@ -2,7 +2,18 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
+
 type UploadKind = "file" | "image";
+
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
+const ALLOWED_IMAGE_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+];
 
 function sanitizeFileName(name: string) {
   return name
@@ -15,17 +26,11 @@ function sanitizeFileName(name: string) {
 
 export async function POST(req: Request) {
   try {
-    console.log("content-type:", req.headers.get("content-type"));
     const formData = await req.formData();
 
     const file = formData.get("file");
     const kind = (formData.get("kind") as UploadKind | null) ?? "file";
     const folder = (formData.get("folder") as string | null) ?? "general";
-     console.log({
-      hasFile: file instanceof File,
-      kind,
-      folder,
-    });
 
     if (!(file instanceof File)) {
       return NextResponse.json(
@@ -36,11 +41,27 @@ export async function POST(req: Request) {
 
     const isImage = kind === "image";
 
-    if (isImage && !file.type.startsWith("image/")) {
-      return NextResponse.json(
-        { error: "El archivo debe ser una imagen" },
-        { status: 400 }
-      );
+    if (isImage) {
+      if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
+        return NextResponse.json(
+          { error: "Formato de imagen no permitido" },
+          { status: 400 }
+        );
+      }
+
+      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        return NextResponse.json(
+          { error: "La imagen supera el tamaño máximo permitido" },
+          { status: 400 }
+        );
+      }
+    } else {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        return NextResponse.json(
+          { error: "El archivo supera el tamaño máximo permitido" },
+          { status: 400 }
+        );
+      }
     }
 
     const bucket = isImage
@@ -80,12 +101,6 @@ export async function POST(req: Request) {
       const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
       url = data.publicUrl;
     }
-    console.log({
-      hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-      hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      publicBucket: process.env.NEXT_PUBLIC_SUPABASE_PUBLIC_BUCKET,
-      privateBucket: process.env.NEXT_PUBLIC_SUPABASE_PRIVATE_BUCKET,
-    });
 
     return NextResponse.json({
       ok: true,
@@ -98,11 +113,41 @@ export async function POST(req: Request) {
       kind,
     });
   } catch (error: any) {
-    console.error("UPLOAD ERROR:", error);
     return NextResponse.json(
       { error: error?.message || "Error interno al subir archivo" },
       { status: 500 }
-      
+    );
+  }
+}
+export async function DELETE(req: Request) {
+  try {
+    const body = await req.json();
+    const bucket = body?.bucket;
+    const path = body?.path;
+
+    if (!bucket || !path) {
+      return Response.json(
+        { error: "bucket y path son obligatorios" },
+        { status: 400 }
+      );
+    }
+
+    const { error } = await supabaseAdmin.storage
+      .from(bucket)
+      .remove([path]);
+
+    if (error) {
+      return Response.json(
+        { error: error.message },
+        { status: 500 }
+      );
+    }
+
+    return Response.json({ ok: true });
+  } catch (error: any) {
+    return Response.json(
+      { error: error?.message || "Error al eliminar archivo" },
+      { status: 500 }
     );
   }
 }

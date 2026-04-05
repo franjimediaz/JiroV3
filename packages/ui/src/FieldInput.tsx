@@ -1,8 +1,8 @@
 "use client";
 
-import type { Field, FieldType } from "@repo/types";
 import { IconPicker } from "./IconPicker";
 import Selector from "./Selector";
+import type { Field, ModuleSchema, FieldType, UiTab, FormSection,TreeViewDataProvider } from "@repo/types";
 import RichTextEditor from "./RichTextEditor";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
@@ -11,6 +11,7 @@ type Props = {
   value: any;
   onChange: (v: any) => void;
   readOnly?: boolean;
+  uploadFolder?: string;
 };
 type UploadedFileValue = {
   bucket: string;
@@ -22,95 +23,126 @@ type UploadedFileValue = {
   kind?: "file" | "image";
 };
 
-function toInputDate(value?: string) {
-  if (!value) return "";
-  return value.slice(0, 10);
-}
 
-function toInputDateTimeLocal(value?: string) {
-  if (!value) return "";
-
-  const d = new Date(value);
-  const pad = (n: number) => String(n).padStart(2, "0");
-
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-// Esta función se encarga de subir un solo archivo al backend y obtener su URL
-async function uploadSingleFile(
-  file: File,
-  kind: "file" | "image",
-  folder = "general"
-): Promise<UploadedFileValue> {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("kind", kind);
-  formData.append("folder", folder);
-
-  const res = await fetch("/api/upload", {
-    method: "POST",
-    body: formData,
-  });
-
-  const contentType = res.headers.get("content-type") || "";
-  const rawText = await res.text();
-
-  let data: any = null;
-  if (contentType.includes("application/json")) {
-    try {
-      data = JSON.parse(rawText);
-    } catch {
-      data = null;
-    }
-  }
-
-  if (!res.ok) {
-    throw new Error(data?.error || rawText || "No se pudo subir el archivo");
-  }
-
-  return {
-    bucket: data.bucket,
-    path: data.path,
-    url: data.url,
-    name: data.name || file.name,
-    size: data.size || file.size,
-    mimeType: data.mimeType || file.type,
-    kind,
-  };
-}
 
 function FileFieldInput({
   field,
   value,
   onChange,
   readOnly,
+  uploadFolder,
 }: {
   field: Field;
   value: UploadedFileValue | "" | null;
   onChange: (v: any) => void;
   readOnly?: boolean;
+  uploadFolder?: string;
 }) {
-  const [uploading, setUploading] = React.useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
   const isImage = field.type === "image";
+  const effectiveFolder = uploadFolder
+  ? `${uploadFolder}/${field.name}`
+  : field.name;
 
   const fileValue =
-    value && typeof value === "object" ? value as UploadedFileValue : null;
+    typeof value === "string"
+      ? (() => {
+          try {
+            return JSON.parse(value);
+          } catch {
+            return null;
+          }
+        })()
+      : value && typeof value === "object"
+      ? (value as UploadedFileValue)
+      : null;
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const resolvedUrl =
+    fileValue?.url ||
+    (fileValue?.bucket && fileValue?.path
+      ? buildPublicSupabaseUrl(fileValue.bucket, fileValue.path)
+      : null);
 
-    try {
-      setUploading(true);
-      const uploaded = await uploadSingleFile(file, isImage ? "image" : "file");
-      onChange(uploaded);
-    } catch (err) {
-      console.error(err);
-      alert("Error al subir el archivo");
-    } finally {
-      setUploading(false);
-      e.target.value = "";
+  const handleFileChange = async (
+  e: React.ChangeEvent<HTMLInputElement>
+) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  setErrorMsg("");
+
+  const validationError = validateSelectedFile(
+    file,
+    isImage ? "image" : "file"
+  );
+
+  if (validationError) {
+    setErrorMsg(validationError);
+    e.target.value = "";
+    return;
+  }
+
+  const previousFile = fileValue || null;
+
+  try {
+    setUploading(true);
+
+    const uploaded = await uploadSingleFile(
+      file,
+      isImage ? "image" : "file",
+      effectiveFolder
+    );
+
+    // 1) primero actualizamos el valor visible/formulario
+    onChange(uploaded);
+
+    // 2) luego intentamos borrar el anterior si existía y no es el mismo
+    const isDifferentFile =
+      previousFile &&
+      (previousFile.bucket !== uploaded.bucket ||
+        previousFile.path !== uploaded.path);
+
+    if (isDifferentFile) {
+      try {
+        await deleteStoredFile(previousFile);
+      } catch (deleteError: any) {
+        console.error("No se pudo borrar el archivo anterior:", deleteError);
+        setErrorMsg(
+          "El nuevo archivo se guardó, pero no se pudo borrar el anterior."
+        );
+      }
     }
-  };
+  } catch (error: any) {
+    console.error(error);
+    setErrorMsg(error?.message || "Error al subir el archivo");
+  } finally {
+    setUploading(false);
+    e.target.value = "";
+  }
+};
+
+  const handleRemove = async () => {
+  if (!fileValue?.bucket || !fileValue?.path) {
+    onChange("");
+    return;
+  }
+
+  try {
+    setDeleting(true);
+    setErrorMsg("");
+
+    await deleteStoredFile(fileValue);
+
+    onChange("");
+  } catch (error: any) {
+    console.error(error);
+    setErrorMsg(error?.message || "Error al eliminar el archivo");
+  } finally {
+    setDeleting(false);
+  }
+};
 
   return (
     <div className="d-flex flex-column gap-2">
@@ -118,56 +150,76 @@ function FileFieldInput({
         <input
           type="file"
           className="form-control"
-          accept={isImage ? "image/*" : undefined}
+          accept={isImage ? ALLOWED_IMAGE_MIME_TYPES.join(",") : undefined}
           onChange={handleFileChange}
-          disabled={readOnly || uploading}
+          disabled={readOnly || uploading || deleting}
         />
+      )}
+
+      {!readOnly && (
+        <div className="small text-muted">
+          {isImage
+            ? `Máximo ${MAX_IMAGE_SIZE_MB} MB. Formatos: JPG, PNG, WEBP, GIF.`
+            : `Máximo ${MAX_FILE_SIZE_MB} MB.`}
+        </div>
       )}
 
       {uploading && (
         <div className="small text-muted">Subiendo archivo...</div>
       )}
 
+      {deleting && (
+        <div className="small text-muted">Eliminando archivo...</div>
+      )}
+
+      {errorMsg && (
+        <div className="small text-danger">{errorMsg}</div>
+      )}
+
       {fileValue && (
-  <div className="border rounded p-2 bg-light">
-    <div className="small fw-semibold">{fileValue.name}</div>
+        <div className="border rounded p-2 bg-light">
+          <div className="small fw-semibold">{fileValue.name}</div>
+          {fileValue.size ? (
+            <div className="small text-muted">{formatBytes(fileValue.size)}</div>
+          ) : null}
 
-    {isImage && fileValue.url ? (
-      <img
-        src={fileValue.url}
-        alt={fileValue.name || "Imagen subida"}
-        style={{
-          maxWidth: "220px",
-          maxHeight: "220px",
-          objectFit: "cover",
-          borderRadius: 8,
-          marginTop: 8,
-        }}
-      />
-    ) : (
-      <div className="small text-muted mt-1">
-        Archivo subido correctamente
-      </div>
-    )}
+          {isImage && resolvedUrl ? (
+            <img
+              src={resolvedUrl}
+              alt={fileValue.name || "Imagen subida"}
+              style={{
+                maxWidth: "220px",
+                maxHeight: "220px",
+                objectFit: "cover",
+                borderRadius: 8,
+                marginTop: 8,
+              }}
+            />
+          ) : (
+            <div className="small text-muted mt-1">
+              Archivo subido correctamente
+            </div>
+          )}
 
-    {!readOnly && (
-      <div className="mt-2">
-        <button
-          type="button"
-          className="btn btn-sm btn-outline-danger"
-          onClick={() => onChange("")}
-        >
-          Quitar
-        </button>
-      </div>
-    )}
-  </div>
-)}
+          {!readOnly && (
+            <div className="mt-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-danger"
+                onClick={handleRemove}
+                disabled={uploading || deleting}
+              >
+                Quitar
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 // Componente principal que renderiza el input adecuado según el tipo de campo
-export default function FieldInput({ field, value, onChange, readOnly }: Props) {
+export default function FieldInput({ field, value, onChange, readOnly, uploadFolder }: Props) {
   const type = field.type as FieldType;
 
   if (type === "boolean") {
@@ -275,6 +327,7 @@ export default function FieldInput({ field, value, onChange, readOnly }: Props) 
       value={value}
       onChange={onChange}
       readOnly={readOnly}
+      uploadFolder={uploadFolder}
     />
     );
   }
@@ -347,4 +400,127 @@ export default function FieldInput({ field, value, onChange, readOnly }: Props) 
       placeholder={field.placeholder}
     />
   );
+}
+/// utils para convertir fechas a formato compatible con inputs de tipo date y datetime-local
+
+function toInputDate(value?: string) {
+  if (!value) return "";
+  return value.slice(0, 10);
+}
+const MAX_IMAGE_SIZE_MB = 5;
+const MAX_FILE_SIZE_MB = 10;
+
+const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+const ALLOWED_IMAGE_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+];
+
+function formatBytes(bytes?: number) {
+  if (!bytes && bytes !== 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function validateSelectedFile(file: File, kind: "file" | "image") {
+  if (kind === "image") {
+    if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
+      return "Formato de imagen no permitido. Usa JPG, PNG, WEBP o GIF.";
+    }
+
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      return `La imagen supera el máximo de ${MAX_IMAGE_SIZE_MB} MB.`;
+    }
+  }
+
+  if (kind === "file") {
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      return `El archivo supera el máximo de ${MAX_FILE_SIZE_MB} MB.`;
+    }
+  }
+
+  return null;
+}
+function buildPublicSupabaseUrl(bucket: string, path: string) {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base || !bucket || !path) return null;
+  return `${base}/storage/v1/object/public/${bucket}/${path}`;
+}
+async function deleteStoredFile(fileValue?: UploadedFileValue | null) {
+  if (!fileValue?.bucket || !fileValue?.path) return { ok: true };
+
+  const res = await fetch("/api/upload", {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      bucket: fileValue.bucket,
+      path: fileValue.path,
+    }),
+  });
+
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    throw new Error(data?.error || "No se pudo eliminar el archivo anterior");
+  }
+
+  return data;
+}
+
+function toInputDateTimeLocal(value?: string) {
+  if (!value) return "";
+
+  const d = new Date(value);
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+// Esta función se encarga de subir un solo archivo al backend y obtener su URL
+async function uploadSingleFile(
+  file: File,
+  kind: "file" | "image",
+  folder = "general"
+): Promise<UploadedFileValue> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("kind", kind);
+  formData.append("folder", folder);
+
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  const contentType = res.headers.get("content-type") || "";
+  const rawText = await res.text();
+
+  let data: any = null;
+  if (contentType.includes("application/json")) {
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = null;
+    }
+  }
+
+  if (!res.ok) {
+    throw new Error(data?.error || rawText || "No se pudo subir el archivo");
+  }
+
+  return {
+    bucket: data.bucket,
+    path: data.path,
+    url: data.url,
+    name: data.name || file.name,
+    size: data.size || file.size,
+    mimeType: data.mimeType || file.type,
+    kind,
+  };
 }

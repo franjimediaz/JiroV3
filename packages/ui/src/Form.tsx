@@ -35,7 +35,7 @@ type Props = {
   onTreeViewRowEdit?: (row: any) => void;
   confirmTreeViewDelete?: (row: any) => Promise<boolean>;
   modulesBySlug?: Record<string, { db?: { table?: string; primaryKey?: string } }>;
-  schemasBySlug?: Record<string, ModuleSchema>;
+  schemasBySlug: Record<string, ModuleSchema>;
 
 
 };
@@ -62,6 +62,7 @@ export default function Form({
 }: Props) {
   // Derivar modo por defecto si no viene
   const effectiveMode: Mode = mode || (readOnly ? "view" : "edit");
+  
 
   // ---------------- Tabs (Form / TreeView / Calendar) ----------------
   // 1) Tabs definidos en schema.ui.tabs (si existen)
@@ -368,6 +369,10 @@ function computeSignature(schema: ModuleSchema, record: any) {
     return true; // view
   }
 
+  const moduleFolder =
+  schema?.db?.table ||
+  "general";
+
   // Render de un campo
   const renderField = (f: Field) => {
     if (!isFieldVisibleInMode(f, effectiveMode)) return null;
@@ -407,6 +412,7 @@ function computeSignature(schema: ModuleSchema, record: any) {
             value={v}
             onChange={(val: any) => (isOverride ? setOverrideValue(f, val) : handleChange(f.name, val))}
             readOnly={effectiveReadOnlyField}
+            uploadFolder={moduleFolder}
           />
 
           {(f as any).ui?.help && <div className="form-text mt-1">{(f as any).ui.help}</div>}
