@@ -68,12 +68,6 @@ export default function Form({
   const tabsDesdeSchema = useMemo<UiTab[]>(() => {
     const uiAny = (schema.ui || {}) as any;
     const rawTabs = Array.isArray(uiAny?.tabs) ? uiAny.tabs : [];
-
-
-
-
-
-
     // Normaliza a {id,label,type,config}
     const normalized: UiTab[] = rawTabs
       .map((t: any, idx: number) => {

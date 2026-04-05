@@ -169,6 +169,19 @@ select.input:disabled {
   transition: transform .05s ease, box-shadow .15s ease, background .15s ease;
   box-shadow: var(--shadow-sm);
 }
+.btnActive {
+  appearance: none;
+  background: linear-gradient(180deg, #37577a, #265e96);
+  color: var(--text);
+  border: none;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform .05s ease, box-shadow .15s ease, background .15s ease;
+  box-shadow: var(--shadow-sm);
+}
 .btnAdd {
   appearance: none;
   background: linear-gradient(180deg, #37800d, #37800d85);
