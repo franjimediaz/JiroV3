@@ -15,11 +15,17 @@ function sanitizeFileName(name: string) {
 
 export async function POST(req: Request) {
   try {
+    console.log("content-type:", req.headers.get("content-type"));
     const formData = await req.formData();
 
     const file = formData.get("file");
     const kind = (formData.get("kind") as UploadKind | null) ?? "file";
     const folder = (formData.get("folder") as string | null) ?? "general";
+     console.log({
+      hasFile: file instanceof File,
+      kind,
+      folder,
+    });
 
     if (!(file instanceof File)) {
       return NextResponse.json(
@@ -74,6 +80,12 @@ export async function POST(req: Request) {
       const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
       url = data.publicUrl;
     }
+    console.log({
+      hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      publicBucket: process.env.NEXT_PUBLIC_SUPABASE_PUBLIC_BUCKET,
+      privateBucket: process.env.NEXT_PUBLIC_SUPABASE_PRIVATE_BUCKET,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -86,9 +98,11 @@ export async function POST(req: Request) {
       kind,
     });
   } catch (error: any) {
+    console.error("UPLOAD ERROR:", error);
     return NextResponse.json(
       { error: error?.message || "Error interno al subir archivo" },
       { status: 500 }
+      
     );
   }
 }

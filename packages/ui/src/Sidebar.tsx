@@ -238,9 +238,9 @@ if (!isFolder) {
 }
 
   // ✅ sidebar=true => NO se muestra el nodo, pero sus hijos sí (promovidos al mismo nivel)
-  if (node.sidebar === true) {
+  if (node.sidebar === true) { 
   if (node.tipo === "carpeta") {
-    // la carpeta no se oculta, ignora sidebar para carpetas
+  // la carpeta no se oculta, ignora sidebar para carpetas
   } else {
     if (!hasChildren) return null;
     return (

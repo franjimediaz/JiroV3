@@ -40,6 +40,7 @@ type Props = {
 
 };
 
+
 export default function Form({
   schema,
   initialData = {},
@@ -169,7 +170,12 @@ const uiTabs = useMemo<UiTab[]>(() => {
   }, [uiTabs, activeTabId]);
 
   // ---------------- Valores editables + overrides ----------------
-  const [values, setValues] = useState<any>(() => withDefaultValues(schema.fields, initialData));
+  const [values, setValues] = useState<any>(() =>
+  withDefaultValues(
+    schema.fields,
+    normalizeInitialData(schema.fields, initialData)
+  )
+);
   useEffect(() => {
   // al iniciar/cambiar schema o initialData, fijamos firma para no “recompute por gusto”
   lastComputedSigRef.current = computeSignature(schema, values);
@@ -842,6 +848,27 @@ function defaultForType(t: FieldType): any {
 function normalizeValue(v: any) {
   if (v === "") return "";
   return v;
+}
+
+function normalizeInitialData(fields: Field[], data: any) {
+  const out = { ...(data || {}) };
+
+  for (const f of fields) {
+    if ((f.type === "file" || f.type === "image") && typeof out[f.name] === "string") {
+      const raw = out[f.name].trim();
+
+      // si es JSON serializado
+      if (raw.startsWith("{") || raw.startsWith("[")) {
+        try {
+          out[f.name] = JSON.parse(raw);
+        } catch {
+          // si falla, lo dejamos como está
+        }
+      }
+    }
+  }
+
+  return out;
 }
 
 function labelStyle(): React.CSSProperties {

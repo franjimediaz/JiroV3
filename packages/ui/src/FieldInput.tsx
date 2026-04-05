@@ -35,7 +35,7 @@ function toInputDateTimeLocal(value?: string) {
 
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-
+// Esta función se encarga de subir un solo archivo al backend y obtener su URL
 async function uploadSingleFile(
   file: File,
   kind: "file" | "image",
@@ -51,10 +51,20 @@ async function uploadSingleFile(
     body: formData,
   });
 
-  const data = await res.json();
+  const contentType = res.headers.get("content-type") || "";
+  const rawText = await res.text();
+
+  let data: any = null;
+  if (contentType.includes("application/json")) {
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = null;
+    }
+  }
 
   if (!res.ok) {
-    throw new Error(data?.error || "No se pudo subir el archivo");
+    throw new Error(data?.error || rawText || "No se pudo subir el archivo");
   }
 
   return {
@@ -66,23 +76,6 @@ async function uploadSingleFile(
     mimeType: data.mimeType || file.type,
     kind,
   };
-}
-function defaultForType(t: FieldType): any {
-  switch (t) {
-    case "number":
-    case "money":
-    case "percent":
-      return 0;
-    case "boolean":
-      return false;
-    case "multiselect":
-      return [];
-    case "file":
-    case "image":
-      return "";
-    default:
-      return "";
-  }
 }
 
 function FileFieldInput({
@@ -135,47 +128,45 @@ function FileFieldInput({
         <div className="small text-muted">Subiendo archivo...</div>
       )}
 
-      {fileValue?.url && (
-        <div className="border rounded p-2 bg-light">
-          <div className="small fw-semibold">{fileValue.name}</div>
+      {fileValue && (
+  <div className="border rounded p-2 bg-light">
+    <div className="small fw-semibold">{fileValue.name}</div>
 
-          {isImage && (
-            <img
-              src={fileValue.url}
-              alt={fileValue.name || "Imagen subida"}
-              style={{
-                maxWidth: "220px",
-                maxHeight: "220px",
-                objectFit: "cover",
-                borderRadius: 8,
-                marginTop: 8,
-              }}
-            />
-          )}
+    {isImage && fileValue.url ? (
+      <img
+        src={fileValue.url}
+        alt={fileValue.name || "Imagen subida"}
+        style={{
+          maxWidth: "220px",
+          maxHeight: "220px",
+          objectFit: "cover",
+          borderRadius: 8,
+          marginTop: 8,
+        }}
+      />
+    ) : (
+      <div className="small text-muted mt-1">
+        Archivo subido correctamente
+      </div>
+    )}
 
-          {!isImage && (
-            <a href={fileValue.url} target="_blank" rel="noreferrer">
-              Ver documento
-            </a>
-          )}
-
-          {!readOnly && (
-            <div className="mt-2">
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-danger"
-                onClick={() => onChange("")}
-              >
-                Quitar
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+    {!readOnly && (
+      <div className="mt-2">
+        <button
+          type="button"
+          className="btn btn-sm btn-outline-danger"
+          onClick={() => onChange("")}
+        >
+          Quitar
+        </button>
+      </div>
+    )}
+  </div>
+)}
     </div>
   );
 }
-
+// Componente principal que renderiza el input adecuado según el tipo de campo
 export default function FieldInput({ field, value, onChange, readOnly }: Props) {
   const type = field.type as FieldType;
 
