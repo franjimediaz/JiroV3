@@ -1,11 +1,12 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  --bg-primary: #01509ee8;
+  --bg-primary: #00305fe8;
   --bg-secondary: #0066cc57;
   --bs-secondary-bg-rgb: 233, 236, 239;
+  --bs-primary-rgb: 122, 167, 255;
   --bs-secondary-rgb: 108, 117, 125;
-  --bg-card:  linear-gradient(145deg, #162c53, #162c53 40%, #162c53 100%);
+  --bg-card:  linear-gradient(145deg, #0b162b, #0b162b 40%, #0b162b 100%);
   --bg-cardform: #c7c7c7;
   --bg-success: #28a745;
   --text: #ffffff;
