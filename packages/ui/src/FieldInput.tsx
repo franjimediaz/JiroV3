@@ -270,6 +270,11 @@ const handleRemoveOne = async (fileToRemove: UploadedFileValue) => {
       };
 
 const fileInfo = getFileDisplayInfo(fileValue?.mimeType, fileValue?.name);
+useEffect(() => {
+  if (multiple && maxFiles && files.length > maxFiles) {
+    setErrorMsg(`Este campo permite un máximo de ${maxFiles} archivos.`);
+  }
+}, [multiple, maxFiles, files.length]);
 
   return (
   <div className="d-flex flex-column gap-2">
