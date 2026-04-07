@@ -270,6 +270,7 @@ const handleRemoveOne = async (fileToRemove: UploadedFileValue) => {
       };
 
 const fileInfo = getFileDisplayInfo(fileValue?.mimeType, fileValue?.name);
+
 useEffect(() => {
   if (multiple && maxFiles && files.length > maxFiles) {
     setErrorMsg(`Este campo permite un máximo de ${maxFiles} archivos.`);
@@ -337,6 +338,8 @@ useEffect(() => {
                     {itemInfo.label}
                     {fileItem.size ? ` · ${formatBytes(fileItem.size)}` : ""}
                   </div>
+               <div className="mt-2 d-flex gap-2 flex-wrap">
+                </div>
                 </div>
               </div>
 
@@ -352,16 +355,11 @@ useEffect(() => {
                     marginTop: 8,
                   }}
                 />
+                
+                
               ) : (
                 <div className="mt-2 d-flex gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-primary"
-                    onClick={() => handleOpenFile(fileItem)}
-                    disabled={opening || uploading || deleting}
-                  >
-                    {opening ? "Abriendo..." : "Abrir documento"}
-                  </button>
+                  
                 </div>
               )}
 
@@ -369,7 +367,15 @@ useEffect(() => {
                 <div className="mt-2">
                   <button
                     type="button"
-                    className="btn btn-sm btn-outline-danger"
+                    className="btn btn-sm btn-primary"
+                    onClick={() => handleOpenFile(fileItem)}
+                    disabled={opening || uploading || deleting}
+                  >
+                    {opening ? "Abriendo..." : "Abrir"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-danger"
                     onClick={() => handleRemoveOne(fileItem)}
                     disabled={uploading || deleting || opening}
                   >
@@ -409,19 +415,20 @@ useEffect(() => {
             />
           ) : (
             <div className="mt-2 d-flex gap-2 flex-wrap">
+       
+            </div>
+          )}
+
+          {!readOnly && (
+            <div className="mt-2">
               <button
                 type="button"
                 className="btn btn-sm btn-outline-primary"
                 onClick={() => handleOpenFile(fileValue)}
                 disabled={opening || uploading || deleting}
               >
-                {opening ? "Abriendo..." : "Abrir documento"}
+                {opening ? "Abriendo..." : "Abrir"}
               </button>
-            </div>
-          )}
-
-          {!readOnly && (
-            <div className="mt-2">
               <button
                 type="button"
                 className="btn btn-sm btn-outline-danger"

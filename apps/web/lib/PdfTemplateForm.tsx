@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upsertPdfTemplateAction } from "./actions/pdfTemplates";
 import { RichTextEditor} from "@repo/ui";
-import "react-quill/dist/quill.snow.css";
+
 
 
 /* ------------------------------------------------------------------ */
@@ -166,7 +166,7 @@ type CardsBlock =
       layout?: CardsLayout;
       style?: BlockStyle;     // estilo del contenedor
       cardStyle?: CardStyle;  // estilo base para todas las tarjetas
-      // modo estÃ¡tico
+      // modo estí¡tico
       cards: CardBlock[];
     }
   | {
@@ -176,7 +176,7 @@ type CardsBlock =
       layout?: CardsLayout;
       style?: BlockStyle;
       cardStyle?: CardStyle;
-      // modo repeat (dinÃ¡mico)
+      // modo repeat (diní¡mico)
       repeat: string;         // ej: "related.contactos"
       card: CardBlock;        // plantilla de tarjeta
     };
@@ -629,7 +629,7 @@ function deleteBlock(id: string) {
 function moveBlockUp(id: string) {
   setTemplate((t) => {
     const idx = t.blocks.findIndex((b) => b.id === id);
-    if (idx <= 0) return t; // ya estÃ¡ arriba
+    if (idx <= 0) return t; // ya estí¡ arriba
 
     const next = t.blocks.slice();
     [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
@@ -641,7 +641,7 @@ function moveBlockUp(id: string) {
 function moveBlockDown(id: string) {
   setTemplate((t) => {
     const idx = t.blocks.findIndex((b) => b.id === id);
-    if (idx === -1 || idx >= t.blocks.length - 1) return t; // ya estÃ¡ abajo
+    if (idx === -1 || idx >= t.blocks.length - 1) return t; // ya estí¡ abajo
 
     const next = t.blocks.slice();
     [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
@@ -682,12 +682,12 @@ function save() {
       <div className="d-flex justify-content-between align-items-center">
         <div>
           <h2 className="mb-0">{mode === "create" ? "Nueva plantilla PDF" : name}</h2>
-          <div className="text-muted small">{readOnly ? "Vista" : "EdiciÃ³n"}</div>
+          <div className="text-muted small">{readOnly ? "Vista" : "Edición"}</div>
         </div>
 
         <div className="d-flex gap-2">
           <button type="button" className="btn btn-secondary" onClick={() => router.back()}>
-            â† Volver
+           Volver
           </button>
 
           {!readOnly && (
@@ -801,7 +801,7 @@ function save() {
                         ])
                         }
                     >
-                        + AÃ±adir relaciÃ³n
+                        + Añadir relación
                     </button>
                     )}
                 </div>
@@ -809,13 +809,26 @@ function save() {
                 <div className="card-body">
                     {relations.length === 0 ? (
                     <div className="text-muted">
-                        No hay relaciones definidas. AÃ±ade una para poder repetir tablas.
+                        No hay relaciones definidas. Añade una para poder repetir tablas.
                     </div>
                     ) : (
                     <div className="d-flex flex-column gap-2">
                         {relations.map((rel, idx) => (
                         <div key={idx} className="border rounded p-2">
+                          <div className="col-12 col-md-3">
+                                {!readOnly && (
+                                <button
+                                    type="button"
+                                    className="btn btn-sm btn-danger w-100"
+                                    onClick={() => setRelations((r) => r.filter((_, i) => i !== idx))}
+                                    title="Eliminar"
+                                >
+                                  Eliminar
+                                </button>
+                                )}
+                            </div>
                             <div className="row g-2 align-items-end">
+                              
                             <div className="col-12 col-md-3">
                                 <label className="form-label small mb-1">Key</label>
                                 <input
@@ -881,23 +894,12 @@ function save() {
                                 </select>
                             </div>
 
-                            <div className="col-12 col-md-1">
-                                {!readOnly && (
-                                <button
-                                    type="button"
-                                    className="btn btn-sm btn-outline-danger w-100"
-                                    onClick={() => setRelations((r) => r.filter((_, i) => i !== idx))}
-                                    title="Eliminar"
-                                >
-                                    âœ•
-                                </button>
-                                )}
-                            </div>
+                            
 
                             <div className="col-12">
                                 <div className="alert alert-light small mb-0">
                                 Uso en tabla: <code>repeat</code> ={" "}
-                                <code>{`related.${rel.key || "key"}`}</code> Â·
+                                <code>{`related.${rel.key || "key"}`}</code> 
                                 Dentro de columnas: <code>{"{{item.campo}}"}</code>
                                 </div>
                             </div>
@@ -937,7 +939,7 @@ function save() {
                       updateTemplate({ lookups: next });
                     }}
                   >
-                    + AÃ±adir
+                    + Añadir
                   </button>
                 )}
               </div>
@@ -975,7 +977,7 @@ function save() {
                         <div key={idx} className="border rounded p-2">
                           <div className="d-flex justify-content-between align-items-center mb-2">
                             <div className="small fw-semibold">
-                              Lookup #{idx + 1} â†’ <code>{val.outField ?? `${val.field || "campo"}__label`}</code>
+                              Lookup #{idx + 1}’ <code>{val.outField ?? `${val.field || "campo"}__label`}</code>
                             </div>
                             {!readOnly && (
                               <button type="button" className="btn btn-sm btn-outline-danger" onClick={removeLookup}>
@@ -1148,7 +1150,7 @@ function save() {
                       onChange={(e) =>
                         updateBlock(selectedBlock.id, "text", { value: e.target.value })
                       }
-                      placeholder="Escribe aquÃ­â€¦"
+                      placeholder="Escribe aquí­â€¦"
                     />
                   <div className="form-text mt-2">
                     Se guarda como HTML.
@@ -1161,7 +1163,7 @@ function save() {
                     <div className="card-header">Header</div>
                     <div className="card-body">
                     <div className="mb-3">
-                        <label className="form-label">TÃ­tulo</label>
+                        <label className="form-label">Tí­tulo</label>
                         <input
                         className="form-control"
                         value={selectedBlock.title}
@@ -1171,7 +1173,7 @@ function save() {
                     </div>
 
                     <div className="mb-3">
-                        <label className="form-label">SubtÃ­tulo</label>
+                        <label className="form-label">Subtí­tulo</label>
                         <input
                         className="form-control"
                         value={selectedBlock.subtitle ?? ""}
@@ -1181,7 +1183,7 @@ function save() {
                     </div>
 
                     <div className="alert alert-info small mb-0">
-                        Variables: <code>{"{{record.campo}}"}</code> Â· <code>{"{{now}}"}</code>
+                        Variables: <code>{"{{record.campo}}"}</code>  <code>{"{{now}}"}</code>
                     </div>
                     </div>
                 </div>
@@ -1191,7 +1193,7 @@ function save() {
                     <div className="card-header">Divider</div>
                     <div className="card-body">
                     <div className="text-muted small">
-                        Este bloque es una lÃ­nea separadora. No tiene propiedades.
+                        Este bloque es una lí­nea separadora. No tiene propiedades.
                     </div>
                     </div>
                 </div>
@@ -1201,7 +1203,7 @@ function save() {
                     <div className="card-header">Tabla</div>
                     <div className="card-body">
                     <div className="mb-3">
-                        <label className="form-label">TÃ­tulo</label>
+                        <label className="form-label">Tí­tulo</label>
                         <input
                         className="form-control"
                         value={selectedBlock.title ?? ""}
@@ -1273,11 +1275,11 @@ function save() {
                               })
                             }
                           />
-                          <div className="form-text">Ej: 40 para totales (mÃ¡s estrecha)</div>
+                          <div className="form-text">Ej: 40 para totales (mí¡s estrecha)</div>
                         </div>
 
                         <div className="col-12 col-md-6">
-                          <label className="form-label">AlineaciÃ³n</label>
+                          <label className="form-label">Alineación</label>
                           <select
                             className="form-select"
                             value={selectedBlock.layout?.align ?? "left"}
@@ -1405,7 +1407,7 @@ function save() {
                             <div>
                               <div className="fw-semibold">Filas manuales (opcional)</div>
                               <div className="text-muted small">
-                                Si defines filas aquÃ­, la tabla usa estas filas. Si una celda es <code>null</code>,
+                                Si defines filas aquí­, la tabla usa estas filas. Si una celda es <code>null</code>,
                                 se usa el <code>value</code> de la columna como fallback.
                               </div>
                             </div>
@@ -1435,7 +1437,7 @@ function save() {
                                   }}
                                   disabled={readOnly}
                                 >
-                                  + AÃ±adir fila
+                                  + Añadir fila
                                 </button>
                               </div>
                             )}
@@ -1444,7 +1446,7 @@ function save() {
                           <div className="card-body">
                             {(((selectedBlock as any).rows ?? []) as any[]).length === 0 ? (
                               <div className="text-muted">
-                                No hay filas manuales. La tabla usarÃ¡ <code>repeat</code>.
+                                No hay filas manuales. La tabla usarí¡ <code>repeat</code>.
                               </div>
                             ) : (
                               <div className="d-flex flex-column gap-2">
@@ -1506,7 +1508,7 @@ function save() {
                                                   className="form-control form-control-sm"
                                                   value={v ?? ""}
                                                   disabled={readOnly}
-                                                  placeholder="(vacÃ­o = usar fallback)"
+                                                  placeholder="(vací­o = usar fallback)"
                                                   onChange={(e) => {
                                                     const txt = e.target.value;
                                                     const next = fixed.slice();
@@ -1525,7 +1527,7 @@ function save() {
                                                       patchRow(next);
                                                     }}
                                                   >
-                                                    â†º
+                                                   º
                                                   </button>
                                                 )}
                                               </div>
@@ -1544,7 +1546,7 @@ function save() {
                             )}
 
                             <div className="alert alert-light small mt-3 mb-0">
-                              Consejo: para totales, pon <code>repeat</code> vacÃ­o y usa filas manuales + layout (45% derecha).
+                              Consejo: para totales, pon <code>repeat</code> vací­o y usa filas manuales + layout (45% derecha).
                             </div>
                           </div>
                         </div>
@@ -1565,7 +1567,7 @@ function save() {
                       <div className="card-body">
                         {/* -------- Title -------- */}
                         <div className="mb-3">
-                          <label className="form-label">TÃ­tulo del bloque</label>
+                          <label className="form-label">Tí­tulo del bloque</label>
                           <input
                             className="form-control"
                             value={selectedBlock.title ?? ""}
@@ -1633,13 +1635,13 @@ function save() {
                               placeholder="Ej: service o serviceId"
                             />
                             <div className="form-text">
-                              Si es UUID, el renderer usarÃ¡{" "}
+                              Si es UUID, el renderer usarí¡{" "}
                               <code>{(selectedBlock.groupByField ?? "campo") + "__label"}</code> si existe.
                             </div>
                           </div>
 
                           <div className="col-12 col-md-6">
-                            <label className="form-label">TÃ­tulo de la partida</label>
+                            <label className="form-label">Tí­tulo de la partida</label>
                             <input
                               className="form-control"
                               value={selectedBlock.groupTitleTpl ?? ""} // âœ… no rompe si falta
@@ -1659,7 +1661,7 @@ function save() {
                               <div className="card-header">Estilo del bloque (variant)</div>
                               <div className="card-body">
                                 {(() => {
-                                  // variants disponibles: si existen en theme, Ãºsalas; si no, fallback
+                                  // variants disponibles: si existen en theme, íºsalas; si no, fallback
                                   const variantsFromTheme = Object.keys(
                                     (template as any)?.theme?.budgetPartidas?.variants ?? {}
                                   );
@@ -1693,7 +1695,7 @@ function save() {
                                             ))}
                                           </select>
                                           <div className="form-text">
-                                            Esto solo afecta a este bloque. El renderer aplicarÃ¡ <code>bp-{currentVariant}</code> y variables CSS.
+                                            Esto solo afecta a este bloque. El renderer aplicarí¡ <code>bp-{currentVariant}</code> y variables CSS.
                                           </div>
                                         </div>
 
@@ -1866,7 +1868,7 @@ function save() {
                                   </div>
 
                                   <div className="alert alert-light small mt-3 mb-0">
-                                    Estos overrides solo afectan a <b>este bloque</b>. Si lo dejas vacÃ­o, se usa el preset del theme.
+                                    Estos overrides solo afectan a <b>este bloque</b>. Si lo dejas vací­o, se usa el preset del theme.
                                   </div>
                                 </>
                               );
@@ -1905,7 +1907,7 @@ function save() {
                                 }}
                               />
                               <label className="form-check-label">
-                                El campo de agrupaciÃ³n es un UUID y necesito mostrar su nombre
+                                El campo de agrupación es un UUID y necesito mostrar su nombre
                               </label>
                             </div>
 
@@ -1998,7 +2000,7 @@ function save() {
 
                         {/* -------- Materials FK -------- */}
                         <div className="mb-3 mt-3">
-                          <label className="form-label">FK en Materiales â†’ Tarea</label>
+                          <label className="form-label">FK en Materiales’ Tarea</label>
                           <input
                             className="form-control"
                             value={selectedBlock.materialesFkToTarea ?? ""} // âœ… no rompe si falta
@@ -2161,9 +2163,9 @@ function save() {
                         </div>
                       </details>
                     )}
-                    {/* tÃ­tulo */}
+                    {/* tí­tulo */}
                     <div className="mb-3">
-                      <label className="form-label">TÃ­tulo</label>
+                      <label className="form-label">Tí­tulo</label>
                       <input
                         className="form-control"
                         value={selectedBlock.title ?? ""}
@@ -2208,7 +2210,7 @@ function save() {
                       </div>
                     </div>
 
-                    {/* repeat (si quieres permitir dinÃ¡mico) */}
+                    {/* repeat (si quieres permitir diní¡mico) */}
                     {"repeat" in selectedBlock && (
                       <div className="mb-3">
                         <label className="form-label">Repeat (opcional)</label>
@@ -2220,7 +2222,7 @@ function save() {
                           placeholder='Ej: related.contactos'
                         />
                         <div className="form-text">
-                          Si pones repeat, se usan tarjetas dinÃ¡micas con <code>{"{{item.campo}}"}</code>.
+                          Si pones repeat, se usan tarjetas diní¡micas con <code>{"{{item.campo}}"}</code>.
                         </div>
                       </div>
                     )}
@@ -2297,7 +2299,7 @@ function save() {
                       </div>
                     </div>
 
-                    {/* listado de tarjetas (modo estÃ¡tico) */}
+                    {/* listado de tarjetas (modo estí¡tico) */}
                     {"cards" in selectedBlock && (
                       <div className="border rounded p-2">
                         <div className="d-flex justify-content-between align-items-center mb-2">
@@ -2317,7 +2319,7 @@ function save() {
                                 updateBlock(selectedBlock.id, "cards", { cards: next } as any);
                               }}
                             >
-                              + AÃ±adir tarjeta
+                              + Añadir tarjeta
                             </button>
                           )}
                         </div>
@@ -2338,7 +2340,7 @@ function save() {
                                   }}
                                 />
                                 <div className="form-text">
-                                  Resuelto: <span className="text-dark">{applyBindings(c.title ?? "", previewCtx) || "(vacÃ­o)"}</span>
+                                  Resuelto: <span className="text-dark">{applyBindings(c.title ?? "", previewCtx) || "(vací­o)"}</span>
                                 </div>
                               </div>
                               <div className="col-6">
@@ -2354,7 +2356,7 @@ function save() {
                                   }}
                                 />
                                 <div className="form-text">
-                                  Resuelto: <span className="text-dark">{applyBindings(c.subtitle ?? "", previewCtx) || "(vacÃ­o)"}</span>
+                                  Resuelto: <span className="text-dark">{applyBindings(c.subtitle ?? "", previewCtx) || "(vací­o)"}</span>
                                 </div>
                               </div>
                               <div className="col-1">
@@ -2433,22 +2435,22 @@ function save() {
                                               onChange={(e) => updateInner({ value: e.target.value })}
                                             />
                                             <div className="form-text">
-                                              Preview: <span className="text-dark">{plainTextPreview(applyBindings(inner.value ?? "", previewCtx)) || "(vacÃ­o)"}</span>
+                                              Preview: <span className="text-dark">{plainTextPreview(applyBindings(inner.value ?? "", previewCtx)) || "(vací­o)"}</span>
                                             </div>
                                           </>
                                         ) : inner.type === "divider" ? (
-                                          <div className="small text-muted">LÃ­nea divisoria</div>
+                                          <div className="small text-muted">Lí­nea divisoria</div>
                                         ) : inner.type === "table" ? (
                                           <div className="small text-muted">
-                                            Tabla: {inner.title || "(sin tÃ­tulo)"} Â· columnas {(inner.columns ?? []).length}
+                                            Tabla: {inner.title || "(sin tí­tulo)"}  columnas {(inner.columns ?? []).length}
                                           </div>
                                         ) : inner.type === "budgetPartidas" ? (
                                           <div className="small text-muted">
-                                            Partidas: {inner.title || "(sin tÃ­tulo)"}
+                                            Partidas: {inner.title || "(sin tí­tulo)"}
                                           </div>
                                         ) : inner.type === "header" ? (
                                           <div className="small text-muted">
-                                            Header: {inner.title || "(sin tÃ­tulo)"}
+                                            Header: {inner.title || "(sin tí­tulo)"}
                                           </div>
                                         ) : (
                                           <div className="small text-muted">Bloque interno configurado</div>
@@ -2462,7 +2464,7 @@ function save() {
                               )}
 
                               <div className="form-text mt-2 mb-0">
-                                Los bloques internos ya se ven aquÃ­; los de tipo <code>text</code> tambiÃ©n se pueden editar directamente.
+                                Los bloques internos ya se ven aquí­; los de tipo <code>text</code> también se pueden editar directamente.
                               </div>
                             </div>
 
@@ -2476,7 +2478,7 @@ function save() {
                     )}
                     {"card" in selectedBlock && (
                       <div className="border rounded p-2 mt-3">
-                        <div className="fw-semibold mb-2">Plantilla de tarjeta dinÃ¡mica</div>
+                        <div className="fw-semibold mb-2">Plantilla de tarjeta diní¡mica</div>
                         <div className="row g-2 align-items-end">
                           <div className="col-6">
                             <label className="form-label small mb-1">Title</label>
@@ -2496,7 +2498,7 @@ function save() {
                                   Array.isArray(getByPath(previewCtx, selectedBlock.repeat)))
                                     ? getByPath(previewCtx, selectedBlock.repeat)?.[0]
                                     : undefined,
-                              }) || "(vacÃ­o)"}</span>
+                              }) || "(vací­o)"}</span>
                             </div>
                           </div>
                           <div className="col-6">
@@ -2517,7 +2519,7 @@ function save() {
                                   Array.isArray(getByPath(previewCtx, selectedBlock.repeat)))
                                     ? getByPath(previewCtx, selectedBlock.repeat)?.[0]
                                     : undefined,
-                              }) || "(vacÃ­o)"}</span>
+                              }) || "(vací­o)"}</span>
                             </div>
                           </div>
                         </div>
@@ -2589,7 +2591,7 @@ function save() {
                                               Array.isArray(getByPath(previewCtx, selectedBlock.repeat)))
                                                 ? getByPath(previewCtx, selectedBlock.repeat)?.[0]
                                                 : undefined,
-                                          })) || "(vacÃ­o)"}</span>
+                                          })) || "(vací­o)"}</span>
                                         </div>
                                       </>
                                     ) : (
@@ -2600,7 +2602,7 @@ function save() {
                               })}
                             </div>
                           ) : (
-                            <div className="small text-muted">Sin contenido en la plantilla dinÃ¡mica.</div>
+                            <div className="small text-muted">Sin contenido en la plantilla diní¡mica.</div>
                           )}
                         </div>
                       </div>
@@ -2625,7 +2627,7 @@ function save() {
                     onClick={() => moveBlockUp(selectedBlock.id)}
                     title="Subir bloque"
                     >
-                    â†‘
+                   ‘
                     </button>
 
                     <button
@@ -2634,7 +2636,7 @@ function save() {
                     onClick={() => moveBlockDown(selectedBlock.id)}
                     title="Bajar bloque"
                     >
-                    â†“
+                   “
                     </button>
 
                     <button
@@ -2701,7 +2703,7 @@ function save() {
 
                 {/* Base font */}
                 <div className="col-12 col-md-4">
-                  <label className="form-label">TamaÃ±o base (px)</label>
+                  <label className="form-label">Tamaño base (px)</label>
                   <input
                     type="number"
                     className="form-control"
@@ -2719,7 +2721,7 @@ function save() {
 
                 {/* Page margin */}
                 <div className="col-12 col-md-4">
-                  <label className="form-label">Margen pÃ¡gina (px)</label>
+                  <label className="form-label">Margen pí¡gina (px)</label>
                   <input
                     type="number"
                     className="form-control"
@@ -2741,7 +2743,7 @@ function save() {
 
                 {/* Colores base */}
                 <div className="col-12 col-md-3">
-                  <label className="form-label">Fondo pÃ¡gina</label>
+                  <label className="form-label">Fondo pí¡gina</label>
                   <input
                     type="color"
                     className="form-control form-control-color"
@@ -2963,7 +2965,7 @@ function save() {
                       })
                     }
                   />
-                  <div className="form-text">Solo si zebra estÃ¡ activo</div>
+                  <div className="form-text">Solo si zebra estí¡ activo</div>
                 </div>
               </div>
             </div>
