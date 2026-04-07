@@ -212,50 +212,7 @@ function computeSignature(schema: ModuleSchema, record: any) {
     }
   }, [activeReverseLink, reverseLinkFields]);
 
-  // Recalcular fórmulas/aggregates cuando cambian values
-  useEffect(() => {
-  if (!schema?.fields?.length) return;
 
-  // 1) Si venimos de aplicar compute, NO recalcular otra vez (corta el loop)
-  if (applyingComputeRef.current) {
-    applyingComputeRef.current = false;
-    return;
-  }
-
-  // 2) En modo VIEW: por defecto NO lances aggregates (deberían venir persistidos)
-  //    (si luego quieres permitir algún aggregate persist="always", lo afinamos en computeEngine)
-  if (effectiveMode === "view") return;
-
-  if (aggTimer.current) clearTimeout(aggTimer.current);
-  setComputing(true);
-
-  aggTimer.current = setTimeout(async () => {
-    try {
-      const computed = await applyCompute({
-        schema,
-        record: values,
-        dataProvider,
-      });
-
-      // 3) Si el resultado "computed" no cambia los campos calculados, no hagas setValues
-      const sig = computeSignature(schema, computed);
-      if (sig === lastComputedSigRef.current) {
-        // Nada nuevo -> no provocar render extra -> no repetir API
-        return;
-      }
-
-      lastComputedSigRef.current = sig;
-
-      applyingComputeRef.current = true;
-      setValues(computed);
-      onChange?.(computed);
-    } finally {
-      setComputing(false);
-    }
-  }, 200);
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [schema, effectiveMode, JSON.stringify(lightDeps(values))]);
 
 
 
@@ -368,6 +325,8 @@ function computeSignature(schema: ModuleSchema, record: any) {
     if (m === "edit") return vw === "edit" || vw === "add_edit";
     return true; // view
   }
+    // Recalcular fórmulas/aggregates cuando cambian values
+
 
   const moduleFolder =
   schema?.db?.table ||
@@ -426,6 +385,49 @@ function computeSignature(schema: ModuleSchema, record: any) {
   };
 
   // ---------------- Acciones (Guardar / Editar / Volver) ----------------
+    useEffect(() => {
+  if (!schema?.fields?.length) return;
+
+  // 1) Si venimos de aplicar compute, NO recalcular otra vez (corta el loop)
+  if (applyingComputeRef.current) {
+    applyingComputeRef.current = false;
+    return;
+  }
+
+  // 2) En modo VIEW: por defecto NO lances aggregates (deberían venir persistidos)
+  //    (si luego quieres permitir algún aggregate persist="always", lo afinamos en computeEngine)
+  if (effectiveMode === "view") return;
+
+  if (aggTimer.current) clearTimeout(aggTimer.current);
+  setComputing(true);
+
+  aggTimer.current = setTimeout(async () => {
+    try {
+      const computed = await applyCompute({
+        schema,
+        record: values,
+        dataProvider,
+      });
+
+      // 3) Si el resultado "computed" no cambia los campos calculados, no hagas setValues
+      const sig = computeSignature(schema, computed);
+      if (sig === lastComputedSigRef.current) {
+        // Nada nuevo -> no provocar render extra -> no repetir API
+        return;
+      }
+
+      lastComputedSigRef.current = sig;
+
+      applyingComputeRef.current = true;
+      setValues(computed);
+      onChange?.(computed);
+    } finally {
+      setComputing(false);
+    }
+  }, 200);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [schema, effectiveMode, JSON.stringify(lightDeps(values))]);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (effectiveMode === "view") return;

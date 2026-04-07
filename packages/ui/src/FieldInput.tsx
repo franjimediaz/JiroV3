@@ -318,7 +318,9 @@ useEffect(() => {
     )}
 
     {multiple ? (
-      <div className="d-flex flex-column gap-2">
+      
+      <div className="upload-grid">
+        
        
         {files.length === 0 && (
           <div className="small text-muted">No hay archivos subidos.</div>
@@ -333,15 +335,17 @@ useEffect(() => {
               : null);
 
           return (
+            
             <div
               key={`${fileItem.bucket}-${fileItem.path}`}
-              className="border rounded p-2 bg-light"
+              className="upload-card"
             >
+              
               <div className="d-flex align-items-center gap-2">
                 <span style={{ fontSize: "1.25rem" }}>{itemInfo.icon}</span>
                 <div>
-                  <div className="small fw-semibold">{fileItem.name}</div>
-                  <div className="small text-muted">
+                  <div className="upload-card__title">{fileItem.name}</div>
+                  <div className="upload-card__subtitle">
                     {itemInfo.label}
                     {fileItem.size ? ` · ${formatBytes(fileItem.size)}` : ""}
                   </div>
@@ -351,57 +355,84 @@ useEffect(() => {
               </div>
 
               {isImage && itemResolvedUrl ? (
-                <img
-                  src={itemResolvedUrl}
-                  alt={fileItem.name || "Imagen subida"}
-                  style={{
-                    maxWidth: "220px",
-                    maxHeight: "220px",
-                    objectFit: "cover",
-                    borderRadius: 8,
-                    marginTop: 8,
-                  }}
-                />
+                <div className="upload-card">
+                    <div className="upload-card__preview">
+                      <img
+                        src={itemResolvedUrl}
+                        alt={fileItem.name || "Imagen subida"}
+                        className="upload-card__image"
+                      />
+                    </div>
+
+                    <div className="upload-card__body">
+                        <div className="upload-card__actions">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary"
+                            onClick={() => handleOpenFile(fileItem)}
+                            disabled={opening || uploading || deleting}
+                          >
+                            Ver
+                          </button>
+
+
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => handleRemoveOne(fileItem)}
+                              disabled={uploading || deleting || opening}
+                            >
+                              Quitar
+                            </button>
+                          )}
+                        </div>
+                    </div>
+                  </div>
+                
                 
                 
               ) : (
-                <div className="mt-2 d-flex gap-2 flex-wrap">
-                  
-                </div>
-              )}
+                <div className="upload-card__body">
+                  <div className="upload-card__actions">
 
-              {!readOnly && (
-                <div className="mt-2">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-primary"
-                    onClick={() => handleOpenFile(fileItem)}
-                    disabled={opening || uploading || deleting}
-                  >
-                    {opening ? "Abriendo..." : "Abrir"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-danger"
-                    onClick={() => handleRemoveOne(fileItem)}
-                    disabled={uploading || deleting || opening}
-                  >
-                    Quitar
-                  </button>
-                </div>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-success"
+                          onClick={() => handleOpenFile(fileItem)}
+                          disabled={opening || uploading || deleting}
+                        >
+                          Descargar
+                        </button>
+
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-danger"
+                            onClick={() => handleRemoveOne(fileItem)}
+                            disabled={uploading || deleting || opening}
+                          >
+                            Quitar
+                          </button>
+                        )}
+                      </div>
+                      </div>
+
+            
               )}
+         
             </div>
           );
         })}
       </div>
     ) : (
       fileValue && (
-        <div className="border rounded p-2 bg-light">
+        <div className="upload-card upload-card--single">
           <div className="d-flex align-items-center gap-2">
             <span style={{ fontSize: "1.25rem" }}>{fileInfo.icon}</span>
             <div>
-              <div className="small fw-semibold">{fileValue.name}</div>
-              <div className="small text-muted">
+              <div className="upload-card__title">{fileValue.name}</div>
+              <div className="upload-card__subtitle">
                 {fileInfo.label}
                 {fileValue.size ? ` · ${formatBytes(fileValue.size)}` : ""}
               </div>
@@ -409,43 +440,43 @@ useEffect(() => {
           </div>
 
           {isImage && resolvedUrl ? (
+            <div className="upload-card__body">
+       
             <img
               src={resolvedUrl}
               alt={fileValue.name || "Imagen subida"}
-              style={{
-                maxWidth: "220px",
-                maxHeight: "220px",
-                objectFit: "cover",
-                borderRadius: 8,
-                marginTop: 8,
-              }}
+              className="upload-card__image"
             />
+            
+            </div>
           ) : (
-            <div className="mt-2 d-flex gap-2 flex-wrap">
-       
+            <div className="upload-card__body">
+            
             </div>
           )}
-
+          <div className="upload-card__body">
+          <div className="upload-card__actions">
+            <button
+                  type="button"
+                  className="btn btn-sm btn-outline-primary"
+                  onClick={() => handleOpenFile(fileValue)}
+                  disabled={opening || uploading || deleting}
+                >
+                  Ver
+                </button>
           {!readOnly && (
-            <div className="mt-2">
-              <button
-                type="button"
-                className="btn btn-sm btn-outline-primary"
-                onClick={() => handleOpenFile(fileValue)}
-                disabled={opening || uploading || deleting}
-              >
-                {opening ? "Abriendo..." : "Abrir"}
-              </button>
-              <button
+             <button
                 type="button"
                 className="btn btn-sm btn-outline-danger"
-                onClick={handleRemove}
+                onClick={() => handleRemoveOne(fileValue)}
                 disabled={uploading || deleting || opening}
               >
                 Quitar
               </button>
-            </div>
+            
           )}
+          </div>
+        </div>
         </div>
       )
     )}
