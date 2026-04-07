@@ -15,7 +15,7 @@ export default function NewUserClientForm({ schema }: { schema: any }) {
       initialData={{ meta: { overrides: {} } }}
       mode="create"
       onSubmit={async (values: any) => {
-        // Esperamos que el form tenga email + password + lo que quieras guardar en public.users
+        
         const res = await fetch("/api/users/create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -27,10 +27,10 @@ export default function NewUserClientForm({ schema }: { schema: any }) {
           throw new Error(json?.detail || "No se pudo crear el usuario");
         }
 
-        // Ajusta la ruta al listado real
+      // Ajusta la ruta al listado real
         router.push("/users");
       }}
-    />
+    /> 
     </RequirePerms>
   );
 }

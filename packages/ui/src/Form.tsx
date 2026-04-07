@@ -35,7 +35,7 @@ type Props = {
   onTreeViewRowEdit?: (row: any) => void;
   confirmTreeViewDelete?: (row: any) => Promise<boolean>;
   modulesBySlug?: Record<string, { db?: { table?: string; primaryKey?: string } }>;
-  schemasBySlug: Record<string, ModuleSchema>;
+  schemasBySlug?: Record<string, ModuleSchema>;
 
 
 };
