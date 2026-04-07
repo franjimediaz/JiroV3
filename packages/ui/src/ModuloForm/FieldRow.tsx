@@ -893,7 +893,8 @@ const commitWhereIfValid = (text: string) => {
   </div>
             )}
           {(field.type === "file" || field.type === "image") && (
-              <>
+              <div className={styles.card} style={{ marginTop: 12 }}>
+                <h4 style={{ marginTop: 0 }}>File/Image</h4>
                 <div className={styles.switchRow}>
                   <label className={styles.label}>multiple</label>
                   <input
@@ -920,7 +921,21 @@ const commitWhereIfValid = (text: string) => {
                     }
                   />
                 </div>
-              </>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label className={styles.label}>allowedMimeTypes</label>
+                  <ArrayChips
+                    value={field.allowedMimeTypes || []}
+                    onChange={(allowedMimeTypes) =>
+                      onChange({ ...field, allowedMimeTypes })
+                    }
+                    placeholder="Ej: image/png o application/pdf"
+                  />
+                  <div className={styles.hint}>
+                    Ejemplos: image/jpeg, image/png, application/pdf,
+                    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+                  </div>
+                </div>
+              </div>
             )}
 
           {getComputeKind(field) === "formula" && (

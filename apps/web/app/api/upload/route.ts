@@ -15,6 +15,7 @@ const ALLOWED_IMAGE_MIME_TYPES = [
   "image/gif",
 ];
 
+
 function sanitizeFileName(name: string) {
   return name
     .normalize("NFD")
@@ -31,6 +32,7 @@ export async function POST(req: Request) {
     const file = formData.get("file");
     const kind = (formData.get("kind") as UploadKind | null) ?? "file";
     const folder = (formData.get("folder") as string | null) ?? "general";
+    
 
     if (!(file instanceof File)) {
       return NextResponse.json(
@@ -102,6 +104,32 @@ export async function POST(req: Request) {
     if (isImage) {
       const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
       url = data.publicUrl;
+    }
+    const allowedMimeTypesRaw = formData.get("allowedMimeTypes");
+    let allowedMimeTypes: string[] = [];
+
+    if (typeof allowedMimeTypesRaw === "string" && allowedMimeTypesRaw.trim()) {
+      try {
+        allowedMimeTypes = JSON.parse(allowedMimeTypesRaw);
+      } catch {
+        allowedMimeTypes = [];
+      }
+    }
+
+    if (allowedMimeTypes.length > 0) {
+      if (!allowedMimeTypes.includes(file.type)) {
+        return NextResponse.json(
+          { error: `Tipo MIME no permitido: ${file.type || "desconocido"}` },
+          { status: 400 }
+        );
+      }
+    } else if (isImage) {
+      if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
+        return NextResponse.json(
+          { error: "Formato de imagen no permitido" },
+          { status: 400 }
+        );
+      }
     }
 
     return NextResponse.json({

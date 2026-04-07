@@ -86,6 +86,8 @@ export type BaseField = {
   visible?: boolean;
   visibleWhen?: VisibleWhen;
   readOnly?: boolean;
+  allowedMimeTypes?: string[];
+  allowedExtensions?: string[];
 
   list?: boolean;
   filter?: boolean;
@@ -118,6 +120,7 @@ export type OtherField = BaseField & {
   ref?: never; // opcional: evita que ref aparezca donde no toca
   maxFiles?: number;
   multiple?: boolean;
+  
 };
 
 export type Field = SelectorTablaField | ReverseLinkField | OtherField;

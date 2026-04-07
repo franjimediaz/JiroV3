@@ -160,6 +160,7 @@ function setFiles(nextFiles: UploadedFileValue[]) {
             for (const file of selectedFiles) {
               const validationError = validateSelectedFile(
                 file,
+                field,
                 isImage ? "image" : "file"
               );
 
@@ -170,7 +171,8 @@ function setFiles(nextFiles: UploadedFileValue[]) {
               const uploaded = await uploadSingleFile(
                 file,
                 isImage ? "image" : "file",
-                effectiveFolder
+                effectiveFolder,
+                field.allowedMimeTypes || []
               );
 
               uploadedBatch.push(uploaded);
@@ -182,6 +184,7 @@ function setFiles(nextFiles: UploadedFileValue[]) {
 
             const validationError = validateSelectedFile(
               file,
+              field,
               isImage ? "image" : "file"
             );
 
@@ -194,7 +197,8 @@ function setFiles(nextFiles: UploadedFileValue[]) {
             const uploaded = await uploadSingleFile(
               file,
               isImage ? "image" : "file",
-              effectiveFolder
+              effectiveFolder,
+              field.allowedMimeTypes || []
             );
 
             setFiles([uploaded]);
@@ -283,21 +287,23 @@ useEffect(() => {
       <input
         type="file"
         className="form-control"
-        accept={isImage ? ALLOWED_IMAGE_MIME_TYPES.join(",") : undefined}
+        accept={getAcceptValue(field, isImage)}
         onChange={handleFileChange}
         disabled={readOnly || uploading || deleting}
         multiple={!!multiple}
       />
     )}
 
-    {!readOnly && (
-      <div className="small text-muted">
-        {isImage
-          ? `Máximo ${MAX_IMAGE_SIZE_MB} MB. Formatos: JPG, PNG, WEBP, GIF.`
-          : `Máximo ${MAX_FILE_SIZE_MB} MB.`}
-        {multiple && maxFiles ? ` Máximo ${maxFiles} archivos.` : ""}
-      </div>
-    )}
+     {!readOnly && (
+          <div className="small text-white">
+            {isImage
+              ? `Máximo ${MAX_IMAGE_SIZE_MB} MB.`
+              : `Máximo ${MAX_FILE_SIZE_MB} MB.`}
+            {" "}
+            {getAllowedTypesHint(field, isImage)}
+            {multiple && maxFiles ? ` Máximo ${maxFiles} archivos.` : ""}
+          </div>
+        )}
 
     {uploading && (
       <div className="small text-muted">Subiendo archivo...</div>
@@ -313,6 +319,7 @@ useEffect(() => {
 
     {multiple ? (
       <div className="d-flex flex-column gap-2">
+       
         {files.length === 0 && (
           <div className="small text-muted">No hay archivos subidos.</div>
         )}
@@ -758,12 +765,24 @@ function getFileDisplayInfo(
 }
 // Esta función valida un archivo seleccionado según su tipo (imagen o genérico) y devuelve un mensaje de error si no es válido, o null si es correcto
 
-function validateSelectedFile(file: File, kind: "file" | "image") {
-  if (kind === "image") {
+function validateSelectedFile(
+  file: File,
+  field: Field,
+  kind: "file" | "image"
+) {
+  const allowedMimeTypes = field.allowedMimeTypes || [];
+
+  if (allowedMimeTypes.length > 0) {
+    if (!allowedMimeTypes.includes(file.type)) {
+      return `Tipo de archivo no permitido: ${file.type || "desconocido"}`;
+    }
+  } else if (kind === "image") {
     if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
       return "Formato de imagen no permitido. Usa JPG, PNG, WEBP o GIF.";
     }
+  }
 
+  if (kind === "image") {
     if (file.size > MAX_IMAGE_SIZE_BYTES) {
       return `La imagen supera el máximo de ${MAX_IMAGE_SIZE_MB} MB.`;
     }
@@ -828,18 +847,43 @@ async function getSignedFileUrl(bucket: string, path: string, expiresIn = 60) {
 
   return data.signedUrl as string;
 }
+function getAllowedTypesHint(field: Field, isImage: boolean) {
+  if (field.allowedMimeTypes?.length) {
+    return `Tipos permitidos: ${field.allowedMimeTypes.join(", ")}.`;
+  }
 
+  if (isImage) {
+    return "Formatos: JPG, PNG, WEBP, GIF.";
+  }
+
+  return "";
+}
+function getAcceptValue(field: Field, isImage: boolean) {
+  const allowedMimeTypes = field.allowedMimeTypes || [];
+
+  if (allowedMimeTypes.length > 0) {
+    return allowedMimeTypes.join(",");
+  }
+
+  if (isImage) {
+    return ALLOWED_IMAGE_MIME_TYPES.join(",");
+  }
+
+  return undefined;
+}
 
 // Esta función se encarga de subir un solo archivo al backend y obtener su URL
 async function uploadSingleFile(
   file: File,
   kind: "file" | "image",
-  folder = "general"
+  folder = "general",
+  allowedMimeTypes: string[] = []
 ): Promise<UploadedFileValue> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("kind", kind);
   formData.append("folder", folder);
+  formData.append("allowedMimeTypes", JSON.stringify(allowedMimeTypes));
 
   const res = await fetch("/api/upload", {
     method: "POST",
