@@ -67,6 +67,8 @@ export async function POST(req: Request) {
     const bucket = isImage
       ? process.env.NEXT_PUBLIC_SUPABASE_PUBLIC_BUCKET || "crm-public"
       : process.env.NEXT_PUBLIC_SUPABASE_PRIVATE_BUCKET || "crm-private";
+    
+    const isPublic = isImage;
 
     const ext = file.name.includes(".")
       ? file.name.split(".").pop()
@@ -111,6 +113,7 @@ export async function POST(req: Request) {
       size: file.size,
       mimeType: file.type,
       kind,
+      isPublic,
     });
   } catch (error: any) {
     return NextResponse.json(

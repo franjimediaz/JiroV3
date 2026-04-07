@@ -822,11 +822,20 @@ const treeSchemaFields = useMemo(() => {
 
 function withDefaultValues(fields: Field[], base: any) {
   const out = { ...(base || {}) };
-  for (const f of fields || []) {
+
+  for (const f of fields) {
     if (out[f.name] === undefined) {
-      out[f.name] = (f as any).defaultValue ?? defaultForType(f.type as FieldType);
+      if (
+        (f.type === "file" || f.type === "image") &&
+        (f as any).multiple
+      ) {
+        out[f.name] = [];
+      } else {
+        out[f.name] = f.defaultValue ?? defaultForType(f.type as FieldType);
+      }
     }
   }
+
   return out;
 }
 
@@ -840,6 +849,9 @@ function defaultForType(t: FieldType): any {
       return false;
     case "multiselect":
       return [];
+    case "file":
+    case "image":
+      return "";
     default:
       return "";
   }
@@ -854,16 +866,29 @@ function normalizeInitialData(fields: Field[], data: any) {
   const out = { ...(data || {}) };
 
   for (const f of fields) {
-    if ((f.type === "file" || f.type === "image") && typeof out[f.name] === "string") {
-      const raw = out[f.name].trim();
+    const raw = out[f.name];
 
-      // si es JSON serializado
-      if (raw.startsWith("{") || raw.startsWith("[")) {
+    if (f.type !== "file" && f.type !== "image") continue;
+    if (raw == null || raw === "") continue;
+
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
         try {
-          out[f.name] = JSON.parse(raw);
+          out[f.name] = JSON.parse(trimmed);
         } catch {
-          // si falla, lo dejamos como está
+          // lo dejamos como esté
         }
+      }
+    }
+
+    if ((f as any).multiple) {
+      if (!Array.isArray(out[f.name])) {
+        out[f.name] = out[f.name] ? [out[f.name]] : [];
+      }
+    } else {
+      if (Array.isArray(out[f.name])) {
+        out[f.name] = out[f.name][0] || "";
       }
     }
   }

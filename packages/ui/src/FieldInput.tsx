@@ -21,6 +21,11 @@ type UploadedFileValue = {
   size?: number;
   mimeType?: string;
   kind?: "file" | "image";
+  isPublic?: boolean;
+};
+type FileDisplayInfo = {
+  icon: string;
+  label: string;
 };
 
 
@@ -31,20 +36,79 @@ function FileFieldInput({
   onChange,
   readOnly,
   uploadFolder,
+  multiple,
+  maxFiles,
 }: {
   field: Field;
   value: UploadedFileValue | "" | null;
   onChange: (v: any) => void;
   readOnly?: boolean;
   uploadFolder?: string;
+  multiple?: boolean;
+  maxFiles?: number;
 }) {
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [opening, setOpening] = useState(false);
   const isImage = field.type === "image";
-  const effectiveFolder = uploadFolder
-  ? `${uploadFolder}/${field.name}`
-  : field.name;
+
+    const parsedValue =
+      typeof value === "string"
+        ? (() => {
+            try {
+              return JSON.parse(value);
+            } catch {
+              return value;
+            }
+          })()
+        : value;
+
+    const files: UploadedFileValue[] = multiple
+      ? Array.isArray(parsedValue)
+        ? parsedValue
+        : parsedValue
+        ? [parsedValue as UploadedFileValue]
+        : []
+      : parsedValue && !Array.isArray(parsedValue)
+      ? [parsedValue as UploadedFileValue]
+      : [];
+
+    const singleFile = files[0] || null;
+
+function setFiles(nextFiles: UploadedFileValue[]) {
+  if (multiple) {
+    onChange(nextFiles);
+  } else {
+    onChange(nextFiles[0] || "");
+  }
+}
+  const handleOpenFile = async (fileToOpen: UploadedFileValue) => {
+  if (!fileToOpen?.bucket || !fileToOpen?.path) return;
+
+  try {
+    setOpening(true);
+    setErrorMsg("");
+
+    let fileUrl = fileToOpen.url;
+
+    if (!fileUrl) {
+      fileUrl = await getSignedFileUrl(
+        fileToOpen.bucket,
+        fileToOpen.path,
+        120
+      );
+    }
+
+    window.open(fileUrl, "_blank", "noopener,noreferrer");
+  } catch (error: any) {
+    console.error(error);
+    setErrorMsg(error?.message || "No se pudo abrir el archivo");
+  } finally {
+    setOpening(false);
+  }
+};
+  const effectiveFolder = uploadFolder ? `${uploadFolder}/${field.name}` : field.name;
 
   const fileValue =
     typeof value === "string"
@@ -66,122 +130,265 @@ function FileFieldInput({
       : null);
 
   const handleFileChange = async (
-  e: React.ChangeEvent<HTMLInputElement>
-) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+        e: React.ChangeEvent<HTMLInputElement>
+      ) => {
+        const selectedFiles = Array.from(e.target.files || []);
+        if (!selectedFiles.length) return;
 
-  setErrorMsg("");
+        setErrorMsg("");
 
-  const validationError = validateSelectedFile(
-    file,
-    isImage ? "image" : "file"
-  );
+        const remainingSlots = multiple
+          ? Math.max(0, (maxFiles || Infinity) - files.length)
+          : 1;
 
-  if (validationError) {
-    setErrorMsg(validationError);
-    e.target.value = "";
-    return;
-  }
+        if (multiple && selectedFiles.length > remainingSlots) {
+          setErrorMsg(
+            maxFiles
+              ? `Solo puedes subir ${maxFiles} archivo(s) en este campo.`
+              : "Has seleccionado demasiados archivos."
+          );
+          e.target.value = "";
+          return;
+        }
 
-  const previousFile = fileValue || null;
+        try {
+          setUploading(true);
 
-  try {
-    setUploading(true);
+          if (multiple) {
+            const uploadedBatch: UploadedFileValue[] = [];
 
-    const uploaded = await uploadSingleFile(
-      file,
-      isImage ? "image" : "file",
-      effectiveFolder
-    );
+            for (const file of selectedFiles) {
+              const validationError = validateSelectedFile(
+                file,
+                isImage ? "image" : "file"
+              );
 
-    // 1) primero actualizamos el valor visible/formulario
-    onChange(uploaded);
+              if (validationError) {
+                throw new Error(`${file.name}: ${validationError}`);
+              }
 
-    // 2) luego intentamos borrar el anterior si existía y no es el mismo
-    const isDifferentFile =
-      previousFile &&
-      (previousFile.bucket !== uploaded.bucket ||
-        previousFile.path !== uploaded.path);
+              const uploaded = await uploadSingleFile(
+                file,
+                isImage ? "image" : "file",
+                effectiveFolder
+              );
 
-    if (isDifferentFile) {
-      try {
-        await deleteStoredFile(previousFile);
-      } catch (deleteError: any) {
-        console.error("No se pudo borrar el archivo anterior:", deleteError);
-        setErrorMsg(
-          "El nuevo archivo se guardó, pero no se pudo borrar el anterior."
-        );
-      }
-    }
-  } catch (error: any) {
-    console.error(error);
-    setErrorMsg(error?.message || "Error al subir el archivo");
-  } finally {
-    setUploading(false);
-    e.target.value = "";
-  }
-};
+              uploadedBatch.push(uploaded);
+            }
+
+            setFiles([...files, ...uploadedBatch]);
+          } else {
+            const file = selectedFiles[0];
+
+            const validationError = validateSelectedFile(
+              file,
+              isImage ? "image" : "file"
+            );
+
+            if (validationError) {
+              throw new Error(validationError);
+            }
+
+            const previousFile = singleFile;
+
+            const uploaded = await uploadSingleFile(
+              file,
+              isImage ? "image" : "file",
+              effectiveFolder
+            );
+
+            setFiles([uploaded]);
+
+            const isDifferentFile =
+              previousFile &&
+              (previousFile.bucket !== uploaded.bucket ||
+                previousFile.path !== uploaded.path);
+
+            if (isDifferentFile) {
+              try {
+                await deleteStoredFile(previousFile);
+              } catch (deleteError) {
+                console.error("No se pudo borrar el archivo anterior", deleteError);
+                setErrorMsg(
+                  "El nuevo archivo se guardó, pero no se pudo borrar el anterior."
+                );
+              }
+            }
+          }
+        } catch (error: any) {
+          console.error(error);
+          setErrorMsg(error?.message || "Error al subir el archivo");
+        } finally {
+          setUploading(false);
+          e.target.value = "";
+        }
+      };
 
   const handleRemove = async () => {
-  if (!fileValue?.bucket || !fileValue?.path) {
-    onChange("");
-    return;
-  }
+      if (!fileValue?.bucket || !fileValue?.path) {
+        onChange("");
+        return;
+      }
 
-  try {
-    setDeleting(true);
-    setErrorMsg("");
+      try {
+        setDeleting(true);
+        setErrorMsg("");
 
-    await deleteStoredFile(fileValue);
+        await deleteStoredFile(fileValue);
 
-    onChange("");
-  } catch (error: any) {
-    console.error(error);
-    setErrorMsg(error?.message || "Error al eliminar el archivo");
-  } finally {
-    setDeleting(false);
-  }
-};
+        onChange("");
+      } catch (error: any) {
+        console.error(error);
+        setErrorMsg(error?.message || "Error al eliminar el archivo");
+      } finally {
+        setDeleting(false);
+      }
+    };
+
+const handleRemoveOne = async (fileToRemove: UploadedFileValue) => {
+        try {
+          setDeleting(true);
+          setErrorMsg("");
+
+          await deleteStoredFile(fileToRemove);
+
+          const next = files.filter(
+            (f) =>
+              !(
+                f.bucket === fileToRemove.bucket &&
+                f.path === fileToRemove.path
+              )
+          );
+
+          setFiles(next);
+        } catch (error: any) {
+          console.error(error);
+          setErrorMsg(error?.message || "Error al eliminar el archivo");
+        } finally {
+          setDeleting(false);
+        }
+      };
+
+const fileInfo = getFileDisplayInfo(fileValue?.mimeType, fileValue?.name);
 
   return (
-    <div className="d-flex flex-column gap-2">
-      {!readOnly && (
-        <input
-          type="file"
-          className="form-control"
-          accept={isImage ? ALLOWED_IMAGE_MIME_TYPES.join(",") : undefined}
-          onChange={handleFileChange}
-          disabled={readOnly || uploading || deleting}
-        />
-      )}
+  <div className="d-flex flex-column gap-2">
+    {!readOnly && (
+      <input
+        type="file"
+        className="form-control"
+        accept={isImage ? ALLOWED_IMAGE_MIME_TYPES.join(",") : undefined}
+        onChange={handleFileChange}
+        disabled={readOnly || uploading || deleting}
+        multiple={!!multiple}
+      />
+    )}
 
-      {!readOnly && (
-        <div className="small text-muted">
-          {isImage
-            ? `Máximo ${MAX_IMAGE_SIZE_MB} MB. Formatos: JPG, PNG, WEBP, GIF.`
-            : `Máximo ${MAX_FILE_SIZE_MB} MB.`}
-        </div>
-      )}
+    {!readOnly && (
+      <div className="small text-muted">
+        {isImage
+          ? `Máximo ${MAX_IMAGE_SIZE_MB} MB. Formatos: JPG, PNG, WEBP, GIF.`
+          : `Máximo ${MAX_FILE_SIZE_MB} MB.`}
+        {multiple && maxFiles ? ` Máximo ${maxFiles} archivos.` : ""}
+      </div>
+    )}
 
-      {uploading && (
-        <div className="small text-muted">Subiendo archivo...</div>
-      )}
+    {uploading && (
+      <div className="small text-muted">Subiendo archivo...</div>
+    )}
 
-      {deleting && (
-        <div className="small text-muted">Eliminando archivo...</div>
-      )}
+    {deleting && (
+      <div className="small text-muted">Eliminando archivo...</div>
+    )}
 
-      {errorMsg && (
-        <div className="small text-danger">{errorMsg}</div>
-      )}
+    {errorMsg && (
+      <div className="small text-danger">{errorMsg}</div>
+    )}
 
-      {fileValue && (
+    {multiple ? (
+      <div className="d-flex flex-column gap-2">
+        {files.length === 0 && (
+          <div className="small text-muted">No hay archivos subidos.</div>
+        )}
+
+        {files.map((fileItem) => {
+          const itemInfo = getFileDisplayInfo(fileItem.mimeType, fileItem.name);
+          const itemResolvedUrl =
+            fileItem.url ||
+            (fileItem.bucket && fileItem.path
+              ? buildPublicSupabaseUrl(fileItem.bucket, fileItem.path)
+              : null);
+
+          return (
+            <div
+              key={`${fileItem.bucket}-${fileItem.path}`}
+              className="border rounded p-2 bg-light"
+            >
+              <div className="d-flex align-items-center gap-2">
+                <span style={{ fontSize: "1.25rem" }}>{itemInfo.icon}</span>
+                <div>
+                  <div className="small fw-semibold">{fileItem.name}</div>
+                  <div className="small text-muted">
+                    {itemInfo.label}
+                    {fileItem.size ? ` · ${formatBytes(fileItem.size)}` : ""}
+                  </div>
+                </div>
+              </div>
+
+              {isImage && itemResolvedUrl ? (
+                <img
+                  src={itemResolvedUrl}
+                  alt={fileItem.name || "Imagen subida"}
+                  style={{
+                    maxWidth: "220px",
+                    maxHeight: "220px",
+                    objectFit: "cover",
+                    borderRadius: 8,
+                    marginTop: 8,
+                  }}
+                />
+              ) : (
+                <div className="mt-2 d-flex gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-primary"
+                    onClick={() => handleOpenFile(fileItem)}
+                    disabled={opening || uploading || deleting}
+                  >
+                    {opening ? "Abriendo..." : "Abrir documento"}
+                  </button>
+                </div>
+              )}
+
+              {!readOnly && (
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-danger"
+                    onClick={() => handleRemoveOne(fileItem)}
+                    disabled={uploading || deleting || opening}
+                  >
+                    Quitar
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    ) : (
+      fileValue && (
         <div className="border rounded p-2 bg-light">
-          <div className="small fw-semibold">{fileValue.name}</div>
-          {fileValue.size ? (
-            <div className="small text-muted">{formatBytes(fileValue.size)}</div>
-          ) : null}
+          <div className="d-flex align-items-center gap-2">
+            <span style={{ fontSize: "1.25rem" }}>{fileInfo.icon}</span>
+            <div>
+              <div className="small fw-semibold">{fileValue.name}</div>
+              <div className="small text-muted">
+                {fileInfo.label}
+                {fileValue.size ? ` · ${formatBytes(fileValue.size)}` : ""}
+              </div>
+            </div>
+          </div>
 
           {isImage && resolvedUrl ? (
             <img
@@ -196,8 +403,15 @@ function FileFieldInput({
               }}
             />
           ) : (
-            <div className="small text-muted mt-1">
-              Archivo subido correctamente
+            <div className="mt-2 d-flex gap-2 flex-wrap">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-primary"
+                onClick={() => handleOpenFile(fileValue)}
+                disabled={opening || uploading || deleting}
+              >
+                {opening ? "Abriendo..." : "Abrir documento"}
+              </button>
             </div>
           )}
 
@@ -207,16 +421,17 @@ function FileFieldInput({
                 type="button"
                 className="btn btn-sm btn-outline-danger"
                 onClick={handleRemove}
-                disabled={uploading || deleting}
+                disabled={uploading || deleting || opening}
               >
                 Quitar
               </button>
             </div>
           )}
         </div>
-      )}
-    </div>
-  );
+      )
+    )}
+  </div>
+);
 }
 // Componente principal que renderiza el input adecuado según el tipo de campo
 export default function FieldInput({ field, value, onChange, readOnly, uploadFolder }: Props) {
@@ -328,6 +543,8 @@ export default function FieldInput({ field, value, onChange, readOnly, uploadFol
       onChange={onChange}
       readOnly={readOnly}
       uploadFolder={uploadFolder}
+      multiple={!!(field as any).multiple}
+      maxFiles={(field as any).maxFiles}
     />
     );
   }
@@ -407,6 +624,15 @@ function toInputDate(value?: string) {
   if (!value) return "";
   return value.slice(0, 10);
 }
+function toInputDateTimeLocal(value?: string) {
+  if (!value) return "";
+
+  const d = new Date(value);
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+// Funciones relacionadas con la gestión de archivos: validación, subida, eliminación, generación de URLs, etc.
 const MAX_IMAGE_SIZE_MB = 5;
 const MAX_FILE_SIZE_MB = 10;
 
@@ -420,12 +646,105 @@ const ALLOWED_IMAGE_MIME_TYPES = [
   "image/gif",
 ];
 
+// Esta función formatea un tamaño en bytes a una cadena legible (B, KB, MB)
 function formatBytes(bytes?: number) {
   if (!bytes && bytes !== 0) return "";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
+function getExtension(filename?: string) {
+  if (!filename) return "";
+  const parts = filename.toLowerCase().split(".");
+  return parts.length > 1 ? parts.pop() || "" : "";
+}
+function isMultipleFileField(field: Field) {
+  return (
+    (field.type === "file" || field.type === "image") &&
+    !!(field as any).multiple
+  );
+}
+
+function getFileDisplayInfo(
+  mimeType?: string,
+  filename?: string
+): FileDisplayInfo {
+  const mime = (mimeType || "").toLowerCase();
+  const ext = getExtension(filename);
+
+  if (mime === "application/pdf" || ext === "pdf") {
+    return { icon: "📄", label: "PDF" };
+  }
+
+  if (
+    mime.includes("word") ||
+    mime === "application/msword" ||
+    ext === "doc" ||
+    ext === "docx"
+  ) {
+    return { icon: "📝", label: "Word" };
+  }
+
+  if (
+    mime.includes("excel") ||
+    mime.includes("spreadsheet") ||
+    ext === "xls" ||
+    ext === "xlsx" ||
+    ext === "csv"
+  ) {
+    return { icon: "📊", label: "Excel / hoja" };
+  }
+
+  if (
+    mime.includes("powerpoint") ||
+    mime.includes("presentation") ||
+    ext === "ppt" ||
+    ext === "pptx"
+  ) {
+    return { icon: "📈", label: "Presentación" };
+  }
+
+  if (mime.startsWith("image/")) {
+    return { icon: "🖼️", label: "Imagen" };
+  }
+
+  if (mime.startsWith("video/")) {
+    return { icon: "🎬", label: "Vídeo" };
+  }
+
+  if (mime.startsWith("audio/")) {
+    return { icon: "🎵", label: "Audio" };
+  }
+
+  if (
+    mime.includes("zip") ||
+    mime.includes("rar") ||
+    mime.includes("7z") ||
+    ext === "zip" ||
+    ext === "rar" ||
+    ext === "7z"
+  ) {
+    return { icon: "🗜️", label: "Comprimido" };
+  }
+
+  if (
+    mime.includes("json") ||
+    mime.includes("xml") ||
+    mime.includes("javascript") ||
+    mime.includes("typescript") ||
+    mime.includes("text/plain") ||
+    ext === "json" ||
+    ext === "xml" ||
+    ext === "js" ||
+    ext === "ts" ||
+    ext === "txt"
+  ) {
+    return { icon: "💻", label: "Archivo de texto / código" };
+  }
+
+  return { icon: "📎", label: "Documento" };
+}
+// Esta función valida un archivo seleccionado según su tipo (imagen o genérico) y devuelve un mensaje de error si no es válido, o null si es correcto
 
 function validateSelectedFile(file: File, kind: "file" | "image") {
   if (kind === "image") {
@@ -451,6 +770,8 @@ function buildPublicSupabaseUrl(bucket: string, path: string) {
   if (!base || !bucket || !path) return null;
   return `${base}/storage/v1/object/public/${bucket}/${path}`;
 }
+
+// Esta función se encarga de eliminar un archivo almacenado dado su bucket y path
 async function deleteStoredFile(fileValue?: UploadedFileValue | null) {
   if (!fileValue?.bucket || !fileValue?.path) return { ok: true };
 
@@ -473,15 +794,30 @@ async function deleteStoredFile(fileValue?: UploadedFileValue | null) {
 
   return data;
 }
+// Esta función se encarga de obtener una URL firmada para un archivo privado, dado su bucket y path
+async function getSignedFileUrl(bucket: string, path: string, expiresIn = 60) {
+  const res = await fetch("/api/upload-url", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      bucket,
+      path,
+      expiresIn,
+    }),
+  });
 
-function toInputDateTimeLocal(value?: string) {
-  if (!value) return "";
+  const data = await res.json();
 
-  const d = new Date(value);
-  const pad = (n: number) => String(n).padStart(2, "0");
+  if (!res.ok) {
+    throw new Error(data?.error || "No se pudo obtener la URL firmada");
+  }
 
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return data.signedUrl as string;
 }
+
+
 // Esta función se encarga de subir un solo archivo al backend y obtener su URL
 async function uploadSingleFile(
   file: File,

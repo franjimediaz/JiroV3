@@ -3,7 +3,7 @@ const nextConfig = {
   images: {
     unoptimized: true
   },
-  proxyClientMaxBodySize: "50mb",
+  
   outputFileTracingIncludes: {
     // ✅ clave más fiable para App Router route handlers
     "app/api/pdf/generate/route": [

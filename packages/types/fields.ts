@@ -107,6 +107,7 @@ export type SelectorTablaField = BaseField & {
 };
 
 
+
 export type ReverseLinkField = BaseField & {
   type: "ReverseLink";
   ref: ReverseLinkRef; // requerido y sin displayField
@@ -115,6 +116,8 @@ export type ReverseLinkField = BaseField & {
 export type OtherField = BaseField & {
   type: Exclude<FieldType, "selectorTabla" | "ReverseLink">;
   ref?: never; // opcional: evita que ref aparezca donde no toca
+  maxFiles?: number;
+  multiple?: boolean;
 };
 
 export type Field = SelectorTablaField | ReverseLinkField | OtherField;

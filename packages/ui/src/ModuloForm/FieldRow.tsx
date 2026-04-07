@@ -892,6 +892,36 @@ const commitWhereIfValid = (text: string) => {
   </div>
   </div>
             )}
+          {(field.type === "file" || field.type === "image") && (
+              <>
+                <div className={styles.switchRow}>
+                  <label className={styles.label}>multiple</label>
+                  <input
+                    type="checkbox"
+                    checked={!!field.multiple}
+                    onChange={(e) =>
+                      onChange({ ...field, multiple: e.target.checked })
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className={styles.label}>maxFiles</label>
+                  <input
+                    type="number"
+                    min={1}
+                    className={styles.input}
+                    value={field.maxFiles ?? ""}
+                    onChange={(e) =>
+                      onChange({
+                        ...field,
+                        maxFiles: e.target.value ? Number(e.target.value) : undefined,
+                      })
+                    }
+                  />
+                </div>
+              </>
+            )}
 
           {getComputeKind(field) === "formula" && (
             <div className={styles.card} style={{ marginTop: 12 }}>
