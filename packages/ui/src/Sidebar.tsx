@@ -101,7 +101,7 @@ export function Sidebar({
       openSet={openSet}
       toggleNode={toggleNode}
       activeSet={activeSet}
-      canView={canView} // ✅ pásalo a NavTree/NavItem
+      canView={canView}
     />
   );
 
@@ -150,9 +150,9 @@ export function Sidebar({
 
   // fixed
   return (
-    <aside className="bg-body-primary border-end h-100">
-      <div className="p-4 sidebar-sticky">
-        <h6 className="text-uppercase text-dark mb-3">{title}</h6>
+    <aside className="sidebar-desktop border-end h-100">
+        <div className="p-4 sidebar-sticky">
+        <h6 className="sidebar-title">{title}</h6>
         {tree}
       </div>
       <SidebarUser />
@@ -218,26 +218,22 @@ function NavItem({
   canView?: (slug: string) => boolean; // devuelve true si puede VER en sidebar
 }) {
 
-
   const pathname = usePathname();
-
-  
-
   //  Permisos: si no puede "ver", fuera
   
   const hasChildren = (node.hijos?.length ?? 0) > 0;
 
-// ✅ Carpeta REAL: por tipo o por estructura (fallback)
+//  Carpeta REAL: por tipo o por estructura (fallback)
 const isFolder =
   node.tipo === "carpeta" ||
   (hasChildren && (!node.route || node.route.trim() === ""));
 
-// ✅ Permisos SOLO para tablas/subtablas (no carpetas)
+// Permisos SOLO para tablas/subtablas (no carpetas)
 if (!isFolder) {
   if (canView && !canView(node.slug)) return null;
 }
 
-  // ✅ sidebar=true => NO se muestra el nodo, pero sus hijos sí (promovidos al mismo nivel)
+  // sidebar=true => NO se muestra el nodo, pero sus hijos sí (promovidos al mismo nivel)
   if (node.sidebar === true) { 
   if (node.tipo === "carpeta") {
   // la carpeta no se oculta, ignora sidebar para carpetas

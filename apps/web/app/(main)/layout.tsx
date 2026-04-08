@@ -4,7 +4,6 @@ import Providers from "../providers";
 import { createClient } from "@/lib/supabase/server";
 import { PermisosProvider } from "@/lib/perms";
 import type { SidebarItem } from "@repo/ui";
-import "../globals.css";
 import MainShell from "./MainShell";
 
 import { SidebarWithPerms } from "./SidebarWithPerms"; // ✅ nuevo wrapper client
