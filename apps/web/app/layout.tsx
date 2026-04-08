@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { PermisosProvider } from "@/lib/perms";
-import "./globals.css";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap-icons/font/bootstrap-icons.css";
+import "./globals.css";
 
 
 
