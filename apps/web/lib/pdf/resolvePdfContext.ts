@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { ModuleSchema } from "@repo/types";
 
-
 type RelatedSpec = {
   key: string;
   table: string;
@@ -11,7 +10,7 @@ type RelatedSpec = {
 type LabelResolver = {
   // en qué array (record o related.KEY) hay que aplicar la resolución
   in: "record" | "related";
-  relatedKey?: string;        // si in=related
+  relatedKey?: string; // si in=related
   // campo que es UUID en la fila (ej: "service")
   field: string;
   // tabla donde buscar el label (ej: "servicios_config" o "services")
@@ -45,8 +44,8 @@ async function addLabelsToRows(args: {
     new Set(
       (rows || [])
         .map((r) => r?.[resolver.field])
-        .filter((v) => typeof v === "string" && v.length > 0)
-    )
+        .filter((v) => typeof v === "string" && v.length > 0),
+    ),
   );
 
   if (!ids.length) return rows;
@@ -58,7 +57,10 @@ async function addLabelsToRows(args: {
 
   if (error) {
     // No petamos el PDF por esto; devolvemos sin labels
-    console.warn(`resolvePdfContext: labelResolver error (${resolver.refTable}):`, error.message);
+    console.warn(
+      `resolvePdfContext: labelResolver error (${resolver.refTable}):`,
+      error.message,
+    );
     return rows;
   }
 
@@ -79,7 +81,12 @@ type AnyObj = Record<string, any>;
 
 // Helpers
 function isUuidLike(v: any) {
-  return typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  return (
+    typeof v === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      v,
+    )
+  );
 }
 
 async function fetchLabelsBatch(params: {
@@ -104,18 +111,31 @@ async function fetchLabelsBatch(params: {
 
 async function enrichRowsWithLabels(
   rows: any[],
-  specs: Array<{ field: string; table: string; labelField: string }>
+  specs: Array<{ field: string; table: string; labelField: string }>,
 ) {
-  if (!Array.isArray(rows) || rows.length === 0 || !Array.isArray(specs) || specs.length === 0) {
+  if (
+    !Array.isArray(rows) ||
+    rows.length === 0 ||
+    !Array.isArray(specs) ||
+    specs.length === 0
+  ) {
     return rows;
   }
 
   // Recolecta IDs por (table,labelField) para hacer batch
-  const groups = new Map<string, { table: string; labelField: string; ids: Set<string> }>();
+  const groups = new Map<
+    string,
+    { table: string; labelField: string; ids: Set<string> }
+  >();
 
   for (const s of specs) {
     const key = `${s.table}__${s.labelField}`;
-    if (!groups.has(key)) groups.set(key, { table: s.table, labelField: s.labelField, ids: new Set() });
+    if (!groups.has(key))
+      groups.set(key, {
+        table: s.table,
+        labelField: s.labelField,
+        ids: new Set(),
+      });
 
     for (const r of rows) {
       const id = r?.[s.field];
@@ -131,7 +151,11 @@ async function enrichRowsWithLabels(
       mapsByKey.set(k, {});
       continue;
     }
-    const map = await fetchLabelsBatch({ table: g.table, ids, labelField: g.labelField });
+    const map = await fetchLabelsBatch({
+      table: g.table,
+      ids,
+      labelField: g.labelField,
+    });
     mapsByKey.set(k, map);
   }
 
@@ -161,18 +185,26 @@ async function getSchemaFromDb(params: { supabase: any; moduleSlug: string }) {
     .maybeSingle();
 
   if (error) {
-    throw new Error(`resolvePdfContext: error cargando schema ${moduleSlug}: ${error.message}`);
+    throw new Error(
+      `resolvePdfContext: error cargando schema ${moduleSlug}: ${error.message}`,
+    );
   }
 
   const schema = data?.props as ModuleSchema | undefined;
   if (!schema) {
-    throw new Error(`resolvePdfContext: no existe schema para slug "${moduleSlug}" en tabla modulos`);
+    throw new Error(
+      `resolvePdfContext: no existe schema para slug "${moduleSlug}" en tabla modulos`,
+    );
   }
 
   return schema;
 }
 
-async function getOneFromDb(params: { supabase: any; table: string; id: string }) {
+async function getOneFromDb(params: {
+  supabase: any;
+  table: string;
+  id: string;
+}) {
   const { supabase, table, id } = params;
 
   const { data, error } = await supabase
@@ -183,17 +215,19 @@ async function getOneFromDb(params: { supabase: any; table: string; id: string }
 
   if (error) {
     // No petamos por completo por una relación rota: devolvemos null
-    console.warn(`resolvePdfContext: getOneFromDb error (${table} id=${id}):`, error.message);
+    console.warn(
+      `resolvePdfContext: getOneFromDb error (${table} id=${id}):`,
+      error.message,
+    );
     return null;
   }
 
   return data ?? null;
 }
 
-
 async function enrichRecordWithLabels(
   record: any,
-  specs: Array<{ field: string; table: string; labelField: string }>
+  specs: Array<{ field: string; table: string; labelField: string }>,
 ) {
   if (!record || !Array.isArray(specs) || specs.length === 0) return record;
 
@@ -223,7 +257,9 @@ function inferAliasFromFieldName(name: string) {
   return name;
 }
 
-function getRefFromField(field: any): { moduleSlug?: string; displayField?: string } | null {
+function getRefFromField(
+  field: any,
+): { moduleSlug?: string; displayField?: string } | null {
   // Soportar varias formas típicas:
   // field.ref.moduleSlug
   // field.ref.table
@@ -232,11 +268,256 @@ function getRefFromField(field: any): { moduleSlug?: string; displayField?: stri
   const ref = f.ref ?? f.selector?.ref ?? null;
   if (!ref) return null;
 
-  const moduleSlug = ref.moduleSlug ?? ref.slug ?? ref.table ?? ref.module ?? undefined;
-  const displayField = ref.displayField ?? ref.labelField ?? ref.display ?? undefined;
+  const moduleSlug =
+    ref.moduleSlug ?? ref.slug ?? ref.table ?? ref.module ?? undefined;
+  const displayField =
+    ref.displayField ?? ref.labelField ?? ref.display ?? undefined;
 
   if (!moduleSlug) return null;
   return { moduleSlug, displayField };
+}
+
+function firstNonEmptyString(...values: any[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value))
+      return String(value);
+  }
+  return "";
+}
+
+function pickNestedValue(source: any, paths: string[]) {
+  for (const path of paths) {
+    const parts = path.split(".").filter(Boolean);
+    let current = source;
+
+    for (const part of parts) {
+      if (current == null) break;
+      if (Array.isArray(current) && /^\d+$/.test(part)) {
+        current = current[Number(part)];
+      } else {
+        current = current?.[part];
+      }
+    }
+
+    const value = firstNonEmptyString(current);
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function normalizeBranding(raw: any) {
+  const branding = raw && typeof raw === "object" ? { ...raw } : {};
+
+  const nombre = firstNonEmptyString(
+    branding.nombre,
+    branding.razonSocial,
+    branding.razon_social,
+    branding.companyName,
+    branding.name,
+  );
+  const cif = firstNonEmptyString(
+    branding.cif,
+    branding.nif,
+    branding.vat,
+    branding.vatNumber,
+  );
+  const direccion = firstNonEmptyString(
+    branding.direccion,
+    branding.address,
+    branding.domicilio,
+    branding.direccionFiscal,
+    branding.street,
+  );
+  const telefono = firstNonEmptyString(
+    branding.telefono,
+    branding.phone,
+    branding.telefono1,
+    branding.mobile,
+  );
+  const email = firstNonEmptyString(
+    branding.email,
+    branding.correo,
+    branding.mail,
+  );
+  const logoUrl = firstNonEmptyString(
+    branding.logoUrl,
+    branding.logo,
+    branding.logo_url,
+    branding.imageUrl,
+    branding.imagen,
+  );
+  const website = firstNonEmptyString(
+    branding.website,
+    branding.web,
+    branding.url,
+    branding.sitioWeb,
+  );
+  const primaryColor = firstNonEmptyString(
+    branding.primaryColor,
+    branding.colorPrincipal,
+    branding.mainColor,
+    branding.color,
+  );
+
+  return {
+    ...branding,
+    nombre,
+    razonSocial: firstNonEmptyString(
+      branding.razonSocial,
+      branding.razon_social,
+      nombre,
+    ),
+    cif,
+    direccion,
+    telefono,
+    email,
+    website,
+    logo: logoUrl,
+    logoUrl,
+    primaryColor,
+    colorPrincipal: firstNonEmptyString(branding.colorPrincipal, primaryColor),
+  };
+}
+
+function normalizeClient(raw: any) {
+  const client = raw && typeof raw === "object" ? { ...raw } : {};
+
+  const nombre = firstNonEmptyString(
+    client.nombre,
+    client.nombreCompleto,
+    client.razonSocial,
+    client.razon_social,
+    client.fullName,
+    client.name,
+    client.label,
+    client.cliente_nombre,
+    client.customerName,
+    client.clientName,
+  );
+  const dni = firstNonEmptyString(
+    client.dni,
+    client.nif,
+    client.documento,
+    client.docId,
+  );
+  const direccion = firstNonEmptyString(
+    client.direccion,
+    client.address,
+    client.domicilio,
+    client.street,
+    client.addressLine1,
+    pickNestedValue(client, [
+      "direccion.calle",
+      "direccionFiscal.calle",
+      "direcciones.0.direccion",
+      "direcciones.0.calle",
+      "contacto.direccion",
+      "contacts.0.address",
+    ]),
+  );
+  const telefono = firstNonEmptyString(
+    client.telefono,
+    client.phone,
+    client.mobile,
+    client.telefono1,
+    client.telefonoMovil,
+    pickNestedValue(client, [
+      "contacto.telefono",
+      "contact.contactPhone",
+      "contacts.0.phone",
+    ]),
+  );
+  const email = firstNonEmptyString(
+    client.email,
+    client.correo,
+    client.mail,
+    pickNestedValue(client, [
+      "contacto.email",
+      "contact.email",
+      "contacts.0.email",
+    ]),
+  );
+
+  return {
+    ...client,
+    nombre,
+    nombreVisible: nombre,
+    label: firstNonEmptyString(client.label, nombre),
+    razonSocial: firstNonEmptyString(
+      client.razonSocial,
+      client.razon_social,
+      nombre,
+    ),
+    dni,
+    direccion,
+    telefono,
+    email,
+  };
+}
+
+function findClientSource(record: AnyObj, py: AnyObj) {
+  const candidates = [
+    py?.cliente,
+    py?.customer,
+    py?.client,
+    py?.obra?.cliente,
+    py?.proyecto?.cliente,
+    record?.cliente,
+    record?.customer,
+    record?.client,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === "object") return candidate;
+  }
+
+  return null;
+}
+
+function applyClientCardFields(record: AnyObj, py: AnyObj) {
+  const clientSource = findClientSource(record, py);
+  const client = normalizeClient(clientSource);
+  const visibleName = firstNonEmptyString(
+    record?.cliente_nombre,
+    record?.clienteNombre,
+    record?.cliente_label,
+    record?.clienteId__label,
+    record?.customer_name,
+    record?.customerName,
+    record?.client_name,
+    record?.clientName,
+    client.nombre,
+    py?.cliente__label,
+    py?.customer__label,
+    py?.client__label,
+    py?.obra?.cliente__label,
+  );
+
+  return {
+    ...record,
+    cliente_nombre: visibleName,
+    clienteNombre: firstNonEmptyString(record?.clienteNombre, visibleName),
+    cliente_label: firstNonEmptyString(record?.cliente_label, visibleName),
+    cliente_dni: firstNonEmptyString(record?.cliente_dni, client.dni),
+    cliente_direccion: firstNonEmptyString(
+      record?.cliente_direccion,
+      client.direccion,
+    ),
+    cliente_email: firstNonEmptyString(record?.cliente_email, client.email),
+    cliente_telefono: firstNonEmptyString(
+      record?.cliente_telefono,
+      client.telefono,
+    ),
+    customer_name: firstNonEmptyString(record?.customer_name, visibleName),
+    customerName: firstNonEmptyString(record?.customerName, visibleName),
+    client_name: firstNonEmptyString(record?.client_name, visibleName),
+    clientName: firstNonEmptyString(record?.clientName, visibleName),
+    cliente: client,
+    customer: client,
+    client,
+  };
 }
 
 async function hydrateBelongsToTree(opts: {
@@ -267,7 +548,11 @@ async function hydrateBelongsToTree(opts: {
     return rec;
   }
 
-  async function hydrateOne(moduleSlug: string, rec: AnyObj, d: number): Promise<AnyObj> {
+  async function hydrateOne(
+    moduleSlug: string,
+    rec: AnyObj,
+    d: number,
+  ): Promise<AnyObj> {
     if (!rec || d <= 0) return rec;
 
     const schema = await getSchemaCached(moduleSlug);
@@ -294,7 +579,9 @@ async function hydrateBelongsToTree(opts: {
 
       // 👇 aquí asumimos que ref.moduleSlug == nombre de tabla en supabase
       const child = await getOneCached(ref.moduleSlug, fkValue);
-      out[alias] = child ? await hydrateOne(ref.moduleSlug, child, d - 1) : null;
+      out[alias] = child
+        ? await hydrateOne(ref.moduleSlug, child, d - 1)
+        : null;
 
       // opcional: label directo si existe displayField
       if (ref.displayField && child && out[`${alias}__label`] == null) {
@@ -313,16 +600,17 @@ let allSchemasCacheAt = 0;
 
 async function loadAllSchemasFromDb(params: { supabase: any }) {
   const now = Date.now();
-  if (allSchemasCache && now - allSchemasCacheAt < 60_000) return allSchemasCache;
+  if (allSchemasCache && now - allSchemasCacheAt < 60_000)
+    return allSchemasCache;
 
   const { supabase } = params;
 
-  const { data, error } = await supabase
-    .from("modulos")
-    .select("slug,props");
+  const { data, error } = await supabase.from("modulos").select("slug,props");
 
   if (error) {
-    throw new Error(`resolvePdfContext: error cargando modulos: ${error.message}`);
+    throw new Error(
+      `resolvePdfContext: error cargando modulos: ${error.message}`,
+    );
   }
 
   const map: Record<string, ModuleSchema> = {};
@@ -339,12 +627,10 @@ async function loadAllSchemasFromDb(params: { supabase: any }) {
   return map;
 }
 
-
-
 type InverseRef = {
-  childModule: string;  // slug de la tabla hija
-  fkField: string;      // campo en la hija que apunta al padre (ej: presupuestoId)
-  alias: string;        // nombre de la colección en py (por defecto childModule)
+  childModule: string; // slug de la tabla hija
+  fkField: string; // campo en la hija que apunta al padre (ej: presupuestoId)
+  alias: string; // nombre de la colección en py (por defecto childModule)
 };
 
 function buildInverseRefs(all: Record<string, ModuleSchema>) {
@@ -384,16 +670,14 @@ async function fetchChildrenByFk(params: {
   const { supabase, table, fkField, parentId } = params;
 
   // intento FK normal: fkField = parentId
-  let res = await supabase
-    .from(table)
-    .select("*")
-    .eq(fkField, parentId);
+  let res = await supabase.from(table).select("*").eq(fkField, parentId);
 
   // si falla por FK array (uuid[]), reintenta con contains
   if (res.error) {
     const msg = String(res.error.message || "");
     const code = String(res.error.code || "");
-    const looksLikeArrayFk = msg.includes("malformed array literal") || code === "22P02";
+    const looksLikeArrayFk =
+      msg.includes("malformed array literal") || code === "22P02";
 
     if (looksLikeArrayFk) {
       res = await supabase
@@ -405,7 +689,10 @@ async function fetchChildrenByFk(params: {
 
   if (res.error) {
     // No petamos todo el PDF por una colección
-    console.warn(`resolvePdfContext: fetchChildren error (${table}.${fkField}):`, res.error.message);
+    console.warn(
+      `resolvePdfContext: fetchChildren error (${table}.${fkField}):`,
+      res.error.message,
+    );
     return [];
   }
 
@@ -454,12 +741,6 @@ async function hydrateHasManyCollections(opts: {
   return py;
 }
 
-
-  
-
-  
-
-
 export async function resolvePdfContext(args: ResolveArgs) {
   const supabase = await createClient();
 
@@ -471,7 +752,10 @@ export async function resolvePdfContext(args: ResolveArgs) {
     .maybeSingle();
 
   if (e1) throw new Error(`resolvePdfContext: error record: ${e1.message}`);
-  if (!record) throw new Error(`resolvePdfContext: record no encontrado (${args.sourceTable} id=${args.recordId})`);
+  if (!record)
+    throw new Error(
+      `resolvePdfContext: record no encontrado (${args.sourceTable} id=${args.recordId})`,
+    );
 
   // 2) Relaciones
   const related: Record<string, any[]> = {};
@@ -511,12 +795,13 @@ export async function resolvePdfContext(args: ResolveArgs) {
     }
 
     if (error) {
-      throw new Error(`resolvePdfContext: error related ${r.key}: ${error.message}`);
+      throw new Error(
+        `resolvePdfContext: error related ${r.key}: ${error.message}`,
+      );
     }
 
     related[r.key] = Array.isArray(data) ? data : [];
   }
-
 
   // 3) Branding
   const { data: branding } = await supabase
@@ -531,7 +816,11 @@ export async function resolvePdfContext(args: ResolveArgs) {
       if (!lr || typeof lr !== "object") continue;
 
       if (lr.in === "record") {
-        const rows = await addLabelsToRows({ supabase, rows: [record], resolver: lr });
+        const rows = await addLabelsToRows({
+          supabase,
+          rows: [record],
+          resolver: lr,
+        });
         // rows[0] puede ser el mismo record o uno enriquecido
         if (rows?.[0]) Object.assign(record, rows[0]);
       }
@@ -539,7 +828,11 @@ export async function resolvePdfContext(args: ResolveArgs) {
       if (lr.in === "related" && lr.relatedKey) {
         const key = lr.relatedKey;
         const arr = related[key] || [];
-        related[key] = await addLabelsToRows({ supabase, rows: arr, resolver: lr });
+        related[key] = await addLabelsToRows({
+          supabase,
+          rows: arr,
+          resolver: lr,
+        });
       }
     }
   }
@@ -556,11 +849,15 @@ export async function resolvePdfContext(args: ResolveArgs) {
     py,
   });
 
+  const normalizedBranding = normalizeBranding(branding);
+  const recordWithClientFields = applyClientCardFields(record, py);
+
   return {
-    record,
+    record: recordWithClientFields,
     py,
     related,
-    branding: branding || {},
+    branding: normalizedBranding,
+    empresa: normalizedBranding,
     now: new Date().toISOString(),
   };
 }

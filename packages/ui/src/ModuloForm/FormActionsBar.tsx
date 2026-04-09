@@ -17,12 +17,19 @@ export type FormAction =
   | ExternalAction
   | WorkflowAction;
 
-
 type BaseAction = {
   id: string;
   label: string;
   icon?: string; // ej: "bi bi-plus-lg"
-  variant?: "primary" | "secondary" | "success" | "warning" | "danger" | "info" | "light" | "dark";
+  variant?:
+    | "primary"
+    | "secondary"
+    | "success"
+    | "warning"
+    | "danger"
+    | "info"
+    | "light"
+    | "dark";
   showIn?: Mode[]; // default: ["view","edit","create"]
   confirm?: { title?: string; text: string };
   disabledWhen?: DisabledWhen;
@@ -37,7 +44,7 @@ type DisabledWhen =
 export type CreateRelatedAction = BaseAction & {
   type: "createRelated";
   target: {
-    table: string;       // tabla destino
+    table: string; // tabla destino
     moduleSlug?: string; // si prefieres navegar por módulo
   };
   /** Mapeo origen->destino: { destino: "campoOrigen" } */
@@ -56,8 +63,8 @@ export type CreateRelatedAction = BaseAction & {
 export type NavigateAction = BaseAction & {
   type: "navigate";
   target: {
-    table?: string;       // navegación por tabla (si tu router es por tabla)
-    moduleSlug?: string;  // o por módulo
+    table?: string; // navegación por tabla (si tu router es por tabla)
+    moduleSlug?: string; // o por módulo
   };
   hrefTemplate: string; // ej "/tareas/new?obraId={{id}}" o "/tabla/{{target.table}}?f={{id}}"
 };
@@ -83,8 +90,7 @@ export type ExternalAction = BaseAction & {
   kind: "pdf" | "email" | "print" | "custom";
   endpoint: string;
   open?: "tab" | "same";
-  
-  
+
   params?: Record<string, any>;
 };
 export type WorkflowAction = BaseAction & {
@@ -106,7 +112,6 @@ export type WorkflowAction = BaseAction & {
   };
 };
 
-
 function tplString(v: any, ctx: any) {
   if (typeof v !== "string") return v;
   return v.replace(/\{\{(.*?)\}\}/g, (_, k) => {
@@ -125,6 +130,27 @@ function deepTpl(obj: any, ctx: any): any {
   return tplString(obj, ctx);
 }
 
+async function readPdfError(response: Response) {
+  const contentType = response.headers.get("content-type") || "";
+
+  if (contentType.includes("application/json")) {
+    const json = await response.json().catch(() => null);
+    const upstreamStatus = json?.details?.upstreamStatus;
+    const upstreamError = json?.details?.upstreamError;
+    const pieces = [
+      `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`,
+      json?.error || "No se pudo generar el PDF",
+      upstreamStatus ? `Upstream ${upstreamStatus}` : "",
+      upstreamError || "",
+    ].filter(Boolean);
+    return pieces.join(" | ");
+  }
+
+  const text = await response.text().catch(() => "");
+  return `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}: ${
+    text || "No se pudo generar el PDF"
+  }`;
+}
 
 /** ---------------- Component Props ---------------- */
 
@@ -139,8 +165,6 @@ export default function FormActionsBar(props: {
   navigate?: (href: string) => void;
 
   resolveRoute?: (source: string) => string | null;
-
-  
 
   /** acciones configuradas desde schema.ui.formActions */
   actions?: FormAction[];
@@ -167,7 +191,9 @@ export default function FormActionsBar(props: {
   const effectiveActions = useMemo(() => {
     const list = Array.isArray(actions) ? actions : [];
     return list.filter((a) => {
-      const showIn = a.showIn?.length ? a.showIn : (["view", "edit", "create"] as Mode[]);
+      const showIn = a.showIn?.length
+        ? a.showIn
+        : (["view", "edit", "create"] as Mode[]);
       return showIn.includes(mode);
     });
   }, [actions, mode]);
@@ -177,7 +203,7 @@ export default function FormActionsBar(props: {
     if (typeof window !== "undefined") window.location.href = href;
   };
 
-    const buildBaseRoute = (source: string) => {
+  const buildBaseRoute = (source: string) => {
     const base = resolveRoute?.(source) || `/${source}`;
     return base.endsWith("/") ? base.slice(0, -1) : base;
   };
@@ -189,7 +215,6 @@ export default function FormActionsBar(props: {
 
   const buildListHref = (source: string) => buildBaseRoute(source);
 
-
   const isDisabled = (a: FormAction) => {
     const dw = (a as any).disabledWhen as DisabledWhen | undefined;
     if (!dw) return false;
@@ -198,7 +223,12 @@ export default function FormActionsBar(props: {
       return dw.modes.includes(mode);
     }
     if (dw.type === "missingFields") {
-      return dw.fields.some((f) => values?.[f] === undefined || values?.[f] === null || values?.[f] === "");
+      return dw.fields.some(
+        (f) =>
+          values?.[f] === undefined ||
+          values?.[f] === null ||
+          values?.[f] === "",
+      );
     }
     return false;
   };
@@ -208,27 +238,21 @@ export default function FormActionsBar(props: {
     const title = a.confirm.title || "Confirmación";
     return window.confirm(`${title}\n\n${a.confirm.text}`);
   };
-  
-  function getByPath<T = unknown>(
-  obj: unknown,
-  path: string
-): T | undefined {
-  return path
-    .split(".")
-    .reduce<unknown>((acc, key) => {
+
+  function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {
+    return path.split(".").reduce<unknown>((acc, key) => {
       if (acc && typeof acc === "object" && key in acc) {
         return (acc as Record<string, unknown>)[key];
       }
       return undefined;
     }, obj) as T | undefined;
-}
-
+  }
 
   const resolveTemplate = (tpl: string, ctx: Record<string, unknown>) =>
-  tpl.replace(/\{\{([\w.]+)\}\}/g, (_, path) => {
-    const val = getByPath(ctx, path);
-    return val == null ? "" : String(val);
-  });
+    tpl.replace(/\{\{([\w.]+)\}\}/g, (_, path) => {
+      const val = getByPath(ctx, path);
+      return val == null ? "" : String(val);
+    });
 
   const handleAction = async (a: FormAction) => {
     setError(null);
@@ -241,7 +265,11 @@ export default function FormActionsBar(props: {
     try {
       if (a.type === "recalculate") {
         // Fuerza applyCompute ahora mismo (útil para "Calcular totales")
-        const computed = await applyCompute({ schema: schema as any, record: values, dataProvider });
+        const computed = await applyCompute({
+          schema: schema as any,
+          record: values,
+          dataProvider,
+        });
         setValues?.(computed);
         return;
       }
@@ -276,18 +304,25 @@ export default function FormActionsBar(props: {
         });
 
         if (!created) {
-          throw new Error("dataProvider.create no devolvió resultado (¿falta implementarlo?).");
+          throw new Error(
+            "dataProvider.create no devolvió resultado (¿falta implementarlo?).",
+          );
         }
 
         // 3) post-create navegación
-        const createdId = created?.id ?? created?.data?.id ?? created?.record?.id;
+        const createdId =
+          created?.id ?? created?.data?.id ?? created?.record?.id;
         const after = a.afterCreate || { navigateTo: "record", openEdit: true };
         const source = a.target.moduleSlug || a.target.table;
 
         if (after.navigateTo === "none") return;
 
         if (after.hrefTemplate) {
-          const href = resolveTemplate(after.hrefTemplate, { ...values, created, id: createdId });
+          const href = resolveTemplate(after.hrefTemplate, {
+            ...values,
+            created,
+            id: createdId,
+          });
           go(href);
           return;
         }
@@ -317,14 +352,27 @@ export default function FormActionsBar(props: {
         });
 
         const table = (schema as any)?.db?.table;
-        if (!table) throw new Error("schema.db.table no está definido, no sé dónde duplicar.");
+        if (!table)
+          throw new Error(
+            "schema.db.table no está definido, no sé dónde duplicar.",
+          );
 
-        const created = await (dataProvider as any).create?.({ table, data: clone });
-        if (!created) throw new Error("No se pudo duplicar: dataProvider.create no devolvió resultado.");
+        const created = await (dataProvider as any).create?.({
+          table,
+          data: clone,
+        });
+        if (!created)
+          throw new Error(
+            "No se pudo duplicar: dataProvider.create no devolvió resultado.",
+          );
 
-        const createdId = created?.id ?? created?.data?.id ?? created?.record?.id;
+        const createdId =
+          created?.id ?? created?.data?.id ?? created?.record?.id;
 
-        const after = a.afterDuplicate || { navigateTo: "record", openEdit: true };
+        const after = a.afterDuplicate || {
+          navigateTo: "record",
+          openEdit: true,
+        };
         if (after.navigateTo === "none") return;
 
         if (after.navigateTo === "record") {
@@ -336,51 +384,76 @@ export default function FormActionsBar(props: {
         go(`/${table}`);
         return;
       }
-console.log("CLICK ACTION", a);
       if (a.type === "external") {
-          // ✅ compat: acepta config antigua (a.kind) y nueva (a.external.kind)
-          const ext = ((a as any).external ?? a) as any;
-          const kind = ext.kind as string | undefined;
+        // ✅ compat: acepta config antigua (a.kind) y nueva (a.external.kind)
+        const ext = ((a as any).external ?? a) as any;
+        const kind = ext.kind as string | undefined;
 
-          // params pueden venir en a.params (como en tu log) o en ext.params
-          const paramsObj = (a as any).params ?? ext.params ?? {};
-          const endpoint = ext.endpoint || (a as any).endpoint || "/api/pdf/generate";
-          const open = ext.open || (a as any).open || "tab";
+        // params pueden venir en a.params (como en tu log) o en ext.params
+        const paramsObj = (a as any).params ?? ext.params ?? {};
+        const endpoint =
+          ext.endpoint || (a as any).endpoint || "/api/pdf/generate";
+        const open = ext.open || (a as any).open || "tab";
 
-          if (a.confirm?.text) {
-            const ok = window.confirm(a.confirm.text);
-            if (!ok) return;
+        if (a.confirm?.text) {
+          const ok = window.confirm(a.confirm.text);
+          if (!ok) return;
+        }
+
+        if (kind === "pdf") {
+          const ctx = { ...values, id: values?.id };
+          const params = deepTpl(paramsObj, ctx);
+
+          const url = new URL(endpoint, window.location.origin);
+          for (const [k, v] of Object.entries(params)) {
+            if (v === undefined || v === null || v === "") continue;
+            url.searchParams.set(k, String(v));
           }
 
-          if (kind === "pdf") {
-            const ctx = { ...values, id: values?.id };
-            const params = deepTpl(paramsObj, ctx);
+          const res = await fetch(url.toString(), {
+            method: "GET",
+            credentials: "include",
+          });
 
-            const url = new URL(endpoint, window.location.origin);
-            for (const [k, v] of Object.entries(params)) {
-              if (v === undefined || v === null || v === "") continue;
-              url.searchParams.set(k, String(v));
-            }
+          if (!res.ok) {
+            throw new Error(await readPdfError(res));
+          }
 
-            window.open(
-              url.toString(),
-              open === "same" ? "_self" : "_blank",
-              "noopener,noreferrer"
+          const blob = await res.blob();
+          if (blob.type !== "application/pdf") {
+            throw new Error(
+              "La respuesta del generador PDF no devolvió un application/pdf válido.",
             );
-            return;
           }
 
-          // otros kinds (email/print/custom) por ahora no hacen nada
+          const blobUrl = window.URL.createObjectURL(blob);
+          if (open === "same") {
+            window.location.href = blobUrl;
+          } else {
+            const win = window.open(blobUrl, "_blank", "noopener,noreferrer");
+            if (!win) {
+              window.URL.revokeObjectURL(blobUrl);
+              throw new Error(
+                "El navegador bloqueó la apertura de la pestaña del PDF.",
+              );
+            }
+          }
           return;
         }
 
-
+        // otros kinds (email/print/custom) por ahora no hacen nada
+        return;
+      }
 
       if (a.type === "workflow") {
         const recordId = String(values?.id || "");
-        if (!recordId) throw new Error("No hay id del registro. Esta acción requiere un registro ya guardado.");
+        if (!recordId)
+          throw new Error(
+            "No hay id del registro. Esta acción requiere un registro ya guardado.",
+          );
 
-        if (!a.workflowKey) throw new Error("workflowKey requerido en la acción workflow.");
+        if (!a.workflowKey)
+          throw new Error("workflowKey requerido en la acción workflow.");
 
         const payload = {
           workflowKey: a.workflowKey,
@@ -407,14 +480,16 @@ console.log("CLICK ACTION", a);
         // after.navigateTo (template)
         const tpl = (a as any).after?.navigateTo;
         if (tpl) {
-          const href = resolveTemplate(String(tpl), { ...values, result: json.result, meta: json.meta });
+          const href = resolveTemplate(String(tpl), {
+            ...values,
+            result: json.result,
+            meta: json.meta,
+          });
           if (href) go(href);
         }
 
         return;
       }
-
-
     } catch (e: any) {
       setError(e?.message || "Error ejecutando acción");
     } finally {
@@ -448,11 +523,7 @@ console.log("CLICK ACTION", a);
         })}
       </div>
 
-      {error && (
-        <div className="alert alert-danger py-2 mb-0">
-          {error}
-        </div>
-      )}
+      {error && <div className="alert alert-danger py-2 mb-0">{error}</div>}
     </div>
   );
 }

@@ -332,7 +332,7 @@ export function IconPicker({
               top: pos.top,
               width: popoverWidth,
               height: popoverHeight,
-              background: "var(--panel, #fff)",
+              background: "var(--panel, #005068)",
               border: "1px solid var(--border, rgba(0,0,0,0.12))",
               borderRadius: 14,
               boxShadow: "0 18px 50px rgba(0,0,0,0.18)",

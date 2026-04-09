@@ -15,7 +15,7 @@ export default function MainShell({
 
   return (
     <>
-      <nav className="navbar navbar-dark bg-dark">
+      <nav className="navbar navbar-dark bg-dark py-0">
         <div className="container-fluid">
           {/* ✅ ahora abre con React */}
           <button
