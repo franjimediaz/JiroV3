@@ -874,17 +874,7 @@ export default function Form({
               );
             })}
 
-            {unsectionedFields.length > 0 && (
-              <div className="card border border-dashed">
-                <div className="card-header">
-                  <div className="fw-semibold">Otros campos</div>
-                  <div className="small text-muted">Campos sin seccion asignada</div>
-                </div>
-                <div className="card-body">
-                  <div className="row g-3">{unsectionedFields.map((field) => renderField(field))}</div>
-                </div>
-              </div>
-            )}
+           
           </div>
         ) : (
           <div className="row g-3">{(schema.fields || []).map((field) => renderField(field))}</div>
