@@ -1,7 +1,7 @@
 // lib/workflows/workflows/derive.createFromParent.ts
 import { createClient } from "@/lib/supabase/server";
 import { resolveDbTableFromSlug } from "./slugs";
-import { normalizeDeriveInput, applyMapAndDefaults } from "./deriveHelpers";
+import { normalizeDeriveInput, applyMapAndDefaults, normalizeChildren, rowMatchesFilters } from "./deriveHelpers";
 import type { WorkflowContext } from "./runWorkflow";
 
 function isProbablyDbTable(x: string) {
@@ -24,26 +24,27 @@ function applyTemplate(tpl: string, ctx: { id: string }) {
   return String(tpl || "").replaceAll("{{id}}", ctx.id);
 }
 
-// Normaliza children: si vienen legacy source/target children, los convierte en children[0]
-function normalizeChildren(cfg: any) {
-  const arr = Array.isArray(cfg.children) ? cfg.children : [];
+async function applyBulkUpdate({
+  from,
+  table,
+  ids,
+  patch,
+}: {
+  from: (table: string) => any;
+  table: string;
+  ids: string[];
+  patch?: Record<string, any>;
+}) {
+  const cleanIds = Array.from(new Set((ids || []).map((id) => String(id)).filter(Boolean)));
+  const updatePatch = patch && typeof patch === "object" ? patch : {};
 
-  if (arr.length > 0) return arr;
+  if (!cleanIds.length || !Object.keys(updatePatch).length) {
+    return 0;
+  }
 
-  const sc = cfg?.source?.children?.table;
-  const tc = cfg?.target?.children?.table;
-  if (!sc || !tc) return [];
-
-  return [
-    {
-      sourceTable: sc,
-      sourceFkToParent: cfg?.source?.children?.fkToParent,
-      targetTable: tc,
-      targetFkToParent: cfg?.target?.children?.fkToParent,
-      map: cfg?.maps?.child,
-      defaults: cfg?.defaults?.child,
-    },
-  ];
+  const { error } = await from(table).update(updatePatch).in("id", cleanIds);
+  if (error) throw new Error(error.message);
+  return cleanIds.length;
 }
 
 export async function deriveCreateFromParent({
@@ -129,7 +130,9 @@ export async function deriveCreateFromParent({
   const childrenMeta: Array<{
     sourceTable: string;
     targetTable: string;
+    matched: number;
     created: number;
+    updatedSource: number;
   }> = [];
 
   for (const chSpec of childrenCfg) {
@@ -159,9 +162,15 @@ export async function deriveCreateFromParent({
 
     if (eReadChildren) throw new Error(eReadChildren.message);
 
-    const list = srcChildren || [];
+    const list = (srcChildren || []).filter((row: any) => rowMatchesFilters(row, chSpec.filters));
     if (!list.length) {
-      childrenMeta.push({ sourceTable: chSpec.sourceTable, targetTable: chSpec.targetTable, created: 0 });
+      childrenMeta.push({
+        sourceTable: chSpec.sourceTable,
+        targetTable: chSpec.targetTable,
+        matched: 0,
+        created: 0,
+        updatedSource: 0,
+      });
       continue;
     }
 
@@ -181,12 +190,28 @@ export async function deriveCreateFromParent({
     const { error: eInsert } = await from(targetChildDb).insert(rows);
     if (eInsert) throw new Error(eInsert.message);
 
+    const updatedSource = await applyBulkUpdate({
+      from,
+      table: sourceChildDb,
+      ids: list.map((row: any) => row?.id).filter(Boolean),
+      patch: chSpec.sourceUpdates,
+    });
+
     childrenMeta.push({
       sourceTable: chSpec.sourceTable,
       targetTable: chSpec.targetTable,
+      matched: list.length,
       created: rows.length,
+      updatedSource,
     });
   }
+
+  const updatedSourceParent = await applyBulkUpdate({
+    from,
+    table: sourceParentDb,
+    ids: [String(parent.id)],
+    patch: cfg.sourceUpdates?.parent,
+  });
 
   // 5) Return coherente
   return {
@@ -200,7 +225,7 @@ export async function deriveCreateFromParent({
     },
     meta: {
       idempotency: idempotencyMeta,
-      sourceParent: { table: cfg.source.parentTable, id: parent.id },
+      sourceParent: { table: cfg.source.parentTable, id: parent.id, updated: updatedSourceParent > 0 },
       targetParent: { table: cfg.target.parentTable, id: createdParent.id },
       children: childrenMeta,
     },

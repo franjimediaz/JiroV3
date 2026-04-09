@@ -186,7 +186,7 @@ export const dataProvider: DataProvider & {
 
   const res = await list({
     moduleSlug,
-    filters: [{ field: "id", op: "eq", value: id }],
+    filters: [{ field: "id", op: "=", value: id }],
     limit: 1,
     hasStyle: false,
   } as any);

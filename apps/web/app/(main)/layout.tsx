@@ -6,8 +6,6 @@ import { PermisosProvider } from "@/lib/perms";
 import type { SidebarItem } from "@repo/ui";
 import MainShell from "./MainShell";
 
-import { SidebarWithPerms } from "./SidebarWithPerms"; // ✅ nuevo wrapper client
-
 const geistSans = localFont({
   src: "../fonts/GeistVF.woff",
   variable: "--font-geist-sans",

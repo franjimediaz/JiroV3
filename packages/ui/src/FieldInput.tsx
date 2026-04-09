@@ -12,6 +12,10 @@ type Props = {
   onChange: (v: any) => void;
   readOnly?: boolean;
   uploadFolder?: string;
+  displayValue?: string;
+  isDisplayLoading?: boolean;
+  displayIcon?: string;
+  displayColor?: string;
 };
 type UploadedFileValue = {
   bucket: string;
@@ -484,7 +488,17 @@ useEffect(() => {
 );
 }
 // Componente principal que renderiza el input adecuado según el tipo de campo
-export default function FieldInput({ field, value, onChange, readOnly, uploadFolder }: Props) {
+export default function FieldInput({
+  field,
+  value,
+  onChange,
+  readOnly,
+  uploadFolder,
+  displayValue,
+  isDisplayLoading,
+  displayIcon,
+  displayColor,
+}: Props) {
   const type = field.type as FieldType;
 
   if (type === "boolean") {
@@ -626,6 +640,10 @@ export default function FieldInput({ field, value, onChange, readOnly, uploadFol
         hasStyle={hasStyle}
         styleIconField={styleIconField}
         styleColorField={styleColorField}
+        displayValue={displayValue}
+        isDisplayLoading={isDisplayLoading}
+        displayIcon={displayIcon}
+        displayColor={displayColor}
       />
     );
   }

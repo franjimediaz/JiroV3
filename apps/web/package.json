@@ -19,6 +19,7 @@
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.80.0",
     "bootstrap-icons": "^1.13.1",
+    "bootstrap": "^5.x.x",
     "next": "^16.1.1",
     "pg": "^8.16.3",
     "puppeteer-core": "^24.36.1",

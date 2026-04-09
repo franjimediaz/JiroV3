@@ -257,9 +257,9 @@ a {
 /* Disabled */
 .form-control:disabled,
 .form-select:disabled {
-  background: #0000008c;
+  background: #00000048;
   border-color: #1e293b;
-  color: #ffffff;
+  color: #000000;
   opacity: 0.8;
 }
 /* ============================

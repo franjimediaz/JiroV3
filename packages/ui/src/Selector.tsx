@@ -8,6 +8,7 @@ type RefFilter = { field: string; op: string; value: any };
 type RefSort = { field: string; direction: "asc" | "desc" };
 
 type PopupItem = { value: string; label: string; raw?: any };
+type CacheEntry = { label: string; icon?: string; color?: string };
 
 type Props = {
   moduleSlug: string;
@@ -15,29 +16,42 @@ type Props = {
   valueField?: string;
   filters?: RefFilter[];
   sort?: RefSort[];
-
-  value: any; // string | string[]
+  value: any;
   onChange: (v: any) => void;
-
   readOnly?: boolean;
   multiple?: boolean;
-  label?: string; // para title del popup
+  label?: string;
   placeholder?: string;
-  limit?: number; // cantidad por búsqueda
+  limit?: number;
   hasStyle?: boolean;
-  styleIconField?: string;  // default "icon"
+  styleIconField?: string;
   styleColorField?: string;
+  displayValue?: string;
+  isDisplayLoading?: boolean;
+  displayIcon?: string;
+  displayColor?: string;
 };
 
 function ensureList() {
   const list = dataProvider?.list;
-  if (!list) throw new Error("dataProvider.list no está implementado");
+  if (!list) throw new Error("dataProvider.list no esta implementado");
   return list;
 }
 
 function toStr(v: any) {
   if (v === null || v === undefined) return "";
   return String(v);
+}
+
+function renderStyled(label: string, icon?: string, color?: string) {
+  return (
+    <span className="d-inline-flex align-items-center gap-2">
+      {icon ? (
+        <i className={icon.includes(" ") ? icon : `bi ${icon}`} style={{ color: color || "inherit" }} />
+      ) : null}
+      <span>{label}</span>
+    </span>
+  );
 }
 
 export default function SelectorTabla({
@@ -51,47 +65,97 @@ export default function SelectorTabla({
   readOnly,
   multiple = false,
   label,
-  placeholder = "— Seleccionar —",
+  placeholder = "Seleccionar",
   limit = 20,
   hasStyle = false,
   styleIconField = "icon",
   styleColorField = "color",
+  displayValue,
+  isDisplayLoading = false,
+  displayIcon,
+  displayColor,
 }: Props) {
   const [popupOpen, setPopupOpen] = useState(false);
   const [popupItems, setPopupItems] = useState<PopupItem[]>([]);
   const [popupLoading, setPopupLoading] = useState(false);
-
-  // Cache: id -> label (para mostrar en el botón aunque el popup no esté abierto)
-  type CacheEntry = { label: string; icon?: string; color?: string };
-
   const [labelCache, setLabelCache] = useState<Record<string, CacheEntry>>({});
-
 
   const normalizedValue = useMemo(() => {
     if (multiple) return Array.isArray(value) ? value.map(toStr) : [];
     return value ? toStr(value) : "";
   }, [value, multiple]);
 
+  useEffect(() => {
+    if (isDisplayLoading) return;
+
+    if (multiple) {
+      const ids = normalizedValue as string[];
+      if (ids.length !== 1 || !displayValue) return;
+
+      const id = ids[0];
+      setLabelCache((prev) => ({
+        ...prev,
+        [id]: {
+          label: displayValue,
+          icon: displayIcon ?? prev[id]?.icon,
+          color: displayColor ?? prev[id]?.color,
+        },
+      }));
+      return;
+    }
+
+    const id = normalizedValue as string;
+    if (!id || !displayValue) return;
+
+    setLabelCache((prev) => ({
+      ...prev,
+      [id]: {
+        label: displayValue,
+        icon: displayIcon ?? prev[id]?.icon,
+        color: displayColor ?? prev[id]?.color,
+      },
+    }));
+  }, [multiple, normalizedValue, displayValue, displayIcon, displayColor, isDisplayLoading]);
+
+  const effectiveSelectedEntries = useMemo(() => {
+    const ids = multiple ? (normalizedValue as string[]) : [normalizedValue as string];
+
+    return ids
+      .filter(Boolean)
+      .map((id, index) => {
+        const cached = labelCache[id];
+        const isSingleSelection = !multiple || ids.length === 1;
+
+        return {
+          value: id,
+          label:
+            isDisplayLoading
+              ? "Cargando..."
+              : isSingleSelection && displayValue
+              ? displayValue
+              : cached?.label || id,
+          icon: isSingleSelection && displayIcon ? displayIcon : cached?.icon,
+          color: isSingleSelection && displayColor ? displayColor : cached?.color,
+        };
+      });
+  }, [multiple, normalizedValue, labelCache, isDisplayLoading, displayValue, displayIcon, displayColor]);
 
   const summaryText = useMemo(() => {
-  if (multiple) {
-    const arr = normalizedValue as string[];
-    if (!arr.length) return placeholder;
+    if (isDisplayLoading) return "Cargando...";
 
-    const labels = arr.map((id) => labelCache[id]?.label || id);
-    if (labels.length > 3) return `${labels.length} seleccionados`;
-    return labels.join(", ");
-  }
+    if (multiple) {
+      const entries = effectiveSelectedEntries;
+      if (!entries.length) return placeholder;
+      if (displayValue) return displayValue;
+      if (entries.length > 3) return `${entries.length} seleccionados`;
+      return entries.map((entry) => entry.label).join(", ");
+    }
 
-  const id = normalizedValue as string;
-  if (!id) return placeholder;
-  return labelCache[id]?.label || id;
-}, [multiple, normalizedValue, labelCache, placeholder]);
+    const entry = effectiveSelectedEntries[0];
+    if (!entry) return placeholder;
+    return entry.label || entry.value;
+  }, [multiple, effectiveSelectedEntries, placeholder, displayValue, isDisplayLoading]);
 
-
-
-
-  // --- Cargar items para el popup (con búsqueda) ---
   const fetchItems = useCallback(
     async (searchText: string) => {
       if (!moduleSlug) return;
@@ -101,10 +165,9 @@ export default function SelectorTabla({
 
       try {
         const nextFilters: RefFilter[] = [...filters];
-
         const term = (searchText || "").trim();
+
         if (term) {
-          // OJO: esto asume que tu backend soporta "ilike"
           nextFilters.push({
             field: displayField,
             op: "ilike",
@@ -112,7 +175,6 @@ export default function SelectorTabla({
           });
         }
 
-        
         const res = await list({
           moduleSlug,
           filters: nextFilters,
@@ -124,22 +186,19 @@ export default function SelectorTabla({
         } as any);
 
         const rows = Array.isArray(res?.data) ? res.data : [];
-        
-
-        const items: PopupItem[] = rows.map((r: any) => ({
-          value: toStr(r[valueField]),
-          label: toStr(r[displayField]) || toStr(r[valueField]),
-          raw: r,
+        const items: PopupItem[] = rows.map((row: any) => ({
+          value: toStr(row[valueField]),
+          label: toStr(row[displayField]) || toStr(row[valueField]),
+          raw: row,
         }));
 
         setPopupItems(items);
 
-        // Alimenta cache con lo que venga (sirve para pintar summary)
         const newCache: Record<string, CacheEntry> = {};
-        items.forEach((it) => {
-          const raw = it.raw || {};
-          newCache[it.value] = {
-            label: it.label,
+        items.forEach((item) => {
+          const raw = item.raw || {};
+          newCache[item.value] = {
+            label: item.label,
             icon: raw?.[styleIconField],
             color: raw?.[styleColorField],
           };
@@ -149,18 +208,16 @@ export default function SelectorTabla({
         setPopupLoading(false);
       }
     },
-    [moduleSlug, displayField, valueField, filters, sort, limit, styleIconField, styleColorField]
+    [moduleSlug, displayField, valueField, filters, sort, limit, hasStyle, styleIconField, styleColorField]
   );
-  
 
-  // Pre-resolver labels del value actual si no están en caché
   useEffect(() => {
     (async () => {
       if (!moduleSlug) return;
 
       const list = ensureList();
-
       const needResolve: string[] = [];
+
       if (multiple) {
         for (const id of normalizedValue as string[]) {
           if (id && !labelCache[id]) needResolve.push(id);
@@ -173,33 +230,35 @@ export default function SelectorTabla({
       if (!needResolve.length) return;
 
       try {
-        // resolvemos uno a uno (simple y seguro). Si prefieres, lo optimizamos con "in".
         for (const id of needResolve) {
           const res = await list({
             moduleSlug,
             filters: [{ field: valueField, op: "=", value: id }],
             limit: 1,
+            hasStyle,
+            styleIconField,
+            styleColorField,
           } as any);
 
           const row = Array.isArray(res?.data) ? res.data[0] : null;
-          const lbl = row ? toStr(row[displayField]) : id;
-          setLabelCache((prev) => ({ ...prev, [id]: {
-                                label: lbl,
-                                icon: row?.[styleIconField],
-                                color: row?.[styleColorField],
-                              },}));
+          const nextEntry: CacheEntry = {
+            label: row ? toStr(row[displayField]) || id : id,
+            icon: row?.[styleIconField],
+            color: row?.[styleColorField],
+          };
+
+          setLabelCache((prev) => ({ ...prev, [id]: nextEntry }));
         }
       } catch {
-        // si falla, al menos mostramos el id (ya lo hace summary)
+        // Fallback silencioso: el resumen ya cae al id.
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleSlug, valueField, displayField, multiple, JSON.stringify(normalizedValue)]);
+  }, [moduleSlug, valueField, displayField, multiple, hasStyle, styleIconField, styleColorField, JSON.stringify(normalizedValue)]);
 
   const openSelectorTablaPopup = async () => {
     if (readOnly) return;
     setPopupOpen(true);
-    // primera carga sin texto
     await fetchItems("");
   };
 
@@ -208,29 +267,31 @@ export default function SelectorTabla({
   };
 
   const handleApply = (next: any) => {
-    // next puede ser string o string[]
     if (Array.isArray(next)) {
       const newCache: Record<string, CacheEntry> = {};
       popupItems.forEach((item) => {
         if (next.includes(item.value)) {
           newCache[item.value] = {
-          label: item.label,
-          icon: item.raw?.[styleIconField],
-          color: item.raw?.[styleColorField],
-        };
+            label: item.label,
+            icon: item.raw?.[styleIconField],
+            color: item.raw?.[styleColorField],
+          };
         }
       });
       setLabelCache((prev) => ({ ...prev, ...newCache }));
       onChange(next);
     } else {
       const id = toStr(next);
-      const found = popupItems.find((i) => i.value === id);
+      const found = popupItems.find((item) => item.value === id);
       if (found) {
-        setLabelCache((prev) => ({ ...prev, [id]: {
-      label: found.label,
-      icon: found.raw?.[styleIconField],
-      color: found.raw?.[styleColorField],
-    }, }));
+        setLabelCache((prev) => ({
+          ...prev,
+          [id]: {
+            label: found.label,
+            icon: found.raw?.[styleIconField],
+            color: found.raw?.[styleColorField],
+          },
+        }));
       }
       onChange(id);
     }
@@ -238,37 +299,29 @@ export default function SelectorTabla({
     setPopupOpen(false);
   };
 
-const renderStyled = (label: string, icon?: string, color?: string) => (
-  <span className="d-inline-flex align-items-center gap-2">
-    {icon ? (
-      // Si tu icono ya viene como "bi bi-gear", úsalo tal cual
-      <i className={icon.includes(" ") ? icon : `bi ${icon}`} style={{ color: color || "inherit" }} />
-    ) : null}
-    <span>{label}</span>
-  </span>
-);
+  const summaryNode = useMemo(() => {
+    if (isDisplayLoading) return "Cargando...";
+    if (!hasStyle) return summaryText;
 
-const summaryNode = useMemo(() => {
-  if (!hasStyle) return summaryText;
+    if (multiple) {
+      if (!effectiveSelectedEntries.length) return placeholder;
+      if (effectiveSelectedEntries.length > 1 && !displayValue) return `${effectiveSelectedEntries.length} seleccionados`;
 
-  // multi: mejor contador salvo que haya 1 seleccionado
-  if (multiple) {
-    const arr = normalizedValue as string[];
-    if (!arr.length) return placeholder;
-    if (arr.length > 1) return `${arr.length} seleccionados`;
+      const entry = effectiveSelectedEntries[0];
+      return renderStyled(entry.label || entry.value, entry.icon, entry.color);
+    }
 
-    const id = arr[0];
-    const entry = labelCache[id];
-    return renderStyled(entry?.label || id, entry?.icon, entry?.color);
-  }
-
-  const id = normalizedValue as string;
-  if (!id) return placeholder;
-  const entry = labelCache[id];
-  return renderStyled(entry?.label || id, entry?.icon, entry?.color);
-}, [hasStyle, multiple, normalizedValue, labelCache, summaryText, placeholder]);
-
-
+    const entry = effectiveSelectedEntries[0];
+    if (!entry) return placeholder;
+    return renderStyled(entry.label || entry.value, entry.icon, entry.color);
+  }, [
+    hasStyle,
+    effectiveSelectedEntries,
+    summaryText,
+    placeholder,
+    displayValue,
+    isDisplayLoading,
+  ]);
 
   return (
     <>
@@ -279,7 +332,6 @@ const summaryNode = useMemo(() => {
         disabled={readOnly}
         title={summaryText}
       >
-        
         <span style={{ opacity: (multiple ? (normalizedValue as string[]).length : !!(normalizedValue as string)) ? 1 : 0.75 }}>
           {summaryNode}
         </span>

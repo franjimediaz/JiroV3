@@ -26,6 +26,19 @@ export type DeriveChildSpec = {
   targetFkToParent: string;
   map?: Record<string, string>;
   defaults?: Record<string, any>;
+  filters?: DeriveFiltersGroup;
+  sourceUpdates?: Record<string, any>;
+};
+
+export type DeriveFilterCondition = {
+  field: string;
+  op: "=" | "!=" | ">" | ">=" | "<" | "<=" | "in" | "not_in" | "contains" | "is_null" | "not_null";
+  value?: any;
+};
+
+export type DeriveFiltersGroup = {
+  match?: "all" | "any";
+  conditions?: DeriveFilterCondition[];
 };
 
 type DeriveWorkflowInput = {
@@ -59,6 +72,10 @@ type DeriveWorkflowInput = {
   };
 
   // ✅ NUEVO: múltiples hijos (la UI ahora lo edita)
+  sourceUpdates?: {
+    parent?: Record<string, any>;
+    child?: Record<string, any>;
+  };
   children?: DeriveChildSpec[];
 };
 
@@ -164,7 +181,34 @@ function normalizeChildSpec(x: any): DeriveChildSpec {
     targetFkToParent: String(obj.targetFkToParent || ""),
     map: obj.map && typeof obj.map === "object" ? obj.map : {},
     defaults: obj.defaults && typeof obj.defaults === "object" ? obj.defaults : {},
+    filters: normalizeFiltersGroup(obj.filters),
+    sourceUpdates: obj.sourceUpdates && typeof obj.sourceUpdates === "object" ? obj.sourceUpdates : {},
   };
+}
+
+function normalizeFilterCondition(x: any): DeriveFilterCondition {
+  const obj = x && typeof x === "object" ? x : {};
+  const op = String(obj.op || "=") as DeriveFilterCondition["op"];
+  return {
+    field: String(obj.field || ""),
+    op,
+    value: obj.value,
+  };
+}
+
+function normalizeFiltersGroup(x: any): DeriveFiltersGroup {
+  if (Array.isArray(x)) {
+    return {
+      match: "all",
+      conditions: x.map(normalizeFilterCondition),
+    };
+  }
+
+  const obj = x && typeof x === "object" ? x : {};
+  const match = obj.match === "any" ? "any" : "all";
+  const conditions = Array.isArray(obj.conditions) ? obj.conditions.map(normalizeFilterCondition) : [];
+
+  return { match, conditions };
 }
 
 function ensureChildrenFromLegacy(p: any): DeriveChildSpec[] {
@@ -182,8 +226,14 @@ function ensureChildrenFromLegacy(p: any): DeriveChildSpec[] {
   const legacyMap = p?.maps?.child && typeof p.maps.child === "object" ? p.maps.child : {};
   const legacyDefaults =
     p?.defaults?.child && typeof p.defaults.child === "object" ? p.defaults.child : {};
+  const legacySourceUpdates =
+    p?.sourceUpdates?.child && typeof p.sourceUpdates.child === "object" ? p.sourceUpdates.child : {};
 
-  const hasAny = Boolean(sc || tc || sfk || tfk) || Object.keys(legacyMap || {}).length > 0 || Object.keys(legacyDefaults || {}).length > 0;
+  const hasAny =
+    Boolean(sc || tc || sfk || tfk) ||
+    Object.keys(legacyMap || {}).length > 0 ||
+    Object.keys(legacyDefaults || {}).length > 0 ||
+    Object.keys(legacySourceUpdates || {}).length > 0;
   if (!hasAny) return [];
 
   return [
@@ -194,6 +244,8 @@ function ensureChildrenFromLegacy(p: any): DeriveChildSpec[] {
       targetFkToParent: String(tfk),
       map: legacyMap || {},
       defaults: legacyDefaults || {},
+      filters: { match: "all", conditions: [] },
+      sourceUpdates: legacySourceUpdates || {},
     },
   ];
 }
@@ -238,6 +290,10 @@ function makeDeriveInput(prev: any): DeriveWorkflowInput {
     defaults: {
       parent: p?.defaults?.parent || {},
       child: p?.defaults?.child || {}, // legacy
+    },
+    sourceUpdates: {
+      parent: p?.sourceUpdates?.parent || {},
+      child: p?.sourceUpdates?.child || {},
     },
     children,
   };
@@ -293,6 +349,7 @@ export default function UiFormActionsEditor({
               target: { parentTable: "" },
               maps: { parent: {}, child: {} },
               defaults: { parent: {}, child: {} },
+              sourceUpdates: { parent: {}, child: {} },
               children: [],
             } satisfies DeriveWorkflowInput,
             after: { navigateTo: "" },
@@ -883,15 +940,56 @@ function pairsToDefaults(pairs: Array<{ field: string; val: string }>) {
     const k = p.field?.trim();
     if (!k) continue;
 
-    const raw = p.val;
-
-    if (raw === "true") out[k] = true;
-    else if (raw === "false") out[k] = false;
-    else if (raw.trim() !== "" && !Number.isNaN(Number(raw)) && String(Number(raw)) === raw.trim()) out[k] = Number(raw);
-    else if (raw === "null") out[k] = null;
-    else out[k] = raw;
+    out[k] = coerceEditorValue(p.val);
   }
   return out;
+}
+
+function coerceEditorValue(raw: string) {
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  if (raw.trim() !== "" && !Number.isNaN(Number(raw)) && String(Number(raw)) === raw.trim()) return Number(raw);
+  if (raw === "null") return null;
+  return raw;
+}
+
+function normalizeConditionRows(value: DeriveFiltersGroup | undefined): Array<{ field: string; op: DeriveFilterCondition["op"]; val: string }> {
+  const conditions = Array.isArray(value?.conditions) ? value.conditions : [];
+  return conditions.map((item) => {
+    const cond = normalizeFilterCondition(item);
+    return {
+      field: cond.field,
+      op: cond.op,
+      val: Array.isArray(cond.value) ? cond.value.join(", ") : cond.value == null ? "" : String(cond.value),
+    };
+  });
+}
+
+function conditionRowsToRules(rows: Array<{ field: string; op: DeriveFilterCondition["op"]; val: string }>) {
+  return rows
+    .map((row) => {
+      const field = row.field.trim();
+      if (!field) return null;
+
+      if (row.op === "is_null" || row.op === "not_null") {
+        return { field, op: row.op };
+      }
+
+      const raw = row.val.trim();
+      if (!raw) return null;
+
+      const value =
+        row.op === "in" || row.op === "not_in"
+          ? raw
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean)
+              .map((item) => coerceEditorValue(item))
+          : coerceEditorValue(row.val);
+
+      return { field, op: row.op, value };
+    })
+    .filter(Boolean) as DeriveFilterCondition[];
 }
 
 function DefaultsEditor({
@@ -981,6 +1079,139 @@ function DefaultsEditor({
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function ConditionsEditor({
+  value,
+  onChange,
+  readOnly,
+  styles,
+  fields,
+  label,
+}: {
+  value: DeriveFiltersGroup | undefined;
+  onChange: (next: DeriveFiltersGroup | undefined) => void;
+  readOnly?: boolean;
+  styles: Record<string, string>;
+  fields: { name: string; label?: string }[];
+  label: string;
+}) {
+  const [match, setMatch] = useState<"all" | "any">(() => (value?.match === "any" ? "any" : "all"));
+  const [rows, setRows] = useState(() => normalizeConditionRows(value));
+
+  useEffect(() => {
+    setMatch(value?.match === "any" ? "any" : "all");
+    setRows(normalizeConditionRows(value));
+  }, [JSON.stringify(value)]);
+
+  const commit = (
+    nextRows: Array<{ field: string; op: DeriveFilterCondition["op"]; val: string }>,
+    nextMatch = match
+  ) => {
+    setRows(nextRows);
+    setMatch(nextMatch);
+    const rules = conditionRowsToRules(nextRows);
+    onChange(rules.length ? { match: nextMatch, conditions: rules } : undefined);
+  };
+
+  const addRow = () => commit([...(rows || []), { field: "", op: "=", val: "" }]);
+  const updateRow = (i: number, patch: Partial<(typeof rows)[number]>) => commit(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const removeRow = (i: number) => commit(rows.filter((_, idx) => idx !== i));
+
+  return (
+    <div style={{ background: "#ffffff07" }}>
+      <div className={styles.actionsRow} style={{ justifyContent: "space-between", marginBottom: 15 }}>
+        <label className={styles.label} style={{ margin: 0 }}>
+          condiciones (asistente)
+        </label>
+
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <select
+            className={styles.input}
+            value={match}
+            disabled={readOnly}
+            onChange={(e) => commit(rows, e.target.value as "all" | "any")}
+            style={{ width: 180 }}
+          >
+            <option value="all">Y (todas)</option>
+            <option value="any">O (cualquiera)</option>
+          </select>
+
+          <button type="button" className={styles.btnAdd} onClick={addRow} disabled={readOnly}>
+            + Añadir condición
+          </button>
+        </div>
+      </div>
+
+      {rows.length === 0 && (
+        <div className={styles.hint} style={{ marginBottom: 10 }}>
+          Filtra registros de <b>{label}</b> con una o varias condiciones, unidas por <b>{match === "all" ? "Y" : "O"}</b>.
+        </div>
+      )}
+
+      {rows.map((r, i) => {
+        const needsValue = r.op !== "is_null" && r.op !== "not_null";
+        return (
+          <div
+            key={`${i}-${r.field}-${r.op}`}
+            className={styles.grid}
+            style={{
+              gridTemplateColumns: needsValue ? "1fr 180px 1fr auto" : "1fr 180px auto",
+              alignItems: "end",
+              gap: 10,
+              marginTop: 10,
+            }}
+          >
+            <div>
+              <label className={styles.label}>{label}</label>
+              <select className={styles.input} value={r.field} disabled={readOnly} onChange={(e) => updateRow(i, { field: e.target.value })}>
+                <option value="">— Selecciona campo —</option>
+                {fields.map((f) => (
+                  <option key={f.name} value={f.name}>
+                    {f.label ? `${f.label} (${f.name})` : f.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className={styles.label}>Operador</label>
+              <select className={styles.input} value={r.op} disabled={readOnly} onChange={(e) => updateRow(i, { op: e.target.value as DeriveFilterCondition["op"] })}>
+                <option value="=">=</option>
+                <option value="!=">!=</option>
+                <option value=">">{">"}</option>
+                <option value=">=">{">="}</option>
+                <option value="<">{"<"}</option>
+                <option value="<=">{"<="}</option>
+                <option value="contains">contains</option>
+                <option value="in">in</option>
+                <option value="not_in">not_in</option>
+                <option value="is_null">is_null</option>
+                <option value="not_null">not_null</option>
+              </select>
+            </div>
+
+            {needsValue && (
+              <div>
+                <label className={styles.label}>Valor</label>
+                <input
+                  className={styles.input}
+                  value={r.val}
+                  disabled={readOnly}
+                  onChange={(e) => updateRow(i, { val: e.target.value })}
+                  placeholder={r.op === "in" || r.op === "not_in" ? "Ej: si, pendiente, true" : "Ej: si | no | true | 10"}
+                />
+              </div>
+            )}
+
+            <button type="button" className={styles.btnDel} onClick={() => removeRow(i)} disabled={readOnly}>
+              Eliminar
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1184,6 +1415,7 @@ function WorkflowDeriveEditor({
       // legacy map/defaults child también se mantienen (para no romper)
       nextInput.maps = { ...(nextInput.maps || {}), child: ch0.map || {} };
       nextInput.defaults = { ...(nextInput.defaults || {}), child: ch0.defaults || {} };
+      nextInput.sourceUpdates = { ...(nextInput.sourceUpdates || {}), child: ch0.sourceUpdates || {} };
     } else {
       nextSource.children = undefined;
       nextTarget.children = undefined;
@@ -1358,6 +1590,28 @@ function WorkflowDeriveEditor({
         </div>
       </div>
 
+      <div className={styles.card} style={{ marginTop: 10 }}>
+        <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 700 }}>Actualización origen</div>
+          <div className={styles.hint}>Campos que se actualizan en la tabla padre origen al terminar.</div>
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          <div className={styles.hint} style={{ marginBottom: 8 }}>
+            <b>Actualizaciones padre origen</b> (en <code>{sp || "source.parentTable"}</code>)
+          </div>
+
+          <DefaultsEditor
+            value={input.sourceUpdates?.parent}
+            onChange={(next) => patchInput({ sourceUpdates: { ...(input.sourceUpdates || {}), parent: next } })}
+            readOnly={readOnly}
+            styles={styles}
+            targetLabel={`Origen (${sp || "—"})`}
+            targetFields={spFields}
+          />
+        </div>
+      </div>
+
       {/* --------- MODO RÁPIDO (legacy 1 hijo) --------- */}
       <div className={styles.card} style={{ marginTop: 10 }}>
         <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
@@ -1458,6 +1712,8 @@ function DeriveChildrenEditor({
         targetFkToParent: "",
         map: {},
         defaults: {},
+        filters: { match: "all", conditions: [] },
+        sourceUpdates: {},
       } as DeriveChildSpec,
     ];
     patchInput({ children: next });
@@ -1621,6 +1877,21 @@ function DeriveChildrenEditor({
 
             <div style={{ marginTop: 12 }}>
               <div className={styles.hint} style={{ marginBottom: 8 }}>
+                <b>Filtros origen</b> (en <code>{c.sourceTable || "sourceTable"}</code>)
+              </div>
+
+              <ConditionsEditor
+                value={c.filters}
+                onChange={(next) => updateChild(i, { filters: next || { match: "all", conditions: [] } })}
+                readOnly={readOnly}
+                styles={styles}
+                fields={sourceFields}
+                label={`Origen (${c.sourceTable || "—"})`}
+              />
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div className={styles.hint} style={{ marginBottom: 8 }}>
                 <b>Defaults hijo</b> (en <code>{c.targetTable || "targetTable"}</code>)
               </div>
 
@@ -1631,6 +1902,21 @@ function DeriveChildrenEditor({
                 styles={styles}
                 targetLabel={`Destino (${c.targetTable || "—"})`}
                 targetFields={targetFields}
+              />
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div className={styles.hint} style={{ marginBottom: 8 }}>
+                <b>Actualizaciones origen</b> (en <code>{c.sourceTable || "sourceTable"}</code>)
+              </div>
+
+              <DefaultsEditor
+                value={c.sourceUpdates}
+                onChange={(next) => updateChild(i, { sourceUpdates: next || {} })}
+                readOnly={readOnly}
+                styles={styles}
+                targetLabel={`Origen (${c.sourceTable || "—"})`}
+                targetFields={sourceFields}
               />
             </div>
           </div>

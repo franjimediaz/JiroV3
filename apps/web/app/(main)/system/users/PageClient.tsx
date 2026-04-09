@@ -53,7 +53,7 @@ export default function PageClient({
     const ok = await confirm({
     title: `Eliminar ${CFG.titleSingular}`,
     message: "Esta acción no se puede deshacer.",
-    details: [{ label: "ID", value: row.id }],
+    details: [{ label: "ID", value: row.uid }],
     confirmText: "Eliminar",
     cancelText: "Cancelar",
     danger: true,
@@ -68,7 +68,7 @@ export default function PageClient({
     const { error } = await supabase
       .from(CFG.moduleSlug)
       .delete()
-      .eq("id", row.id);
+      .eq("uid", row.uid);
 
     if (error) {
       // Si pones RLS bien, aquí verás "permission denied" si no tiene permiso real
@@ -85,7 +85,7 @@ export default function PageClient({
         message: `No tienes permisos para ver este ${CFG.titleSingular}.`,
         details: [
           { label: "Acción", value: "Ver" },
-          { label: "ID", value: row.id },
+          { label: "ID", value: row.uid },
         ],
         mode: "info",
         confirmText: "Aceptar",
@@ -93,7 +93,7 @@ export default function PageClient({
       return;
     }
 
-    router.push(`${CFG.route}${row.id}`);
+    router.push(`${CFG.route}${row.uid}`);
   };
   const handleEdit = async (row: any) => {
     if (!hasPermiso(CFG.moduleSlug, "actualizar")) {
@@ -102,7 +102,7 @@ export default function PageClient({
         message: `No tienes permisos para editar este ${CFG.titleSingular}.`,
         details: [
           { label: "Acción", value: "Editar" },
-          { label: "ID", value: row.id },
+          { label: "ID", value: row.uid },
         ],
         mode: "info",
         confirmText: "Aceptar",
@@ -110,7 +110,7 @@ export default function PageClient({
       return;
     }
 
-    router.push(`${CFG.route}${row.id}?edit=true`);
+    router.push(`${CFG.route}${row.uid}?edit=true`);
   };
   const handleCreate = async () => {
   if (!hasPermiso(CFG.moduleSlug, "crear")) {

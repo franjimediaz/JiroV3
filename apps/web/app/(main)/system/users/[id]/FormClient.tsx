@@ -9,7 +9,7 @@ import { Form } from "@repo/ui";
 //import Calendar from "./Calendar";
 import type { ModuleSchema } from "@repo/types";
 import { RequirePerms } from "@/lib/perms";
-import {CFG} from "./page"
+
 
 type TabKey = "proyecto" | "arbol" | "calendario";
 
@@ -111,37 +111,6 @@ export default function FormClient({
 
   return (
     <RequirePerms modulo={table} accion="actualizar">
-  {/**    <ul className="nav nav-tabs mt-3">
-        <li className="nav-item">
-          <button
-            type="button"
-            className={`nav-link bg-secondary text-light ${activeTab === "proyecto" ? "active" : ""}`}
-            onClick={() => setActiveTab("proyecto")}
-          >
-            Proyecto
-          </button>
-        </li>
-
-        <li className="nav-item">
-          <button
-            type="button"
-            className={`nav-link bg-secondary text-light ${activeTab === "arbol" ? "active" : ""}`}
-            onClick={() => setActiveTab("arbol")}
-          >
-            Tareas
-          </button>
-        </li>
-
-        <li className="nav-item">
-          <button
-            type="button"
-            className={`nav-link bg-secondary text-light ${activeTab === "calendario" ? "active" : ""}`}
-            onClick={() => setActiveTab("calendario")}
-          >
-            Calendario
-          </button>
-        </li>
-      </ul>*/} 
 
       <div style={{ opacity: pending ? 0.7 : 1 }}>
         <div className={`tab-pane fade mt-3 ${activeTab === "proyecto" ? "show active" : ""}`}>
@@ -161,13 +130,7 @@ export default function FormClient({
           )}
         </div>
 
-    {/**     <div className={`tab-pane fade mt-3 ${activeTab === "arbol" ? "show active" : ""}`}>
-          {activeTab === "arbol" && <TreeServices proyectoId={id} />}
-        </div>
 
-        <div className={`tab-pane fade mt-3 ${activeTab === "calendario" ? "show active" : ""}`}>
-          {activeTab === "calendario" && <Calendar proyectoId={id} />}
-        </div>*/}
       </div>
     </RequirePerms>
   );

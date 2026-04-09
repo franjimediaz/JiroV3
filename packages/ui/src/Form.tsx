@@ -1,45 +1,252 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState} from "react";
-import type { Field, ModuleSchema, FieldType, UiTab, FormSection,TreeViewDataProvider } from "@repo/types";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import type {
+  Field,
+  FieldType,
+  FormSection,
+  ModuleSchema,
+  TreeViewDataProvider,
+  UiTab,
+} from "@repo/types";
 import { applyCompute } from "./engines/computeEngine";
 import type { DataProvider } from "./engines/computeEngine";
 import { dataProvider as defaultDataProvider } from "./providers/DataProvider";
 import ReverseLinkTable from "./ReverseLinkTable";
-import  TreeView  from "./TreeView";
+import TreeView from "./TreeView";
 import FormActionsBar from "./ModuloForm/FormActionsBar";
 import type { FormAction } from "./ModuloForm/FormActionsBar";
 import DetachedFieldInput from "./FieldInput";
 
-
 type Mode = "view" | "edit" | "create";
+type FormValues = Record<string, any>;
+type ResolvedDisplayState = Record<string, { value: string; icon?: string; color?: string }>;
+type DisplayResolverConfig = {
+  moduleSlug: string;
+  displayField: string;
+  valueField: string;
+  multiple: boolean;
+  hasStyle: boolean;
+  styleIconField: string;
+  styleColorField: string;
+};
 
 type Props = {
   schema: ModuleSchema;
-  initialData?: any;            // { ...valores, meta?: { overrides?: { [k]: {enabled,value} } } }
+  initialData?: any;
   onChange?: (values: any) => void | Promise<void>;
   readOnly?: boolean;
-
-  // NUEVO: modo lógico del formulario
   mode?: Mode;
-
-  // NUEVO: callbacks opcionales para acciones
   onSubmit?: (values: any) => void;
   onBack?: () => void;
   onEdit?: () => void;
-
   dataProvider?: DataProvider;
   treeViewProvider?: TreeViewDataProvider;
-  treeViewParentRecord?: any; 
+  treeViewParentRecord?: any;
   onTreeViewRowView?: (row: any) => void;
   onTreeViewRowEdit?: (row: any) => void;
   confirmTreeViewDelete?: (row: any) => Promise<boolean>;
   modulesBySlug?: Record<string, { db?: { table?: string; primaryKey?: string } }>;
   schemasBySlug?: Record<string, ModuleSchema>;
-
-
 };
 
+function computeSignature(schema: ModuleSchema, record: FormValues) {
+  const out: Record<string, any> = {};
+
+  for (const field of schema.fields || []) {
+    const compute = (field as any).compute;
+    if (!compute || compute.type === "none") continue;
+    out[field.name] = record?.[field.name];
+  }
+
+  return JSON.stringify(out);
+}
+
+function isFieldVisibleInMode(field: Field, mode: Mode) {
+  if (field.visible === false) return false;
+
+  const visibleWhen = (field as any).visibleWhen || "add_edit";
+  if (mode === "create") return visibleWhen === "add" || visibleWhen === "add_edit";
+  if (mode === "edit") return visibleWhen === "edit" || visibleWhen === "add_edit";
+  return true;
+}
+
+function isOverrideEnabled(values: FormValues, fieldName: string) {
+  return !!values?.meta?.overrides?.[fieldName]?.enabled;
+}
+
+function isFieldReadOnly(field: Field, options: { readOnly?: boolean; mode: Mode; isOverride: boolean }) {
+  const { readOnly, mode, isOverride } = options;
+  const hasCompute = !!(field as any).compute;
+  const allowOverride = !!(field as any).allowOverride;
+
+  return (
+    !!readOnly ||
+    mode === "view" ||
+    (!!field.readOnly && !isOverride) ||
+    (hasCompute && !allowOverride && field.type !== "selectorTabla")
+  );
+}
+
+function getFieldHelp(field: Field) {
+  return (field as any).ui?.help as string | undefined;
+}
+
+function withDefaultValues(fields: Field[], base: FormValues) {
+  const out = { ...(base || {}) };
+
+  for (const field of fields) {
+    if (out[field.name] !== undefined) continue;
+
+    if ((field.type === "file" || field.type === "image") && (field as any).multiple) {
+      out[field.name] = [];
+    } else {
+      out[field.name] = field.defaultValue ?? defaultForType(field.type as FieldType);
+    }
+  }
+
+  return out;
+}
+
+function defaultForType(type: FieldType): any {
+  switch (type) {
+    case "number":
+    case "money":
+    case "percent":
+      return 0;
+    case "boolean":
+      return false;
+    case "multiselect":
+      return [];
+    case "file":
+    case "image":
+      return "";
+    default:
+      return "";
+  }
+}
+
+function normalizeInitialData(fields: Field[], data: FormValues) {
+  const out = { ...(data || {}) };
+
+  for (const field of fields) {
+    const raw = out[field.name];
+
+    if (field.type !== "file" && field.type !== "image") continue;
+    if (raw == null || raw === "") continue;
+
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        try {
+          out[field.name] = JSON.parse(trimmed);
+        } catch {
+          // Preserve original value if parsing fails.
+        }
+      }
+    }
+
+    if ((field as any).multiple) {
+      if (!Array.isArray(out[field.name])) {
+        out[field.name] = out[field.name] ? [out[field.name]] : [];
+      }
+      continue;
+    }
+
+    if (Array.isArray(out[field.name])) {
+      out[field.name] = out[field.name][0] || "";
+    }
+  }
+
+  return out;
+}
+
+function buildInitialValues(schema: ModuleSchema, initialData: FormValues) {
+  return withDefaultValues(schema.fields, normalizeInitialData(schema.fields, initialData));
+}
+
+function labelStyle(): React.CSSProperties {
+  return { display: "block", marginBottom: 4, fontSize: 12 };
+}
+
+function lightDeps(values: FormValues) {
+  const { meta, ...rest } = values || {};
+  const overrides = meta?.overrides || {};
+  const overrideSnapshot = Object.keys(overrides)
+    .sort()
+    .reduce<Record<string, { enabled: boolean; value: any }>>((acc, key) => {
+      acc[key] = {
+        enabled: !!overrides[key]?.enabled,
+        value: overrides[key]?.value,
+      };
+      return acc;
+    }, {});
+
+  return { ...rest, _overrides: overrideSnapshot };
+}
+
+function getColumnClass(field: Field): string {
+  const width = field.ui?.width || "1/1";
+
+  switch (width) {
+    case "1/2":
+      return "col-12 col-md-6";
+    case "1/3":
+      return "col-12 col-md-4";
+    case "2/3":
+      return "col-12 col-md-8";
+    case "1/1":
+    default:
+      return "col-12";
+  }
+}
+
+function getDisplayResolverConfig(field: Field): DisplayResolverConfig | null {
+  if (field.type !== "selectorTabla") return null;
+
+  const ref = (field as any).ref;
+  const moduleSlug = ref?.moduleSlug ? String(ref.moduleSlug) : "";
+  if (!moduleSlug) return null;
+
+  return {
+    moduleSlug,
+    displayField: ref?.displayField ? String(ref.displayField) : "id",
+    valueField: ref?.valueField ? String(ref.valueField) : "id",
+    multiple: !!ref?.multiple,
+    hasStyle: !!((field as any).hasStyle ?? ref?.hasStyle),
+    styleIconField: ((field as any).styleIconField ?? ref?.styleIconField ?? "icon") as string,
+    styleColorField: ((field as any).styleColorField ?? ref?.styleColorField ?? "color") as string,
+  };
+}
+
+function toLookupIds(value: any, multiple: boolean) {
+  if (multiple) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter((item) => item !== null && item !== undefined && item !== "")
+      .map((item) => String(item));
+  }
+
+  if (value === null || value === undefined || value === "") return [];
+  return [String(value)];
+}
+
+function getDisplayFallback(value: any, multiple: boolean) {
+  if (multiple) {
+    if (!Array.isArray(value)) return "";
+    return value
+      .filter((item) => item !== null && item !== undefined && item !== "")
+      .map((item) => String(item))
+      .join(", ");
+  }
+
+  if (value === null || value === undefined || value === "") return "";
+  return String(value);
+}
+
+function buildDisplayCacheKey(config: DisplayResolverConfig, value: string) {
+  return `${config.moduleSlug}|${config.displayField}|${config.valueField}|${value}`;
+}
 
 export default function Form({
   schema,
@@ -51,41 +258,30 @@ export default function Form({
   onBack,
   onEdit,
   dataProvider = defaultDataProvider,
-
   treeViewProvider,
   treeViewParentRecord,
   onTreeViewRowView,
   onTreeViewRowEdit,
   confirmTreeViewDelete,
   schemasBySlug,
-  modulesBySlug
+  modulesBySlug,
 }: Props) {
-  // Derivar modo por defecto si no viene
   const effectiveMode: Mode = mode || (readOnly ? "view" : "edit");
-  
 
-  // ---------------- Tabs (Form / TreeView / Calendar) ----------------
-  // 1) Tabs definidos en schema.ui.tabs (si existen)
   const tabsDesdeSchema = useMemo<UiTab[]>(() => {
     const uiAny = (schema.ui || {}) as any;
     const rawTabs = Array.isArray(uiAny?.tabs) ? uiAny.tabs : [];
-    // Normaliza a {id,label,type,config}
-    const normalized: UiTab[] = rawTabs
-      .map((t: any, idx: number) => {
-        const type = (t?.type || t?.kind || "form") as UiTab["type"];
-        const id = String(t?.id || `${type}_${idx + 1}`);
-        const label = String(t?.label || t?.title || (type === "form" ? "Formulario" : type));
-        return { id, label, type, config: t?.config ?? t };
-      })
-      .filter((t: UiTab) => ["form", "treeview", "calendar"].includes(t.type));
 
-    return normalized;
+    return rawTabs
+      .map((tab: any, index: number) => {
+        const type = (tab?.type || tab?.kind || "form") as UiTab["type"];
+        const id = String(tab?.id || `${type}_${index + 1}`);
+        const label = String(tab?.label || tab?.title || (type === "form" ? "Formulario" : type));
+        return { id, label, type, config: tab?.config ?? tab };
+      })
+      .filter((tab: UiTab) => ["form", "treeview", "calendar"].includes(tab.type));
   }, [schema.ui]);
 
-  // 2) Configs “legacy” por si no hay schema.ui.tabs:
-  //    - schema.ui.formSections
-  //    - schema.ui.treeView
-  //    - schema.ui.calendar
   const legacyTreeCfg = useMemo(() => {
     const uiAny = (schema.ui || {}) as any;
     return uiAny?.treeView ?? null;
@@ -96,356 +292,401 @@ export default function Form({
     return uiAny?.calendar ?? null;
   }, [schema.ui]);
 
-  // 3) Construye uiTabs final:
-  //    - si hay tabs explícitos: úsalo tal cual
-  //    - si NO hay tabs explícitos: NO mostramos barra principal, pero sí podemos “inyectar”
-  //      pestañas TreeView/Calendar solo si tienes config (y así el usuario puede acceder).
-const uiTabs = useMemo<UiTab[]>(() => {
-  // 1) Si hay tabs explícitos en schema: respétalos tal cual
-  if (tabsDesdeSchema.length > 0) return tabsDesdeSchema;
+  const uiTabs = useMemo<UiTab[]>(() => {
+    if (tabsDesdeSchema.length > 0) return tabsDesdeSchema;
 
-  // 2) Si NO hay tabs explícitos:
-  //    - Si no hay configs legacy, no mostramos tabs (modo clásico)
-  const hasLegacy = !!legacyTreeCfg || !!legacyCalendarCfg;
-  if (!hasLegacy) return [];
+    const hasLegacy = !!legacyTreeCfg || !!legacyCalendarCfg;
+    if (!hasLegacy) return [];
 
-  // 3) Si hay configs legacy, montamos pestañas:
-  //    Formulario + (TreeView?) + (Calendar?)
-  const out: UiTab[] = [
-    {
-      id: "__form__",
-      label: "Formulario",
-      type: "form",
-      config: { formSections: (schema.ui as any)?.formSections || [] },
-    },
-  ];
+    const tabs: UiTab[] = [
+      {
+        id: "__form__",
+        label: "Formulario",
+        type: "form",
+        config: { formSections: (schema.ui as any)?.formSections || [] },
+      },
+    ];
 
-  if (legacyTreeCfg) {
-    out.push({
-      id: "__treeview__",
-      label: legacyTreeCfg?.ui?.title || "TreeView",
-      type: "treeview",
-      config: legacyTreeCfg,
-    });
-  }
+    if (legacyTreeCfg) {
+      tabs.push({
+        id: "__treeview__",
+        label: legacyTreeCfg?.ui?.title || "TreeView",
+        type: "treeview",
+        config: legacyTreeCfg,
+      });
+    }
 
-  if (legacyCalendarCfg) {
-    out.push({
-      id: "__calendar__",
-      label: legacyCalendarCfg?.ui?.title || "Calendario",
-      type: "calendar",
-      config: legacyCalendarCfg,
-    });
-  }
+    if (legacyCalendarCfg) {
+      tabs.push({
+        id: "__calendar__",
+        label: legacyCalendarCfg?.ui?.title || "Calendario",
+        type: "calendar",
+        config: legacyCalendarCfg,
+      });
+    }
 
-  return out;
-}, [tabsDesdeSchema, legacyTreeCfg, legacyCalendarCfg, schema.ui]);
-
-
-
+    return tabs;
+  }, [tabsDesdeSchema, legacyTreeCfg, legacyCalendarCfg, schema.ui]);
 
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [computing, setComputing] = useState(false);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const [activeReverseLink, setActiveReverseLink] = useState<string | null>(null);
+  const [resolvedDisplayValues, setResolvedDisplayValues] = useState<ResolvedDisplayState>({});
+  const [displayLoadingFields, setDisplayLoadingFields] = useState<Record<string, boolean>>({});
 
-
-
+  const syncedInitialValues = useMemo(() => buildInitialValues(schema, initialData), [schema, initialData]);
+  const [values, setValues] = useState<FormValues>(syncedInitialValues);
+  const valuesRef = useRef<FormValues>(syncedInitialValues);
+  const aggTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const applyingComputeRef = useRef(false);
+  const lastComputedSigRef = useRef<string>(computeSignature(schema, syncedInitialValues));
+  const displayCacheRef = useRef<ResolvedDisplayState>({});
+  const displayRequestRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     if (!uiTabs.length) {
       setActiveTabId(null);
       return;
     }
-    if (!activeTabId || !uiTabs.some((t) => t.id === activeTabId)) {
+
+    if (!activeTabId || !uiTabs.some((tab) => tab.id === activeTabId)) {
       setActiveTabId(uiTabs[0].id);
     }
   }, [uiTabs, activeTabId]);
 
   const activeTab = useMemo(() => {
     if (!uiTabs.length) return null;
-    return uiTabs.find((t) => t.id === activeTabId) ?? uiTabs[0];
+    return uiTabs.find((tab) => tab.id === activeTabId) ?? uiTabs[0];
   }, [uiTabs, activeTabId]);
 
-  // ---------------- Valores editables + overrides ----------------
-  const [values, setValues] = useState<any>(() =>
-  withDefaultValues(
-    schema.fields,
-    normalizeInitialData(schema.fields, initialData)
-  )
-);
   useEffect(() => {
-  // al iniciar/cambiar schema o initialData, fijamos firma para no “recompute por gusto”
-  lastComputedSigRef.current = computeSignature(schema, values);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [schema]);
-  const [computing, setComputing] = useState(false);
+    valuesRef.current = values;
+  }, [values]);
 
-  // Para evitar llamadas excesivas a compute/aggregate
-  const aggTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    valuesRef.current = syncedInitialValues;
+    setValues(syncedInitialValues);
+    lastComputedSigRef.current = computeSignature(schema, syncedInitialValues);
+  }, [schema, syncedInitialValues]);
 
-  // Evita bucles: cuando setValues viene de compute, no queremos re-lanzar compute en cascada
-const applyingComputeRef = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
 
-// Firma de los campos computed (solo lo que cambia por compute)
-const lastComputedSigRef = useRef<string>("");
+    const setFieldDisplayValue = (fieldName: string, nextValue: { value: string; icon?: string; color?: string }) => {
+      setResolvedDisplayValues((prev) => {
+        const current = prev[fieldName];
+        if (
+          current?.value === nextValue.value &&
+          current?.icon === nextValue.icon &&
+          current?.color === nextValue.color
+        ) {
+          return prev;
+        }
 
-// Compara solo lo relevante (campos con compute)
-function computeSignature(schema: ModuleSchema, record: any) {
-  const out: Record<string, any> = {};
-  for (const f of schema.fields || []) {
-    const c = (f as any).compute;
-    if (!c || c.type === "none") continue;
-    out[f.name] = record?.[f.name];
-  }
-  return JSON.stringify(out);
-}
+        return { ...prev, [fieldName]: nextValue };
+      });
+    };
 
-  // ReverseLink fields (se renderizan abajo, y solo en pestañas form)
+    const setFieldLoading = (fieldName: string, isLoading: boolean) => {
+      setDisplayLoadingFields((prev) => {
+        if (!!prev[fieldName] === isLoading) return prev;
+
+        if (!isLoading) {
+          const { [fieldName]: _removed, ...rest } = prev;
+          return rest;
+        }
+
+        return { ...prev, [fieldName]: true };
+      });
+    };
+
+    const resolveFieldDisplayValue = async (field: Field) => {
+      const config = getDisplayResolverConfig(field);
+      if (!config) return;
+
+      const rawValue = values[field.name];
+      const ids = toLookupIds(rawValue, config.multiple);
+      const fallback = getDisplayFallback(rawValue, config.multiple);
+
+      if (ids.length === 0) {
+        setFieldLoading(field.name, false);
+        setFieldDisplayValue(field.name, { value: "" });
+        return;
+      }
+
+      const cachedEntries = ids.map((id) => displayCacheRef.current[buildDisplayCacheKey(config, id)]);
+      if (cachedEntries.every(Boolean)) {
+        setFieldLoading(field.name, false);
+        setFieldDisplayValue(field.name, {
+          value: cachedEntries.map((entry) => entry!.value).join(", "),
+          icon: !config.multiple && cachedEntries[0]?.icon ? cachedEntries[0].icon : undefined,
+          color: !config.multiple && cachedEntries[0]?.color ? cachedEntries[0].color : undefined,
+        });
+        return;
+      }
+
+      const requestId = (displayRequestRef.current[field.name] || 0) + 1;
+      displayRequestRef.current[field.name] = requestId;
+      setFieldLoading(field.name, true);
+
+      try {
+        const missingIds = ids.filter((id) => !displayCacheRef.current[buildDisplayCacheKey(config, id)]);
+        let rows: any[] = [];
+
+        if (missingIds.length > 0 && typeof (dataProvider as any)?.list === "function") {
+          const result = await (dataProvider as any).list({
+            moduleSlug: config.moduleSlug,
+            filters: [
+              {
+                field: config.valueField,
+                op: missingIds.length > 1 ? "in" : "=",
+                value: missingIds.length > 1 ? missingIds : missingIds[0],
+              },
+            ],
+            limit: Math.min(missingIds.length, 500),
+            hasStyle: config.hasStyle,
+            styleIconField: config.styleIconField,
+            styleColorField: config.styleColorField,
+          });
+
+          rows = Array.isArray(result?.data) ? result.data : [];
+        } else if (
+          missingIds.length === 1 &&
+          config.valueField === "id" &&
+          typeof (dataProvider as any)?.getOne === "function"
+        ) {
+          const row = await (dataProvider as any).getOne(config.moduleSlug, missingIds[0]);
+          rows = row ? [row] : [];
+        }
+
+        for (const row of rows) {
+          const rowId = row?.[config.valueField];
+          if (rowId === null || rowId === undefined || rowId === "") continue;
+
+          const cacheKey = buildDisplayCacheKey(config, String(rowId));
+          const label = String(row?.[config.displayField] ?? rowId);
+          displayCacheRef.current[cacheKey] = {
+            value: label,
+            icon: config.hasStyle ? row?.[config.styleIconField] : undefined,
+            color: config.hasStyle ? row?.[config.styleColorField] : undefined,
+          } as any;
+        }
+
+        if (cancelled || displayRequestRef.current[field.name] !== requestId) return;
+
+        const resolvedEntries = ids.map((id) => displayCacheRef.current[buildDisplayCacheKey(config, id)] as any);
+        const resolvedValue = resolvedEntries
+          .map((entry, index) => entry?.value || ids[index])
+          .join(", ");
+
+        setFieldDisplayValue(field.name, {
+          value: resolvedValue || fallback,
+          icon: !config.multiple && resolvedEntries[0]?.icon ? resolvedEntries[0].icon : undefined,
+          color: !config.multiple && resolvedEntries[0]?.color ? resolvedEntries[0].color : undefined,
+        });
+      } catch {
+        if (cancelled || displayRequestRef.current[field.name] !== requestId) return;
+        setFieldDisplayValue(field.name, { value: fallback });
+      } finally {
+        if (cancelled || displayRequestRef.current[field.name] !== requestId) return;
+        setFieldLoading(field.name, false);
+      }
+    };
+
+    const relationalFields = (schema.fields || []).filter((field) => !!getDisplayResolverConfig(field));
+    void Promise.all(relationalFields.map((field) => resolveFieldDisplayValue(field)));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [schema.fields, values, dataProvider]);
+
   const reverseLinkFields = useMemo(
-    () => (schema.fields || []).filter((f) => f.type === "ReverseLink"),
+    () => (schema.fields || []).filter((field) => field.type === "ReverseLink"),
     [schema.fields]
   );
 
-  const [activeReverseLink, setActiveReverseLink] = useState<string | null>(null);
-
   useEffect(() => {
-    if (!activeReverseLink && reverseLinkFields.length > 0) {
+    if (reverseLinkFields.length === 0) {
+      setActiveReverseLink(null);
+      return;
+    }
+
+    const currentStillExists = reverseLinkFields.some((field) => field.name === activeReverseLink);
+    if (!currentStillExists) {
       setActiveReverseLink(reverseLinkFields[0].name);
     }
   }, [activeReverseLink, reverseLinkFields]);
 
-
-
-
-
-  const handleChange = (name: string, value: any) => {
-    setValues((prev: any) => ({ ...prev, [name]: normalizeValue(value) }));
-  };
-
-  // Toggle override por campo
-  const toggleOverride = (f: Field, enabled: boolean) => {
-    setValues((prev: any) => ({
-      ...prev,
-      meta: {
-        ...(prev.meta || {}),
-        overrides: {
-          ...(prev.meta?.overrides || {}),
-          [f.name]: {
-            enabled,
-            value: enabled ? prev[f.name] ?? null : prev.meta?.overrides?.[f.name]?.value ?? null,
-          },
-        },
-      },
-    }));
-  };
-
-  // Cambio del valor override manual
-  const setOverrideValue = (f: Field, value: any) => {
-    setValues((prev: any) => ({
-      ...prev,
-      meta: {
-        ...(prev.meta || {}),
-        overrides: {
-          ...(prev.meta?.overrides || {}),
-          [f.name]: {
-            enabled: true,
-            value: normalizeValue(value),
-          },
-        },
-      },
-      [f.name]: normalizeValue(value),
-    }));
-  };
-
-  // ---------------- Secciones de formulario (layout) ----------------
   const formSections = useMemo<FormSection[]>(() => {
-    // Si hay tabs y la activa es "form", usa sus secciones
     if (activeTab?.type === "form") {
       return (activeTab.config?.formSections || []) as FormSection[];
     }
-    // Si NO hay tabs o no es form: fallback a schema.ui.formSections
+
     return (((schema.ui as any)?.formSections as FormSection[]) || []) as FormSection[];
   }, [activeTab, schema.ui]);
-
-  // Acordeón: qué secciones están abiertas
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const firstId = formSections[0]?.id;
     setOpenSections(firstId ? { [firstId]: true } : {});
   }, [activeTabId, formSections]);
 
+  const fieldsByName = useMemo(() => {
+    const map: Record<string, Field> = {};
+    for (const field of schema.fields || []) {
+      map[field.name] = field;
+    }
+    return map;
+  }, [schema.fields]);
+
+  const formActions = (((schema.ui as any)?.formActions as FormAction[]) || []);
+
+  const fieldsInSections = useMemo(() => {
+    const names = new Set<string>();
+    for (const section of formSections) {
+      for (const fieldName of section.fields || []) {
+        names.add(fieldName);
+      }
+    }
+    return names;
+  }, [formSections]);
+
+  const unsectionedFields = useMemo(() => {
+    if (formSections.length === 0) return [];
+
+    return (schema.fields || []).filter((field) => {
+      if (field.type === "ReverseLink") return false;
+      return !fieldsInSections.has(field.name);
+    });
+  }, [formSections.length, schema.fields, fieldsInSections]);
+
+  const moduleFolder = schema?.db?.table || "general";
+  const computeDepsKey = useMemo(() => JSON.stringify(lightDeps(values)), [values]);
+
+  const commitValues = (
+    updater: FormValues | ((current: FormValues) => FormValues),
+    options?: { notifyParent?: boolean }
+  ) => {
+    const nextValues = typeof updater === "function" ? updater(valuesRef.current) : updater;
+    valuesRef.current = nextValues;
+    setValues(nextValues);
+
+    if (options?.notifyParent) {
+      void onChange?.(nextValues);
+    }
+
+    return nextValues;
+  };
+
+  const handleChange = (name: string, value: any) => {
+    commitValues((prev) => ({ ...prev, [name]: value }), { notifyParent: true });
+  };
+
+  const toggleOverride = (field: Field, enabled: boolean) => {
+    commitValues(
+      (prev) => ({
+        ...prev,
+        meta: {
+          ...(prev.meta || {}),
+          overrides: {
+            ...(prev.meta?.overrides || {}),
+            [field.name]: {
+              enabled,
+              value: enabled ? prev[field.name] ?? null : prev.meta?.overrides?.[field.name]?.value ?? null,
+            },
+          },
+        },
+      }),
+      { notifyParent: true }
+    );
+  };
+
+  const setOverrideValue = (field: Field, value: any) => {
+    commitValues(
+      (prev) => ({
+        ...prev,
+        meta: {
+          ...(prev.meta || {}),
+          overrides: {
+            ...(prev.meta?.overrides || {}),
+            [field.name]: {
+              enabled: true,
+              value,
+            },
+          },
+        },
+        [field.name]: value,
+      }),
+      { notifyParent: true }
+    );
+  };
+
   const toggleSection = (id: string) => {
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Mapa rápido para buscar campos por name
-  const fieldsByName = useMemo(() => {
-    const map: Record<string, Field> = {};
-    (schema.fields || []).forEach((f) => (map[f.name] = f));
-    return map;
-  }, [schema.fields]);
+  useEffect(() => {
+    if (!schema?.fields?.length) return;
 
-
-
-  const formActions =
-  (((schema.ui as any)?.formActions as FormAction[]) || []);
-
-  // Campos “sin sección” (excluye ReverseLink)
-
-
-  // Bootstrap col según ui.width
-  const colClass = (f: Field): string => {
-    const col = f.ui?.width || "1/1";
-    switch (col) {
-      case "1/2":
-        return "col-12 col-md-6";
-      case "1/3":
-        return "col-12 col-md-4";
-      case "2/3":
-        return "col-12 col-md-8";
-      case "1/1":
-      default:
-        return "col-12";
+    if (applyingComputeRef.current) {
+      applyingComputeRef.current = false;
+      return;
     }
-  };
 
-  function dateToDb(value?: string) {
-    return value || null; // YYYY-MM-DD → date
-  }
+    if (effectiveMode === "view") return;
 
-  function datetimeLocalToDb(value?: string) {
-    if (!value) return null;
-    return new Date(value).toISOString(); // local → UTC Z
-  }
+    if (aggTimer.current) clearTimeout(aggTimer.current);
+    setComputing(true);
 
-  function isFieldVisibleInMode(field: Field, m: Mode) {
-    if (field.visible === false) return false;
+    aggTimer.current = setTimeout(async () => {
+      try {
+        const computed = await applyCompute({
+          schema,
+          record: valuesRef.current,
+          dataProvider,
+        });
 
-    const vw = (field as any).visibleWhen || "add_edit";
-    if (m === "create") return vw === "add" || vw === "add_edit";
-    if (m === "edit") return vw === "edit" || vw === "add_edit";
-    return true; // view
-  }
-    // Recalcular fórmulas/aggregates cuando cambian values
+        const sig = computeSignature(schema, computed);
+        if (sig === lastComputedSigRef.current) return;
 
-
-  const moduleFolder =
-  schema?.db?.table ||
-  "general";
-
-  // Render de un campo
-  const renderField = (f: Field) => {
-    if (!isFieldVisibleInMode(f, effectiveMode)) return null;
-    if (f.type === "ReverseLink") return null;
-
-    const v = values[f.name] ?? "";
-    const isOverride = !!values?.meta?.overrides?.[f.name]?.enabled;
-
-    const effectiveReadOnlyField =
-      !!readOnly ||
-      effectiveMode === "view" ||
-      (!!f.readOnly && !isOverride) ||
-      (!!(f as any).compute && !(f as any).allowOverride && f.type !== "selectorTabla");
-
-    return (
-      <div key={f.name} className={colClass(f)}>
-        <div className="field-box">
-          <label style={labelStyle()} className="form-label">
-            {f.label}
-          </label>
-
-          {(f as any).allowOverride && (
-            <div className="d-flex align-items-center gap-2 mb-2">
-              <small className="text-muted">Forzar valor</small>
-              <input
-                type="checkbox"
-                className="form-check-input"
-                checked={isOverride}
-                onChange={(e) => toggleOverride(f, e.target.checked)}
-                disabled={effectiveMode === "view"}
-              />
-            </div>
-          )}
-
-          <DetachedFieldInput
-            field={f}
-            value={v}
-            onChange={(val: any) => (isOverride ? setOverrideValue(f, val) : handleChange(f.name, val))}
-            readOnly={effectiveReadOnlyField}
-            uploadFolder={moduleFolder}
-          />
-
-          {(f as any).ui?.help && <div className="form-text mt-1">{(f as any).ui.help}</div>}
-
-          {computing && (f as any).compute && !isOverride && (
-            <div className="small text-muted mt-1">recalculando…</div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // ---------------- Acciones (Guardar / Editar / Volver) ----------------
-    useEffect(() => {
-  if (!schema?.fields?.length) return;
-
-  // 1) Si venimos de aplicar compute, NO recalcular otra vez (corta el loop)
-  if (applyingComputeRef.current) {
-    applyingComputeRef.current = false;
-    return;
-  }
-
-  // 2) En modo VIEW: por defecto NO lances aggregates (deberían venir persistidos)
-  //    (si luego quieres permitir algún aggregate persist="always", lo afinamos en computeEngine)
-  if (effectiveMode === "view") return;
-
-  if (aggTimer.current) clearTimeout(aggTimer.current);
-  setComputing(true);
-
-  aggTimer.current = setTimeout(async () => {
-    try {
-      const computed = await applyCompute({
-        schema,
-        record: values,
-        dataProvider,
-      });
-
-      // 3) Si el resultado "computed" no cambia los campos calculados, no hagas setValues
-      const sig = computeSignature(schema, computed);
-      if (sig === lastComputedSigRef.current) {
-        // Nada nuevo -> no provocar render extra -> no repetir API
-        return;
+        lastComputedSigRef.current = sig;
+        applyingComputeRef.current = true;
+        commitValues(computed, { notifyParent: true });
+      } finally {
+        setComputing(false);
       }
+    }, 200);
 
-      lastComputedSigRef.current = sig;
-
-      applyingComputeRef.current = true;
-      setValues(computed);
-      onChange?.(computed);
-    } finally {
+    return () => {
+      if (aggTimer.current) {
+        clearTimeout(aggTimer.current);
+        aggTimer.current = null;
+      }
       setComputing(false);
-    }
-  }, 200);
+    };
+  }, [schema, effectiveMode, dataProvider, computeDepsKey]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [schema, effectiveMode, JSON.stringify(lightDeps(values))]);
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (effectiveMode === "view") return;
 
     try {
       const payload = { ...(values || {}) };
       delete payload.meta;
 
-      for (const f of schema.fields || []) {
-        const v = payload[f.name];
-        if (f.type === "date") payload[f.name] = dateToDb(v);
-        if (f.type === "datetime") payload[f.name] = datetimeLocalToDb(v);
+      for (const field of schema.fields || []) {
+        const value = payload[field.name];
+        if (field.type === "date") payload[field.name] = value || null;
+        if (field.type === "datetime") {
+          payload[field.name] = value ? new Date(value).toISOString() : null;
+        }
       }
 
       await onSubmit?.(payload);
-    } catch (err) {
-      console.error("Error en submit:", err);
-      alert((err as any)?.message || "Error guardando");
+    } catch (error) {
+      console.error("Error en submit:", error);
+      alert((error as any)?.message || "Error guardando");
     }
   };
 
@@ -456,6 +697,7 @@ function computeSignature(schema: ModuleSchema, record: any) {
 
   const handleEdit = () => {
     if (onEdit) return onEdit();
+
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
       url.searchParams.set("edit", "true");
@@ -466,7 +708,7 @@ function computeSignature(schema: ModuleSchema, record: any) {
   const renderActions = () => (
     <>
       <button type="button" className="btn btn-secondary px-4" onClick={handleBack}>
-        ← Volver
+        Volver
       </button>
 
       {effectiveMode === "view" && (
@@ -492,134 +734,137 @@ function computeSignature(schema: ModuleSchema, record: any) {
     </>
   );
 
-  // ---------------- Flags de render ----------------
+  const renderField = (field: Field) => {
+    if (!isFieldVisibleInMode(field, effectiveMode)) return null;
+    if (field.type === "ReverseLink") return null;
+
+    const value = values[field.name] ?? "";
+    const isOverride = isOverrideEnabled(values, field.name);
+    const helpText = getFieldHelp(field);
+    const resolvedDisplay = resolvedDisplayValues[field.name];
+    const isDisplayLoading = !!displayLoadingFields[field.name];
+    const readOnlyField = isFieldReadOnly(field, {
+      readOnly,
+      mode: effectiveMode,
+      isOverride,
+    });
+
+    return (
+      <div key={field.name} className={getColumnClass(field)}>
+        <div className="field-box">
+          <label style={labelStyle()} className="form-label">
+            {field.label}
+          </label>
+
+          {(field as any).allowOverride && (
+            <div className="d-flex align-items-center gap-2 mb-2">
+              <small className="text-muted">Forzar valor</small>
+              <input
+                type="checkbox"
+                className="form-check-input"
+                checked={isOverride}
+                onChange={(event) => toggleOverride(field, event.target.checked)}
+                disabled={effectiveMode === "view"}
+              />
+            </div>
+          )}
+
+          <DetachedFieldInput
+            field={field}
+            value={value}
+            onChange={(nextValue: any) =>
+              isOverride ? setOverrideValue(field, nextValue) : handleChange(field.name, nextValue)
+            }
+            readOnly={readOnlyField}
+            uploadFolder={moduleFolder}
+            displayValue={resolvedDisplay?.value}
+            isDisplayLoading={isDisplayLoading}
+            displayIcon={resolvedDisplay?.icon}
+            displayColor={resolvedDisplay?.color}
+          />
+
+          {helpText && <div className="form-text mt-1">{helpText}</div>}
+
+          {computing && (field as any).compute && !isOverride && (
+            <div className="small text-muted mt-1">recalculando...</div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const showMainTabs = uiTabs.length > 0;
-
-  // Importante:
-  // - si NO hay tabs, activeTab es null → showFormContent = true (modo clásico)
-  // - si hay tabs y activeTab.type=form → render form
-
   const showFormContent = !activeTab || activeTab.type === "form";
   const showReverseLinks = showFormContent;
 
   const resolveTable = useMemo(() => {
-  return (moduleSlug: string) => {
-    const m = modulesBySlug?.[moduleSlug];
+    return (moduleSlug: string) => {
+      const moduleConfig = modulesBySlug?.[moduleSlug];
+      const tableFromDb = moduleConfig?.db?.table;
+      const tableFromRoot = (moduleConfig as any)?.table;
+      const finalTable = tableFromDb || tableFromRoot;
 
-    // 1) props.db.table (lo ideal)
-    const table = m?.db?.table;
+      if (!finalTable) return null;
 
-    // 2) si guardas tabla en otro sitio (por si tu row ya viene “plano”)
-    const table2 = (m as any)?.table;
+      return {
+        table: finalTable,
+        valueField: moduleConfig?.db?.primaryKey ?? "id",
+      };
+    };
+  }, [modulesBySlug]);
 
-    const finalTable = table || table2;
-    if (!finalTable) return null;
+  const resolveRoute = useMemo(() => {
+    return (source: string) => {
+      const moduleConfig = modulesBySlug?.[source];
+      const directRoute = (moduleConfig as any)?.route;
 
-    return { table: finalTable, valueField: m?.db?.primaryKey || "id" || "uid"};
-  };
-}, [modulesBySlug]);
-
-    const resolveRoute = useMemo(() => {
-  return (source: string) => {
-    // source puede ser moduleSlug o table
-    const m = modulesBySlug?.[source];
-
-    // 1) si viene como moduleSlug
-    const r1 = (m as any)?.route;
-
-    // 2) si viene como tabla, intenta encontrar por db.table
-    let r2: string | null = null;
-    if (!r1 && modulesBySlug) {
-      for (const [slug, mod] of Object.entries(modulesBySlug)) {
-        const table = (mod as any)?.db?.table;
-        if (table === source) {
-          r2 = (mod as any)?.route || null;
-          break;
+      let routeByTable: string | null = null;
+      if (!directRoute && modulesBySlug) {
+        for (const [, mod] of Object.entries(modulesBySlug)) {
+          if ((mod as any)?.db?.table === source) {
+            routeByTable = (mod as any)?.route || null;
+            break;
+          }
         }
       }
-    }
 
-    return (r1 || r2 || null) as string | null;
-  };
-}, [modulesBySlug]);
-
-
-  // TreeView
+      return (directRoute || routeByTable || null) as string | null;
+    };
+  }, [modulesBySlug]);
 
   const treeViewConfig = useMemo(() => {
     if (activeTab?.type === "treeview") return activeTab.config ?? null;
-    
     return legacyTreeCfg;
   }, [activeTab, legacyTreeCfg]);
 
-  // Calendar: idem (placeholder)
   const calendarConfig = useMemo(() => {
     if (activeTab?.type === "calendar") return activeTab.config ?? null;
     return legacyCalendarCfg;
   }, [activeTab, legacyCalendarCfg]);
 
+  const treeSourceSlug =
+    (treeViewConfig as any)?.source?.table ??
+    (treeViewConfig as any)?.sourceTable ??
+    null;
 
-  useEffect(() => {
-  if (activeTab?.type !== "treeview") return;
+  const treeSchemaFields = useMemo(() => {
+    if (!treeSourceSlug) return schema.fields;
+    const moduleSchema = schemasBySlug?.[treeSourceSlug];
+    return moduleSchema?.fields || schema.fields;
+  }, [schemasBySlug, treeSourceSlug, schema.fields]);
 
-  console.log("FORM -> TreeView props", {
-    activeTabId,
-    activeTab,
-    treeViewConfig: activeTab.config ?? null,
-    treeViewProvider: !!treeViewProvider,
-    modulesBySlugKeys: Object.keys(modulesBySlug || {}).slice(0, 10),
-    parentRecordId: (treeViewParentRecord ?? values)?.id,
-  });
-}, [activeTab?.type, activeTabId, activeTab, treeViewProvider, modulesBySlug, treeViewParentRecord, values]);
-
-
-const treeSourceSlug =
-  (treeViewConfig as any)?.source?.table ??
-  (treeViewConfig as any)?.sourceTable ??
-  null;
-
-const treeSchemaFields = useMemo(() => {
-  if (!treeSourceSlug) return schema.fields;
-  const modSchema = schemasBySlug?.[treeSourceSlug];
-  return modSchema?.fields || schema.fields;
-}, [schemasBySlug, treeSourceSlug, schema.fields]);
-
-    useEffect(() => {
-      if (activeTab?.type !== "treeview") return;
-      console.log("TREE schemaFields chosen", {
-        treeSourceSlug,
-        treeSchemaFieldsCount: treeSchemaFields?.length,
-        exampleFields: (treeSchemaFields || []).slice(0, 5).map((f:any) => ({ name: f.name, type: f.type })),
-      });
-    }, [activeTab?.type, treeSourceSlug, treeSchemaFields]);
-    useEffect(() => {
-      if (activeTab?.type !== "treeview") return;
-
-      console.log("TREE schema debug", {
-        treeSourceSlug,
-        schemaFieldsFromSource_firstNames: (schemasBySlug?.[treeSourceSlug || ""]?.fields || [])
-          .slice(0, 8)
-          .map((f: any) => f.name),
-        currentSchema_firstNames: (schema.fields || []).slice(0, 8).map((f: any) => f.name),
-        sameReference: schemasBySlug?.[treeSourceSlug || ""]?.fields === schema.fields,
-      });
-    }, [activeTab?.type, treeSourceSlug, schemasBySlug, schema.fields]);
-
-
-
-  // ---------------- Render principal ----------------
   return (
     <form className="d-flex flex-column gap-4" onSubmit={handleSubmit}>
-      {/* Tabs principales */}
       {showMainTabs && (
         <div className="d-flex gap-4 mb-3 border-bottom" style={{ borderColor: "#e5e7eb" }}>
-          {uiTabs.map((t) => {
-            const isActive = activeTab?.id === t.id;
+          {uiTabs.map((tab) => {
+            const isActive = activeTab?.id === tab.id;
+
             return (
               <button
-                key={t.id}
+                key={tab.id}
                 type="button"
-                onClick={() => setActiveTabId(t.id)}
+                onClick={() => setActiveTabId(tab.id)}
                 className="btn btn-link px-0"
                 style={{
                   textDecoration: "none",
@@ -629,16 +874,14 @@ const treeSchemaFields = useMemo(() => {
                   borderRadius: 0,
                 }}
               >
-                {t.label}
+                {tab.label}
               </button>
             );
           })}
         </div>
       )}
 
-      {/* CONTENIDO SEGÚN TAB */}
       {showFormContent ? (
-        // ---------------- FORM ----------------
         formSections.length > 0 ? (
           <div className="d-flex flex-column gap-3">
             {formSections.map((section) => {
@@ -661,16 +904,16 @@ const treeSchemaFields = useMemo(() => {
                       <div className="fw-semibold">{section.label}</div>
                       {section.description && <div className="small text-muted">{section.description}</div>}
                     </div>
-                    <span className="text-muted">{isOpen ? "▾" : "▸"}</span>
+                    <span className="text-muted">{isOpen ? "v" : ">"}</span>
                   </button>
 
                   {isOpen && (
                     <div className="card-body">
                       <div className="row g-3">
                         {section.fields.map((fieldName) => {
-                          const f = fieldsByName[fieldName];
-                          if (!f) return null;
-                          return renderField(f);
+                          const field = fieldsByName[fieldName];
+                          if (!field) return null;
+                          return renderField(field);
                         })}
                       </div>
                     </div>
@@ -679,55 +922,44 @@ const treeSchemaFields = useMemo(() => {
               );
             })}
 
-            {/* Si quieres volver a mostrar “otros campos”, aquí lo tienes.
-                En tu snippet lo tienes comentado: mantengo el bloque preparado. */}
-            {/*
             {unsectionedFields.length > 0 && (
               <div className="card border border-dashed">
                 <div className="card-header">
                   <div className="fw-semibold">Otros campos</div>
-                  <div className="small text-muted">Campos sin sección asignada</div>
+                  <div className="small text-muted">Campos sin seccion asignada</div>
                 </div>
                 <div className="card-body">
-                  <div className="row g-3">{unsectionedFields.map((f) => renderField(f))}</div>
+                  <div className="row g-3">{unsectionedFields.map((field) => renderField(field))}</div>
                 </div>
               </div>
             )}
-            */}
           </div>
         ) : (
-          <div className="row g-3">{(schema.fields || []).map((f) => renderField(f))}</div>
+          <div className="row g-3">{(schema.fields || []).map((field) => renderField(field))}</div>
         )
       ) : activeTab?.type === "treeview" ? (
-        // ---------------- TREEVIEW ----------------
         <div className="card">
           <div className="card-header">
             <div className="fw-semibold">{treeViewConfig?.ui?.title || ""}</div>
             <div className="small text-muted">
-              {treeViewConfig?.source?.table
-                ? `Tabla: ${treeViewConfig.source.table}`
-                : ""}
-              {treeViewConfig?.grouping?.groupByField
-                ? ` · groupBy: ${treeViewConfig.grouping.groupByField}`
-                : ""}
+              {treeViewConfig?.source?.table ? `Tabla: ${treeViewConfig.source.table}` : ""}
+              {treeViewConfig?.grouping?.groupByField ? ` | groupBy: ${treeViewConfig.grouping.groupByField}` : ""}
             </div>
           </div>
 
           <div className="card-body">
-            
             {!treeViewConfig ? (
               <div className="alert alert-warning mb-0">
-                No hay configuración de TreeView en el módulo (schema.ui.treeView o tab.config).
+                No hay configuracion de TreeView en el modulo (schema.ui.treeView o tab.config).
               </div>
             ) : !treeViewProvider ? (
               <div className="alert alert-warning mb-0">
-                TreeView está configurado, pero falta <code>treeViewProvider</code> en el Form.
+                TreeView esta configurado, pero falta <code>treeViewProvider</code> en el Form.
                 <div className="small text-muted mt-2">
                   Esto es intencional: el componente de UI no debe importar Supabase ni createClient.
                 </div>
               </div>
             ) : (
-              
               <TreeView
                 config={treeViewConfig}
                 dataProvider={treeViewProvider}
@@ -736,52 +968,46 @@ const treeSchemaFields = useMemo(() => {
                 onViewRow={onTreeViewRowView}
                 onEditRow={onTreeViewRowEdit}
                 confirmDelete={confirmTreeViewDelete}
-                resolveTable={resolveTable}  
+                resolveTable={resolveTable}
                 resolveRoute={resolveRoute}
-                
               />
-              
             )}
           </div>
         </div>
       ) : (
-        // ---------------- CALENDAR (placeholder) ----------------
         <div className="card">
           <div className="card-header">
             <div className="fw-semibold">{calendarConfig?.ui?.title || "Calendario"}</div>
             <div className="small text-muted">
-              Tabla: {calendarConfig?.source?.table || calendarConfig?.sourceTable || "—"}
+              Tabla: {calendarConfig?.source?.table || calendarConfig?.sourceTable || "-"}
             </div>
           </div>
 
           <div className="card-body">
             <div className="text-muted small">
-              startField: {calendarConfig?.startField || "—"} · endField: {calendarConfig?.endField || "—"} ·
-              titleField: {calendarConfig?.titleField || "—"} · colorField: {calendarConfig?.colorField || "—"}
+              startField: {calendarConfig?.startField || "-"} | endField: {calendarConfig?.endField || "-"} |
+              titleField: {calendarConfig?.titleField || "-"} | colorField: {calendarConfig?.colorField || "-"}
             </div>
           </div>
         </div>
       )}
 
-      {/* ReverseLink (solo en pestañas form) */}
       {showReverseLinks && reverseLinkFields.length > 0 && (
         <div className="d-flex flex-column gap-3">
           <div className="card">
             <div className="card-header pb-0">
               <ul className="nav nav-tabs card-header-tabs">
-                {reverseLinkFields.map((f) => {
-                  const tabId = f.name;
-                  const label = (f.label as string) || f.name;
-                  const isActive = activeReverseLink === tabId;
+                {reverseLinkFields.map((field) => {
+                  const isActive = activeReverseLink === field.name;
 
                   return (
-                    <li className="nav-item" key={tabId}>
+                    <li className="nav-item" key={field.name}>
                       <button
                         type="button"
                         className={`nav-link bg-primary text-light ${isActive ? "active" : ""}`}
-                        onClick={() => setActiveReverseLink(tabId)}
+                        onClick={() => setActiveReverseLink(field.name)}
                       >
-                        {label}
+                        {(field.label as string) || field.name}
                       </button>
                     </li>
                   );
@@ -790,121 +1016,28 @@ const treeSchemaFields = useMemo(() => {
             </div>
 
             <div className="card-body">
-              {reverseLinkFields.map((f) => {
-                if (activeReverseLink !== f.name) return null;
-                return <ReverseLinkTable key={f.name} field={f} parentRecord={values} mode={effectiveMode} />;
+              {reverseLinkFields.map((field) => {
+                if (activeReverseLink !== field.name) return null;
+                return <ReverseLinkTable key={field.name} field={field} parentRecord={values} mode={effectiveMode} />;
               })}
             </div>
           </div>
         </div>
       )}
 
-      {/* Acciones */}
-        <div>
-          <div className="d-flex flex-column align-items-end gap-2 mt-3">
-          <div className="d-flex justify-content-end gap-2 mt-3">
-            <FormActionsBar
-                schema={schema}
-                mode={effectiveMode}
-                values={values}
-                setValues={setValues}
-                actions={formActions}
-                resolveRoute={resolveRoute}
-              />
-              {renderActions()}
-          </div>
+      <div className="d-flex justify-content-end align-items-center gap-2 flex-wrap mt-3">
+        <FormActionsBar
+          schema={schema}
+          mode={effectiveMode}
+          values={values}
+          setValues={commitValues}
+          actions={formActions}
+          resolveRoute={resolveRoute}
+        />
+        {renderActions()}
       </div>
-    </div>
     </form>
   );
 }
 
 
-// ---------------- Utils ----------------
-
-function withDefaultValues(fields: Field[], base: any) {
-  const out = { ...(base || {}) };
-
-  for (const f of fields) {
-    if (out[f.name] === undefined) {
-      if (
-        (f.type === "file" || f.type === "image") &&
-        (f as any).multiple
-      ) {
-        out[f.name] = [];
-      } else {
-        out[f.name] = f.defaultValue ?? defaultForType(f.type as FieldType);
-      }
-    }
-  }
-
-  return out;
-}
-
-function defaultForType(t: FieldType): any {
-  switch (t) {
-    case "number":
-    case "money":
-    case "percent":
-      return 0;
-    case "boolean":
-      return false;
-    case "multiselect":
-      return [];
-    case "file":
-    case "image":
-      return "";
-    default:
-      return "";
-  }
-}
-
-function normalizeValue(v: any) {
-  if (v === "") return "";
-  return v;
-}
-
-function normalizeInitialData(fields: Field[], data: any) {
-  const out = { ...(data || {}) };
-
-  for (const f of fields) {
-    const raw = out[f.name];
-
-    if (f.type !== "file" && f.type !== "image") continue;
-    if (raw == null || raw === "") continue;
-
-    if (typeof raw === "string") {
-      const trimmed = raw.trim();
-      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-        try {
-          out[f.name] = JSON.parse(trimmed);
-        } catch {
-          // lo dejamos como esté
-        }
-      }
-    }
-
-    if ((f as any).multiple) {
-      if (!Array.isArray(out[f.name])) {
-        out[f.name] = out[f.name] ? [out[f.name]] : [];
-      }
-    } else {
-      if (Array.isArray(out[f.name])) {
-        out[f.name] = out[f.name][0] || "";
-      }
-    }
-  }
-
-  return out;
-}
-
-function labelStyle(): React.CSSProperties {
-  return { display: "block", marginBottom: 4, fontSize: 12 };
-}
-
-// minimiza deps para el efecto: ignora meta.snapshots y deja meta.overrides “por clave”
-function lightDeps(v: any) {
-  const { meta, ...rest } = v || {};
-  const ov = meta?.overrides ? Object.keys(meta.overrides).sort() : [];
-  return { ...rest, _ovKeys: ov };
-}
