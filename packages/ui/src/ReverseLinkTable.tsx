@@ -1,17 +1,23 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useEffect, useMemo, useState } from "react";
 import type { Field, FieldType, ModuleSchema } from "@repo/types";
-
-// ✅ Ajusta estas rutas a TU proyecto
-import { dataProvider } from "./providers/DataProvider"; // <- cambia si tu provider está en otro sitio
-import {ActionMenu} from ".//ActionMenu"; // <- cambia si tu ActionMenu está en otro sitio
+import { dataProvider } from "./providers/DataProvider";
+import { ActionMenu } from ".//ActionMenu";
+import {
+  collectRelationPendingKeys,
+  getRelationDisplayConfig,
+  getRelationDisplayResult,
+  preloadRelationDisplayCache,
+  renderRelationDisplay,
+  type RelationDisplayEntry,
+  type RelationDisplayStatusMap,
+} from "./utils/relationDisplay";
 
 type Mode = "view" | "edit" | "create";
 
 type Props = {
-  field: Field; // viene tipado como Field, pero lo estrechamos dentro
+  field: Field;
   parentRecord: any;
   mode: Mode;
 };
@@ -20,46 +26,21 @@ type ListFilterOp = "=" | "!=" | ">" | "<" | "in";
 type ListFilter = { field: string; op: ListFilterOp; value: any };
 type ListSort = { field: string; dir: "asc" | "desc" };
 
-type CacheEntry = { label: string; icon?: string; color?: string };
-
 function toListOp(op: any): ListFilterOp {
   if (op === "=" || op === "!=" || op === ">" || op === "<" || op === "in") return op;
   return "=";
 }
 
-const isBi = (s?: string) => !!s && (s.includes("bi-") || s.startsWith("bi "));
-
-const renderStyled = (label: string, icon?: string, color?: string) => (
-  <span className="d-inline-flex align-items-center gap-2">
-    {icon ? (
-      isBi(icon) ? (
-        <i
-          className={icon.includes(" ") ? icon : `bi ${icon}`}
-          style={{ color: color || "inherit" }}
-          aria-hidden="true"
-        />
-      ) : (
-        <span style={{ color: color || "inherit" }}>{icon}</span>
-      )
-    ) : null}
-    <span>{label}</span>
-  </span>
-);
-
 export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
   if (field.type !== "ReverseLink") return null;
 
-  // Nota: lo usas en el resto del proyecto, aquí lo conservamos aunque ahora navegues con window.location.href
-  const router = useRouter();
-
-  const ref: any = (field as any).ref; // ReverseLinkRef (en tu código viene así)
+  const ref: any = (field as any).ref;
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [targetSchema, setTargetSchema] = useState<ModuleSchema | null>(null);
-
-  // ✅ cache: moduleSlug:id -> { label, icon, color }
-  const [labelCache, setLabelCache] = useState<Record<string, CacheEntry>>({});
+  const [labelCache, setLabelCache] = useState<Record<string, RelationDisplayEntry>>({});
+  const [relationStatusByKey, setRelationStatusByKey] = useState<RelationDisplayStatusMap>({});
 
   const parentKey = ref?.parentKey || "id";
   const parentId = parentRecord?.[parentKey];
@@ -83,8 +64,6 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
         setErr("ReverseLink: falta ref.foreignKey");
         return;
       }
-
-      // dataProvider necesario
       if (!dataProvider?.list || !dataProvider?.getSchema) {
         setErr("dataProvider no implementa list/getSchema");
         return;
@@ -92,26 +71,23 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
 
       setLoading(true);
       try {
-        // 1) Schema destino (para columnas list/always)
-        const sch = await dataProvider.getSchema(ref.moduleSlug);
-        if (!cancelled) setTargetSchema(sch);
+        const schema = await dataProvider.getSchema(ref.moduleSlug);
+        if (!cancelled) setTargetSchema(schema);
 
-        // 2) Query de relacionados
         const extraFilters = Array.isArray(ref.filters) ? ref.filters : [];
-
         const filters: ListFilter[] = [
-          ...extraFilters.map((f: any): ListFilter => ({
-            field: String(f.field),
-            op: toListOp(f.op),
-            value: f.value,
+          ...extraFilters.map((item: any): ListFilter => ({
+            field: String(item.field),
+            op: toListOp(item.op),
+            value: item.value,
           })),
           { field: ref.foreignKey, op: "=", value: parentId },
         ];
 
         const sort: ListSort[] = Array.isArray(ref.sort)
-          ? ref.sort.map((s: any): ListSort => ({
-              field: String(s.field),
-              dir: s.direction === "desc" ? "desc" : "asc",
+          ? ref.sort.map((item: any): ListSort => ({
+              field: String(item.field),
+              dir: item.direction === "desc" ? "desc" : "asc",
             }))
           : [];
 
@@ -129,8 +105,8 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
           : [];
 
         if (!cancelled) setRows(data);
-      } catch (e: any) {
-        if (!cancelled) setErr(e?.message || "Error cargando ReverseLink");
+      } catch (error: any) {
+        if (!cancelled) setErr(error?.message || "Error cargando ReverseLink");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -150,154 +126,75 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
     JSON.stringify(ref?.sort || []),
   ]);
 
-  // columnas visibles
-  const columns = (targetSchema?.fields || []).filter((f) =>
-    ["List", "Always"].includes((f as any).appareance || "Zoom")
+  const columns = (targetSchema?.fields || []).filter((item) =>
+    ["List", "Always"].includes((item as any).appareance || "Zoom")
   );
 
-  // ✅ aseguramos “fields completos” (con type/ref de selectorTabla)
   const columnsFull = useMemo(() => {
-    const byName = new Map((targetSchema?.fields || []).map((f) => [f.name, f] as const));
-    return columns.map((c) => byName.get(c.name) ?? c) as Field[];
+    const byName = new Map((targetSchema?.fields || []).map((item) => [item.name, item] as const));
+    return columns.map((column) => byName.get(column.name) ?? column) as Field[];
   }, [columns, targetSchema]);
 
-  const getRowId = (r: any) => r?.id;
+  const pendingRelationKeys = useMemo(
+    () =>
+      collectRelationPendingKeys({
+        rows,
+        fields: columnsFull,
+        getValue: (row, column) => row?.[column.name],
+        cache: labelCache,
+        statusByKey: relationStatusByKey,
+      }),
+    [rows, columnsFull, labelCache, relationStatusByKey]
+  );
 
-  // Ruta base del módulo relacionado.
+  useEffect(() => {
+    if (!rows.length || !columnsFull.length) return;
+
+    let cancelled = false;
+
+    void preloadRelationDisplayCache({
+      rows,
+      fields: columnsFull,
+      getValue: (row, column) => row?.[column.name],
+      dataProvider,
+      cache: labelCache,
+      statusByKey: relationStatusByKey,
+    })
+      .then(({ patch, statusPatch }) => {
+        if (cancelled) return;
+        if (Object.keys(patch).length) {
+          setLabelCache((prev) => ({ ...prev, ...patch }));
+        }
+        if (Object.keys(statusPatch).length) {
+          setRelationStatusByKey((prev) => ({ ...prev, ...statusPatch }));
+        }
+      })
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rows, columnsFull]);
+
+  const getRowId = (row: any) => row?.id;
   const baseRoute = `/${ref?.route}`;
 
-  const goView = (r: any) => {
-    const id = getRowId(r);
+  const goView = (row: any) => {
+    const id = getRowId(row);
     if (!id) return;
     window.location.href = `${baseRoute}/${id}`;
   };
 
-  const goEdit = (r: any) => {
-    const id = getRowId(r);
+  const goEdit = (row: any) => {
+    const id = getRowId(row);
     if (!id) return;
     window.location.href = `${baseRoute}/${id}?edit=true`;
   };
 
-  // ---------------------------
-  // ✅ Precarga labels (y estilo) para columnas selectorTabla
-  // ---------------------------
-  const selectorCols = useMemo(() => {
-    return columnsFull.filter((c) => {
-      if ((c.type as any) !== "selectorTabla") return false;
-      const moduleSlug = (c as any)?.ref?.moduleSlug;
-      const displayField = (c as any)?.ref?.displayField;
-      return !!moduleSlug && !!displayField;
-    });
-  }, [columnsFull]);
-
-  const preloadSelectorLabels = useCallback(async () => {
-    if (!dataProvider?.list) return;
-    if (rows.length === 0) return;
-    if (selectorCols.length === 0) return;
-
-    const buckets = new Map<
-      string,
-      {
-        moduleSlug: string;
-        ids: Set<any>;
-        valueField: string;
-        displayField: string;
-        hasStyle: boolean;
-        styleIconField: string;
-        styleColorField: string;
-      }
-    >();
-
-    for (const col of selectorCols) {
-      const refc = (col as any)?.ref || {};
-      const moduleSlug = String(refc.moduleSlug || "");
-      const valueField = String(refc.valueField || "id");
-      const displayField = String(refc.displayField || "id");
-      if (!moduleSlug) continue;
-
-      const hasStyle = !!((col as any).hasStyle ?? refc.hasStyle);
-      const styleIconField = ((col as any).styleIconField ?? refc.styleIconField) || "icon";
-      const styleColorField = ((col as any).styleColorField ?? refc.styleColorField) || "color";
-
-      const bucketKey = `${moduleSlug}|${valueField}|${displayField}|${hasStyle ? 1 : 0}|${styleIconField}|${styleColorField}`;
-
-      let b = buckets.get(bucketKey);
-      if (!b) {
-        b = {
-          moduleSlug,
-          ids: new Set<any>(),
-          valueField,
-          displayField,
-          hasStyle,
-          styleIconField,
-          styleColorField,
-        };
-        buckets.set(bucketKey, b);
-      }
-
-      for (const r of rows) {
-        const raw = r?.[col.name];
-        if (raw === null || raw === undefined || raw === "") continue;
-
-        const ck = `${moduleSlug}:${String(raw)}`;
-        if (labelCache[ck]?.label) continue;
-
-        b.ids.add(raw);
-      }
-    }
-
-    for (const b of buckets.values()) {
-      const ids = Array.from(b.ids);
-      if (ids.length === 0) continue;
-
-      try {
-        const res = await dataProvider.list({
-          moduleSlug: b.moduleSlug,
-          filters: [{ field: b.valueField, op: "in", value: ids }],
-          limit: Math.max(ids.length, 50),
-
-          // opcional, pero coherente con tu provider
-          hasStyle: b.hasStyle,
-          styleIconField: b.styleIconField,
-          styleColorField: b.styleColorField,
-        } as any);
-
-        const data = Array.isArray((res as any)?.data) ? (res as any).data : Array.isArray(res) ? (res as any) : [];
-
-        const patch: Record<string, CacheEntry> = {};
-        for (const row of data) {
-          const idVal = row?.[b.valueField];
-          if (idVal === null || idVal === undefined) continue;
-
-          const idStr = String(idVal);
-          patch[`${b.moduleSlug}:${idStr}`] = {
-            label: String(row?.[b.displayField] ?? idStr),
-            icon: b.hasStyle ? row?.[b.styleIconField] : undefined,
-            color: b.hasStyle ? row?.[b.styleColorField] : undefined,
-          };
-        }
-
-        if (Object.keys(patch).length) {
-          setLabelCache((prev) => ({ ...prev, ...patch }));
-        }
-      } catch {
-        // degradamos mostrando id si falla
-      }
-    }
-  }, [rows, selectorCols, labelCache]);
-
-  useEffect(() => {
-    preloadSelectorLabels();
-  }, [preloadSelectorLabels]);
-
-  // ---------------------------
-  // ✅ Render cell
-  // ---------------------------
-  const renderCellValue = (r: any, c: Field) => {
-    const raw = r?.[c.name];
+  const renderCellValue = (row: any, column: Field) => {
+    const raw = row?.[column.name];
     if (raw === null || raw === undefined || raw === "") return "—";
 
-    switch (c.type as FieldType) {
+    switch (column.type as FieldType) {
       case "boolean":
         return raw ? (
           <span className="badge bg-success-subtle text-success">Sí</span>
@@ -308,11 +205,11 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
       case "date":
       case "datetime": {
         try {
-          const d = new Date(raw);
-          if (Number.isNaN(d.getTime())) return String(raw);
+          const date = new Date(raw);
+          if (Number.isNaN(date.getTime())) return String(raw);
 
-          if (c.type === "date") return d.toISOString().slice(0, 10);
-          return d.toLocaleString();
+          if (column.type === "date") return date.toISOString().slice(0, 10);
+          return date.toLocaleString();
         } catch {
           return String(raw);
         }
@@ -360,34 +257,24 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
         );
 
       case "selectorTabla": {
-        const refc = (c as any)?.ref || {};
-        const moduleSlug = refc?.moduleSlug ? String(refc.moduleSlug) : "";
-        const displayField = refc?.displayField ? String(refc.displayField) : "id";
+        const config = getRelationDisplayConfig(column);
+        if (!config) return String(raw);
 
-        const hasStyle = !!((c as any).hasStyle ?? refc.hasStyle);
-        const styleIconField = ((c as any).styleIconField ?? refc.styleIconField) || "icon";
-        const styleColorField = ((c as any).styleColorField ?? refc.styleColorField) || "color";
+        const result = getRelationDisplayResult({
+          config,
+          rawValue: raw,
+          cache: labelCache,
+          pendingKeys: pendingRelationKeys,
+          statusByKey: relationStatusByKey,
+        });
 
-        // Si por cualquier motivo viene objeto relacionado
-        if (typeof raw === "object" && raw !== null) {
-          const v: any = raw;
-          const label = String(v?.[displayField] ?? v?.id ?? "");
-          if (hasStyle) return renderStyled(label, v?.[styleIconField], v?.[styleColorField]);
-          return label || "—";
+        if (result.kind === "resolved") {
+          return config.hasStyle
+            ? renderRelationDisplay(result.entry.label, result.entry.icon, result.entry.color)
+            : result.entry.label;
         }
 
-        // Normal: ID con cache
-        const id = String(raw);
-        if (moduleSlug && id) {
-          const key = `${moduleSlug}:${id}`;
-          const entry = labelCache[key];
-          const label = entry?.label ?? id;
-
-          if (hasStyle) return renderStyled(label, entry?.icon, entry?.color);
-          return label;
-        }
-
-        return id;
+        return result.text;
       }
 
       default:
@@ -410,9 +297,7 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
         )}
 
         {err && <div className="alert alert-danger py-2 mb-0">{err}</div>}
-
         {!err && loading && <div className="text-muted">Cargando…</div>}
-
         {!err && !loading && rows.length === 0 && <div className="text-muted small">No hay registros relacionados.</div>}
 
         {!err && !loading && rows.length > 0 && (
@@ -424,9 +309,9 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
                 <table className="table table-sm align-middle mb-0">
                   <thead>
                     <tr>
-                      {columnsFull.map((c) => (
+                      {columnsFull.map((column) => (
                         <th
-                          key={c.name}
+                          key={column.name}
                           style={{
                             width: 180,
                             background: "linear-gradient(90deg, #0c1f49ab, #1f407546, #4d648aaf)",
@@ -436,7 +321,7 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
                             borderBottom: "2px solid #1e40af",
                           }}
                         >
-                          {c.label || c.name}
+                          {column.label || column.name}
                         </th>
                       ))}
                       <th
@@ -455,10 +340,10 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
                   </thead>
 
                   <tbody>
-                    {rows.map((r, idx) => (
-                      <tr key={r?.id || idx}>
-                        {columnsFull.map((c) => (
-                          <td key={c.name}>{renderCellValue(r, c)}</td>
+                    {rows.map((row, index) => (
+                      <tr key={row?.id || index}>
+                        {columnsFull.map((column) => (
+                          <td key={column.name}>{renderCellValue(row, column)}</td>
                         ))}
                         <td>
                           <ActionMenu
@@ -466,12 +351,12 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
                               {
                                 label: "Ver",
                                 icon: <i className="bi bi-eye" />,
-                                onClick: () => goView(r),
+                                onClick: () => goView(row),
                               },
                               {
                                 label: "Editar",
                                 icon: <i className="bi bi-pencil" />,
-                                onClick: () => goEdit(r),
+                                onClick: () => goEdit(row),
                               },
                             ]}
                           />

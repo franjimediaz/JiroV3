@@ -17,19 +17,17 @@ import TreeView from "./TreeView";
 import FormActionsBar from "./ModuloForm/FormActionsBar";
 import type { FormAction } from "./ModuloForm/FormActionsBar";
 import DetachedFieldInput from "./FieldInput";
+import {
+  buildRelationDisplayEntry,
+  getRelationCacheKey,
+  getRelationDisplayConfig,
+  getRelationDisplayFallback,
+  normalizeRelationIds,
+} from "./utils/relationDisplay";
 
 type Mode = "view" | "edit" | "create";
 type FormValues = Record<string, any>;
 type ResolvedDisplayState = Record<string, { value: string; icon?: string; color?: string }>;
-type DisplayResolverConfig = {
-  moduleSlug: string;
-  displayField: string;
-  valueField: string;
-  multiple: boolean;
-  hasStyle: boolean;
-  styleIconField: string;
-  styleColorField: string;
-};
 
 type Props = {
   schema: ModuleSchema;
@@ -201,53 +199,6 @@ function getColumnClass(field: Field): string {
   }
 }
 
-function getDisplayResolverConfig(field: Field): DisplayResolverConfig | null {
-  if (field.type !== "selectorTabla") return null;
-
-  const ref = (field as any).ref;
-  const moduleSlug = ref?.moduleSlug ? String(ref.moduleSlug) : "";
-  if (!moduleSlug) return null;
-
-  return {
-    moduleSlug,
-    displayField: ref?.displayField ? String(ref.displayField) : "id",
-    valueField: ref?.valueField ? String(ref.valueField) : "id",
-    multiple: !!ref?.multiple,
-    hasStyle: !!((field as any).hasStyle ?? ref?.hasStyle),
-    styleIconField: ((field as any).styleIconField ?? ref?.styleIconField ?? "icon") as string,
-    styleColorField: ((field as any).styleColorField ?? ref?.styleColorField ?? "color") as string,
-  };
-}
-
-function toLookupIds(value: any, multiple: boolean) {
-  if (multiple) {
-    if (!Array.isArray(value)) return [];
-    return value
-      .filter((item) => item !== null && item !== undefined && item !== "")
-      .map((item) => String(item));
-  }
-
-  if (value === null || value === undefined || value === "") return [];
-  return [String(value)];
-}
-
-function getDisplayFallback(value: any, multiple: boolean) {
-  if (multiple) {
-    if (!Array.isArray(value)) return "";
-    return value
-      .filter((item) => item !== null && item !== undefined && item !== "")
-      .map((item) => String(item))
-      .join(", ");
-  }
-
-  if (value === null || value === undefined || value === "") return "";
-  return String(value);
-}
-
-function buildDisplayCacheKey(config: DisplayResolverConfig, value: string) {
-  return `${config.moduleSlug}|${config.displayField}|${config.valueField}|${value}`;
-}
-
 export default function Form({
   schema,
   initialData = {},
@@ -402,12 +353,12 @@ export default function Form({
     };
 
     const resolveFieldDisplayValue = async (field: Field) => {
-      const config = getDisplayResolverConfig(field);
+      const config = getRelationDisplayConfig(field);
       if (!config) return;
 
       const rawValue = values[field.name];
-      const ids = toLookupIds(rawValue, config.multiple);
-      const fallback = getDisplayFallback(rawValue, config.multiple);
+      const ids = normalizeRelationIds(rawValue, config.multiple);
+      const fallback = getRelationDisplayFallback(rawValue, config.multiple);
 
       if (ids.length === 0) {
         setFieldLoading(field.name, false);
@@ -415,7 +366,7 @@ export default function Form({
         return;
       }
 
-      const cachedEntries = ids.map((id) => displayCacheRef.current[buildDisplayCacheKey(config, id)]);
+      const cachedEntries = ids.map((id) => displayCacheRef.current[getRelationCacheKey(config, id)]);
       if (cachedEntries.every(Boolean)) {
         setFieldLoading(field.name, false);
         setFieldDisplayValue(field.name, {
@@ -431,7 +382,7 @@ export default function Form({
       setFieldLoading(field.name, true);
 
       try {
-        const missingIds = ids.filter((id) => !displayCacheRef.current[buildDisplayCacheKey(config, id)]);
+        const missingIds = ids.filter((id) => !displayCacheRef.current[getRelationCacheKey(config, id)]);
         let rows: any[] = [];
 
         if (missingIds.length > 0 && typeof (dataProvider as any)?.list === "function") {
@@ -464,18 +415,19 @@ export default function Form({
           const rowId = row?.[config.valueField];
           if (rowId === null || rowId === undefined || rowId === "") continue;
 
-          const cacheKey = buildDisplayCacheKey(config, String(rowId));
-          const label = String(row?.[config.displayField] ?? rowId);
+          const cacheKey = getRelationCacheKey(config, String(rowId));
+          const entry = buildRelationDisplayEntry(config, row);
+          if (!entry) continue;
           displayCacheRef.current[cacheKey] = {
-            value: label,
-            icon: config.hasStyle ? row?.[config.styleIconField] : undefined,
-            color: config.hasStyle ? row?.[config.styleColorField] : undefined,
+            value: entry.label,
+            icon: entry.icon,
+            color: entry.color,
           } as any;
         }
 
         if (cancelled || displayRequestRef.current[field.name] !== requestId) return;
 
-        const resolvedEntries = ids.map((id) => displayCacheRef.current[buildDisplayCacheKey(config, id)] as any);
+        const resolvedEntries = ids.map((id) => displayCacheRef.current[getRelationCacheKey(config, id)] as any);
         const resolvedValue = resolvedEntries
           .map((entry, index) => entry?.value || ids[index])
           .join(", ");
@@ -494,7 +446,7 @@ export default function Form({
       }
     };
 
-    const relationalFields = (schema.fields || []).filter((field) => !!getDisplayResolverConfig(field));
+    const relationalFields = (schema.fields || []).filter((field) => !!getRelationDisplayConfig(field));
     void Promise.all(relationalFields.map((field) => resolveFieldDisplayValue(field)));
 
     return () => {

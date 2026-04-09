@@ -2,6 +2,15 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import {ActionMenu} from "./ActionMenu";
+import {
+  type RelationDisplayStatusMap,
+  getRelationCacheKey,
+  getRelationDisplayConfig,
+  getRelationDisplayResult,
+  normalizeRelationId,
+  renderRelationDisplay,
+  type RelationDisplayEntry,
+} from "./utils/relationDisplay";
 
 type ColumnType = "text" | "money" | "date" | "datetime" | "boolean" | "select" | "percent";
 type LegacyFilter =
@@ -49,8 +58,6 @@ type TreeViewDataProvider = {
 };
 
 type ResolveTableFn = (moduleSlug: string) => { table: string; valueField?: string } | null;
-
-type LookupMeta = { label?: string; icon?: string; color?: string };
 
 type NormalizedColumn = {
   field: string;
@@ -236,12 +243,6 @@ function buildFieldsByName(schemaFields: any[]) {
   return map;
 }
 
-function getLookupMeta(cache: Record<string, Record<string, LookupMeta>>, field: string, rawValue: any) {
-  const k = normalizeId(rawValue);
-  if (!k) return undefined;
-  return cache?.[field]?.[k];
-}
-
 function dedupeStrings(arr: string[]) {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -338,7 +339,8 @@ export default function TreeView(p: Props) {
   const [rows, setRows] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [openGroupKey, setOpenGroupKey] = useState<string | null>(null);
-  const [lookupCache, setLookupCache] = useState<Record<string, Record<string, LookupMeta>>>({});
+  const [lookupCache, setLookupCache] = useState<Record<string, RelationDisplayEntry>>({});
+  const [lookupStatusByKey, setLookupStatusByKey] = useState<RelationDisplayStatusMap>({});
 
   // legacy config fields
 
@@ -449,41 +451,29 @@ const handleEdit = onEditRow
 
   // ---------------- selectorTabla lookups ----------------
   // ✅ Regla: TODO selectorTabla intentará traer displayField + icon + color (siempre)
-  const selectorLookups = useMemo(() => {
+const selectorLookups = useMemo(() => {
   const out: Array<{
     field: string;
     table: string;
-    valueField: string;
-    labelField: string;
-    hasStyle: boolean;
-    iconField?: string;
-    colorField?: string;
+    config: NonNullable<ReturnType<typeof getRelationDisplayConfig>>;
   }> = [];
 
   const addLookup = (fieldName: string) => {
     const f = fieldsByName[fieldName];
-    if (!f || f.type !== "selectorTabla") return;
-
-    const ref = f.ref || {};
-    const moduleSlug = ref.moduleSlug;
-    const displayField = ref.displayField;
-
-    if (!moduleSlug || !displayField) return;
+    const config = f ? getRelationDisplayConfig(f) : null;
+    if (!config) return;
     if (!resolveTable) return;
 
-    const resolved = resolveTable(moduleSlug);
+    const resolved = resolveTable(config.moduleSlug);
     if (!resolved?.table) return;
-
-    const hasStyle = toBool(ref.hasStyle);
 
     out.push({
       field: fieldName,
       table: resolved.table,
-      valueField: ref.valueField || resolved.valueField || "id",
-      labelField: displayField,
-      hasStyle,
-      iconField: hasStyle ? (ref.styleIconField || "icon") : undefined,
-      colorField: hasStyle ? (ref.styleColorField || "color") : undefined,
+      config: {
+        ...config,
+        valueField: config.valueField || resolved.valueField || "id",
+      },
     });
   };
 
@@ -494,6 +484,34 @@ const handleEdit = onEditRow
   for (const l of out) by.set(l.field, l);
   return Array.from(by.values());
 }, [effectiveColumns, groupByField, fieldsByName, resolveTable]);
+
+const lookupConfigByField = useMemo(() => {
+  return selectorLookups.reduce<Record<string, NonNullable<ReturnType<typeof getRelationDisplayConfig>>>>(
+    (acc, item) => {
+      acc[item.field] = item.config;
+      return acc;
+    },
+    {}
+  );
+}, [selectorLookups]);
+
+const pendingLookupKeys = useMemo(() => {
+  const pending: Record<string, boolean> = {};
+
+  for (const lookup of selectorLookups) {
+    for (const row of rows) {
+      const id = normalizeRelationId(row?.[lookup.field]);
+      if (!id) continue;
+
+      const cacheKey = getRelationCacheKey(lookup.config, id);
+      if (lookupCache[cacheKey]?.label) continue;
+      if (lookupStatusByKey[cacheKey] === "failed") continue;
+      pending[cacheKey] = true;
+    }
+  }
+
+  return pending;
+}, [selectorLookups, rows, lookupCache, lookupStatusByKey]);
 
 
   // ---------------- load rows ----------------
@@ -512,13 +530,6 @@ const handleEdit = onEditRow
 
     setLoading(true);
     setError(null);
-    console.log("TREE list query", {
-        table: sourceTable,
-        selectFields,
-        normalizedFilters,
-        parentId: parentRecord?.id,
-      });
-
     try {
       const data = await provider.list({
         table: sourceTable!,
@@ -548,7 +559,8 @@ const handleEdit = onEditRow
     if (!selectorLookups.length) return;
 
     try {
-      const next: Record<string, Record<string, LookupMeta>> = {};
+      const next: Record<string, RelationDisplayEntry> = {};
+      const statusPatch: RelationDisplayStatusMap = {};
 
       for (const lk of selectorLookups) {
         const ids = dedupeStrings(
@@ -556,43 +568,44 @@ const handleEdit = onEditRow
             .map((r) => normalizeId(r?.[lk.field]))
             .filter(Boolean) as string[]
         );
-
-        next[lk.field] = {};
         if (!ids.length) continue;
 
-        // ✅ siempre pedir: valueField + labelField + icon + color
-        const baseSelect = [lk.valueField, lk.labelField];
-
-        const styleSelect = lk.hasStyle
-          ? [lk.iconField, lk.colorField].filter(Boolean)
+        const baseSelect = [lk.config.valueField, lk.config.displayField];
+        const styleSelect = lk.config.hasStyle
+          ? [lk.config.styleIconField, lk.config.styleColorField].filter(Boolean)
           : [];
-
         const select = dedupeStrings([...baseSelect, ...(styleSelect as string[])]);
-
 
         const data = await provider.lookup({
           table: lk.table,
-          valueField: lk.valueField,
+          valueField: lk.config.valueField,
           ids,
           select,
         });
-
-        const map: Record<string, LookupMeta> = {};
+        const resolvedKeys = new Set<string>();
         for (const item of data || []) {
-          const key = normalizeId(item?.[lk.valueField]);
+          const key = normalizeRelationId(item?.[lk.config.valueField]);
           if (!key) continue;
-
-          map[key] = {
-            label: item?.[lk.labelField],
-            icon: item?.[lk.iconField],
-            color: item?.[lk.colorField],
+          const cacheKey = getRelationCacheKey(lk.config, key);
+          next[cacheKey] = {
+            label: String(item?.[lk.config.displayField] ?? key),
+            icon: lk.config.hasStyle ? item?.[lk.config.styleIconField] : undefined,
+            color: lk.config.hasStyle ? item?.[lk.config.styleColorField] : undefined,
           };
+          statusPatch[cacheKey] = "resolved";
+          resolvedKeys.add(cacheKey);
         }
 
-        next[lk.field] = map;
+        for (const id of ids) {
+          const cacheKey = getRelationCacheKey(lk.config, id);
+          if (!resolvedKeys.has(cacheKey) && !next[cacheKey]) {
+            statusPatch[cacheKey] = "failed";
+          }
+        }
       }
 
-      setLookupCache(next);
+      setLookupCache((prev) => ({ ...prev, ...next }));
+      setLookupStatusByKey((prev) => ({ ...prev, ...statusPatch }));
     } catch (e: any) {
       setError((prev) => prev || e?.message || "Error cargando lookups");
     }
@@ -638,16 +651,17 @@ const handleEdit = onEditRow
     const headerFieldDef = groupByField ? fieldsByName[groupByField] : null;
     if (headerFieldDef?.type === "selectorTabla") {
       out.sort((a, b) => {
-        const la = getLookupMeta(lookupCache, groupByField!, a.key)?.label || a.key;
-        const lb = getLookupMeta(lookupCache, groupByField!, b.key)?.label || b.key;
-        return String(la).localeCompare(String(lb));
+        const config = lookupConfigByField[groupByField];
+        const la = config ? getRelationDisplayResult({ config, rawValue: a.key, cache: lookupCache, pendingKeys: pendingLookupKeys, statusByKey: lookupStatusByKey }) : null;
+        const lb = config ? getRelationDisplayResult({ config, rawValue: b.key, cache: lookupCache, pendingKeys: pendingLookupKeys, statusByKey: lookupStatusByKey }) : null;
+        return String(la?.kind === "resolved" ? la.entry.label : la?.text || a.key).localeCompare(String(lb?.kind === "resolved" ? lb.entry.label : lb?.text || b.key));
       });
     } else {
       out.sort((a, b) => String(a.key).localeCompare(String(b.key)));
     }
 
     return out;
-  }, [isReady, rows, groupByField, totals.enabled, sumField, fieldsByName, lookupCache]);
+  }, [isReady, rows, groupByField, totals.enabled, sumField, fieldsByName, lookupCache, lookupConfigByField, pendingLookupKeys, lookupStatusByKey]);
 
   const grandTotal = useMemo(() => {
     if (!totals.enabled || !sumField) return 0;
@@ -660,11 +674,15 @@ const handleEdit = onEditRow
 
     const f = fieldsByName[groupByField];
     if (f?.type === "selectorTabla") {
-      const meta = getLookupMeta(lookupCache, groupByField, groupKey);
+      const config = lookupConfigByField[groupByField];
+      const result = config
+        ? getRelationDisplayResult({ config, rawValue: groupKey, cache: lookupCache, pendingKeys: pendingLookupKeys, statusByKey: lookupStatusByKey })
+        : null;
       return (
         <div className="fw-bold d-flex align-items-center gap-2">
-          {meta?.icon && <i className={meta.icon} style={{ color: meta.color || "inherit" }} aria-hidden />}
-          <span>{meta?.label || String(groupKey || "—")}</span>
+          {result?.kind === "resolved"
+            ? renderRelationDisplay(result.entry.label, result.entry.icon, result.entry.color)
+            : <span>{result?.text || String(groupKey || "—")}</span>}
         </div>
       );
     }
@@ -677,17 +695,24 @@ const handleEdit = onEditRow
     const raw = row?.[col.field];
 
     if (f?.type === "selectorTabla") {
-      const meta = getLookupMeta(lookupCache, col.field, raw);
-      if (meta?.label) {
-        return (
-          <span className="d-inline-flex align-items-center gap-2">
-            {meta.icon && <i className={meta.icon} style={{ color: meta.color || "inherit" }} aria-hidden />}
-            <span>{meta.label}</span>
-          </span>
-        );
+      const config = lookupConfigByField[col.field];
+      if (!config) return <span className="text-muted">{normalizeId(raw) || "—"}</span>;
+
+      const result = getRelationDisplayResult({
+        config,
+        rawValue: raw,
+        cache: lookupCache,
+        pendingKeys: pendingLookupKeys,
+        statusByKey: lookupStatusByKey,
+      });
+
+      if (result.kind === "resolved") {
+        return config.hasStyle
+          ? renderRelationDisplay(result.entry.label, result.entry.icon, result.entry.color)
+          : result.entry.label;
       }
-      const id = normalizeId(raw);
-      return <span className="text-muted">{id || "—"}</span>;
+
+      return <span className="text-muted">{result.text}</span>;
     }
 
     return <>{renderPrimitive(raw, col.type || "text", currency)}</>;
@@ -776,10 +801,6 @@ const handleEdit = onEditRow
   const missingResolve = hasSelectorColumns && !resolveTable;
   const missingLookup = hasSelectorColumns && !provider.lookup;
 
-  useEffect(() => {
-  console.log("TREE route debug", { sourceTable, baseRoute });
-}, [sourceTable, baseRoute]);
-
 
   return (
     <div className="d-flex flex-column gap-3">
@@ -852,3 +873,9 @@ const handleEdit = onEditRow
     </div>
   );
 }
+
+
+
+
+
+

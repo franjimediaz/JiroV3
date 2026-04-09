@@ -1,10 +1,19 @@
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
-import type {Field, FieldType, ListViewProps, CacheEntry  } from "@repo/types";
+import type {Field, FieldType, ListViewProps } from "@repo/types";
 import { ActionMenu } from "./ActionMenu";
 import { dataProvider } from "./providers/DataProvider";
 import  SelectorTabla  from "./Selector";
+import {
+  collectRelationPendingKeys,
+  getRelationDisplayConfig,
+  getRelationDisplayResult,
+  preloadRelationDisplayCache,
+  renderRelationDisplay,
+  type RelationDisplayEntry,
+  type RelationDisplayStatusMap,
+} from "./utils/relationDisplay";
 
 type FilterValue =
   | string
@@ -53,22 +62,8 @@ export default function ListView({
 } | null>(null);
 
   // Cache para resolver selectorTabla (id -> displayField) en la lista
-  const [labelCache, setLabelCache] = useState<Record<string, CacheEntry>>({});
-
-  useEffect(() => {
-    if (!filteredData?.length) return;
-
-    preloadSelectorLabels({
-      rows: filteredData,
-      fields: listFields,
-      dataProvider,
-      cache: labelCache,
-      setCache: setLabelCache,
-    }).catch(() => {
-      // si falla, degradamos mostrando el id
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ listFields]);
+  const [labelCache, setLabelCache] = useState<Record<string, RelationDisplayEntry>>({});
+  const [relationStatusByKey, setRelationStatusByKey] = useState<RelationDisplayStatusMap>({});
 
   const handleFilterChange = (fieldName: string, value: FilterValue) => {
     setFilters((prev) => ({ ...prev, [fieldName]: value }));
@@ -104,6 +99,47 @@ export default function ListView({
     return true;
   });
 }, [data, filterFields, filters]);
+
+  const pendingRelationKeys = useMemo(
+    () =>
+      collectRelationPendingKeys({
+        rows: filteredData,
+        fields: listFields,
+        getValue: (row, field) => row?.[field.name],
+        cache: labelCache,
+        statusByKey: relationStatusByKey,
+      }),
+    [filteredData, listFields, labelCache, relationStatusByKey]
+  );
+
+  useEffect(() => {
+    if (!filteredData?.length) return;
+
+    let cancelled = false;
+
+    void preloadRelationDisplayCache({
+      rows: filteredData,
+      fields: listFields,
+      getValue: (row, field) => row?.[field.name],
+      dataProvider,
+      cache: labelCache,
+      statusByKey: relationStatusByKey,
+    })
+      .then(({ patch, statusPatch }) => {
+        if (cancelled) return;
+        if (Object.keys(patch).length) {
+          setLabelCache((prev) => ({ ...prev, ...patch }));
+        }
+        if (Object.keys(statusPatch).length) {
+          setRelationStatusByKey((prev) => ({ ...prev, ...statusPatch }));
+        }
+      })
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredData, listFields]);
 
 // ---------------- PAGINACIÓN ----------------
   const [pageSize, setPageSize] = useState<number>(10); // ✅ por defecto 10
@@ -316,7 +352,7 @@ export default function ListView({
                   )}
                   {listFields.map((f) => (
                     <td key={f.name} className="text-nowrap hover-cell">
-                      {renderCell(row[f.name], f, labelCache)}
+                      {renderCell(row[f.name], f, labelCache, pendingRelationKeys, relationStatusByKey)}
                     </td>
                   ))}
 
@@ -413,142 +449,14 @@ function capitalize(str: string) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-function getSelectorRef(ref: any): { moduleSlug?: string; displayField?: string; valueField?: string } | null {
-  if (!ref || typeof ref !== "object") return null;
-  
-  if ("displayField" in ref) return ref;
-  return null;
-}
-
-function cacheKey(moduleSlug: string, id: string) {
-  return `${moduleSlug}::${id}`;
-}
-async function preloadSelectorLabels(params: {
-  rows: any[];
-  fields: Field[];
-  dataProvider: any;
-  cache: Record<string, CacheEntry>;
-  setCache: React.Dispatch<React.SetStateAction<Record<string, CacheEntry>>>;
-}) {
-  const { rows, fields, dataProvider, cache, setCache } = params;
-
- 
-  const pending = new Map<
-    string,
-    {
-      moduleSlug: string;
-      valueField: string;
-      displayField: string;
-      hasStyle: boolean;
-      styleIconField: string;
-      styleColorField: string;
-      ids: Set<string>;
-    }
-  >();
-
-  for (const f of fields) {
-    if (f.type !== "selectorTabla") continue;
-
-    const ref = getSelectorRef((f as any).ref);
-    const moduleSlug = ref?.moduleSlug ? String(ref.moduleSlug) : "";
-    const valueField = ref?.valueField ? String(ref.valueField) : "id";
-    const displayField = ref?.displayField ? String(ref.displayField) : "id";
-    if (!moduleSlug) continue;
-
-    const hasStyle = !!((f as any).hasStyle ?? (ref as any)?.hasStyle);
-    const styleIconField =
-      ((f as any).styleIconField ?? (ref as any)?.styleIconField) || "icon";
-    const styleColorField =
-      ((f as any).styleColorField ?? (ref as any)?.styleColorField) || "color";
-
-    const k = `${moduleSlug}|${valueField}|${displayField}|${
-      hasStyle ? 1 : 0
-    }|${styleIconField}|${styleColorField}`;
-
-    if (!pending.has(k)) {
-      pending.set(k, {
-        moduleSlug,
-        valueField,
-        displayField,
-        hasStyle,
-        styleIconField,
-        styleColorField,
-        ids: new Set(),
-      });
-    }
-
-    const bucket = pending.get(k)!;
-
-    for (const r of rows) {
-      const id = r?.[f.name];
-      if (!id) continue;
-
-      const idStr = String(id);
-      const ck = cacheKey(moduleSlug, idStr);
-
-     
-      if (!cache[ck]?.label) bucket.ids.add(idStr);
-    }
-  }
-
-  for (const b of pending.values()) {
-    const ids = Array.from(b.ids);
-    if (!ids.length) continue;
-
-    
-    const res = await dataProvider.list({
-      moduleSlug: b.moduleSlug,
-      filters: [{ field: b.valueField, op: "in", value: ids }],
-      limit: Math.min(ids.length, 500),
-      hasStyle: b.hasStyle,
-      styleIconField: b.styleIconField,
-      styleColorField: b.styleColorField,
-    });
-
-    const rowsRes = Array.isArray(res?.data) ? res.data : [];
-    const patch: Record<string, CacheEntry> = {};
-
-    for (const r of rowsRes) {
-      const id = String(r?.[b.valueField]);
-      const label = String(r?.[b.displayField] ?? id);
-
-      patch[cacheKey(b.moduleSlug, id)] = {
-        label,
-        icon: b.hasStyle ? r?.[b.styleIconField] : undefined,
-        color: b.hasStyle ? r?.[b.styleColorField] : undefined,
-      };
-    }
-
-    if (Object.keys(patch).length) {
-      setCache((prev) => ({ ...prev, ...patch }));
-    }
-  }
-}
-
-
-
-function renderCell(value: any, field: Field, labelCache: Record<string, CacheEntry>) {
+function renderCell(
+  value: any,
+  field: Field,
+  labelCache: Record<string, RelationDisplayEntry>,
+  pendingKeys: Record<string, boolean>,
+  relationStatusByKey: RelationDisplayStatusMap
+) {
   if (value === null || value === undefined || value === "") return "—";
-
-  const isBi = (s?: string) => !!s && (s.includes("bi-") || s.startsWith("bi "));
-
-  const renderStyled = (label: string, icon?: string, color?: string) => (
-    <span className="d-inline-flex align-items-center gap-2">
-      {icon ? (
-        isBi(icon) ? (
-          <i
-            className={icon.includes(" ") ? icon : `bi ${icon}`}
-            style={{ color: color || "inherit" }}
-            aria-hidden="true"
-          />
-        ) : (
-         
-          <span style={{ color: color || "inherit" }}>{icon}</span>
-        )
-      ) : null}
-      <span>{label}</span>
-    </span>
-  );
 
   switch (field.type as FieldType) {
     case "boolean":
@@ -610,43 +518,24 @@ function renderCell(value: any, field: Field, labelCache: Record<string, CacheEn
       );
 
     case "selectorTabla": {
-      const ref = getSelectorRef((field as any).ref);
-      const moduleSlug = ref?.moduleSlug ? String(ref.moduleSlug) : "";
-      const df = ref?.displayField ? String(ref.displayField) : "id";
+      const config = getRelationDisplayConfig(field);
+      if (!config) return String(value);
 
-      
-      if (typeof value === "object" && value !== null) {
-        const v: any = value;
-        const label = String(v[df] ?? v.id ?? JSON.stringify(v));
+      const result = getRelationDisplayResult({
+        config,
+        rawValue: value,
+        cache: labelCache,
+        pendingKeys,
+        statusByKey: relationStatusByKey,
+      });
 
-        
-        const hasStyle = !!((field as any).hasStyle ?? (ref as any)?.hasStyle);
-        const styleIconField =
-          ((field as any).styleIconField ?? (ref as any)?.styleIconField) || "icon";
-        const styleColorField =
-          ((field as any).styleColorField ?? (ref as any)?.styleColorField) || "color";
-
-        if (hasStyle) {
-          return renderStyled(label, v?.[styleIconField], v?.[styleColorField]);
-        }
-        return label;
+      if (result.kind === "resolved") {
+        return config.hasStyle
+          ? renderRelationDisplay(result.entry.label, result.entry.icon, result.entry.color)
+          : result.entry.label;
       }
 
-    
-      const id = String(value ?? "");
-      if (moduleSlug && id) {
-        const entry = labelCache[cacheKey(moduleSlug, id)];
-        const label = entry?.label || id;
-
-        const hasStyle = !!((field as any).hasStyle ?? (ref as any)?.hasStyle);
-        if (hasStyle) {
-          return renderStyled(label, entry?.icon, entry?.color);
-        }
-
-        return label;
-      }
-
-      return id;
+      return result.text;
     }
 
     case "formula":
@@ -693,3 +582,4 @@ function getPageItems(current: number, total: number): Array<number | "..."> {
 
   return normalized;
 }
+
