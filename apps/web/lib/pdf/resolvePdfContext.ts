@@ -396,6 +396,12 @@ function normalizeClient(raw: any) {
     client.customerName,
     client.clientName,
   );
+  const apellido = firstNonEmptyString(
+    client.apellido,
+    client.surname,
+    client.customersurname,
+
+  );
   const dni = firstNonEmptyString(
     client.dni,
     client.nif,
@@ -449,6 +455,7 @@ function normalizeClient(raw: any) {
       client.razonSocial,
       client.razon_social,
       nombre,
+      apellido,
     ),
     dni,
     direccion,

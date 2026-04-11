@@ -1,7 +1,7 @@
 ﻿"use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { upsertPdfTemplateAction } from "./actions/pdfTemplates";
 import { RichTextEditor} from "@repo/ui";
@@ -243,6 +243,14 @@ const defaultTheme: Theme = {
 };
 
 type PreviewContext = Record<string, any>;
+type BindingOption = {
+  label: string;
+  token: string;
+};
+type BindingGroup = {
+  label: string;
+  options: BindingOption[];
+};
 
 function singletonRelatedRows(ctx: PreviewContext | null | undefined) {
   const related = ctx?.related;
@@ -356,6 +364,107 @@ function withDefaultsLookup(lk: Partial<LookupSpec>): LookupSpec {
     outField: (lk.outField ?? (field ? `${field}__label` : "")).trim() || undefined,
   };
 }
+
+function makeFieldBindingGroup(label: string, prefix: string, fields: string[]): BindingGroup | null {
+  const clean = Array.from(new Set((fields ?? []).map((field) => String(field || "").trim()).filter(Boolean))).sort();
+  if (!clean.length) return null;
+
+  return {
+    label,
+    options: clean.map((field) => ({
+      label: field,
+      token: prefix ? `{{${prefix}.${field}}}` : `{{${field}}}`,
+    })),
+  };
+}
+
+function BindingTokenHelper({
+  groups,
+  onInsert,
+  disabled,
+  title = "Insertar campo",
+}: {
+  groups: BindingGroup[];
+  onInsert: (token: string) => void;
+  disabled?: boolean;
+  title?: string;
+}) {
+  const [selectedToken, setSelectedToken] = useState("");
+
+  const hasOptions = groups.some((group) => group.options.length > 0);
+
+  return (
+    <div className="border rounded-3 p-2 bg-body-tertiary">
+      <div className="d-flex flex-column flex-md-row gap-2 align-items-md-center">
+        <div className="small fw-semibold">{title}</div>
+        <div className="d-flex flex-column flex-md-row gap-2 flex-grow-1">
+          <select
+            className="form-select form-select-sm"
+            value={selectedToken}
+            disabled={disabled || !hasOptions}
+            onChange={(e) => setSelectedToken(e.target.value)}
+          >
+            <option value="">{hasOptions ? "Selecciona una variable" : "No hay variables disponibles"}</option>
+            {groups.map((group) =>
+              group.options.length ? (
+                <optgroup key={group.label} label={group.label}>
+                  {group.options.map((option) => (
+                    <option key={`${group.label}-${option.token}`} value={option.token}>
+                      {option.label} - {option.token}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null
+            )}
+          </select>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-primary"
+            disabled={disabled || !selectedToken}
+            onClick={() => onInsert(selectedToken)}
+          >
+            Insertar
+          </button>
+        </div>
+      </div>
+      <div className="form-text mb-0">
+        Usa llaves dobles como <code>{"{{record.total}}"}</code>. Si el bloque repite una relación, normalmente usarás <code>{"{{item.campo}}"}</code>.
+      </div>
+    </div>
+  );
+}
+
+function ConfigModal({
+  title,
+  subtitle,
+  onClose,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
+      style={{ background: "rgba(15, 23, 42, 0.45)", zIndex: 1050 }}
+    >
+      <div className="card shadow-lg border-0 w-100" style={{ maxWidth: 1100, maxHeight: "90vh" }}>
+        <div className="card-header bg-white d-flex justify-content-between align-items-start gap-3">
+          <div>
+            <div className="fw-semibold">{title}</div>
+            {subtitle ? <div className="small text-muted">{subtitle}</div> : null}
+          </div>
+          <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+        <div className="card-body overflow-auto">{children}</div>
+      </div>
+    </div>
+  );
+}
 /* ------------------------------------------------------------------ */
 /* ------------------------- MAIN COMPONENT -------------------------- */
 /* ------------------------------------------------------------------ */
@@ -411,15 +520,52 @@ export default function PdfTemplateForm({
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(
     template.blocks[0]?.id ?? null
   );
-  const [tab, setTab] = useState<"builder" | "theme" | "preview">("builder");
+  const [tab, setTab] = useState<"builder" | "theme"| "link" | "preview">("builder");
   const [previewTick, setPreviewTick] = useState(0);
   const [previewCtx, setPreviewCtx] = useState<PreviewContext | null>(null);
   const [previewCtxError, setPreviewCtxError] = useState<string | null>(null);
+  const [configModal, setConfigModal] = useState<null | "related" | "lookups">(null);
 
   const selectedBlock = useMemo(
     () => template.blocks.find((b) => b.id === selectedBlockId),
     [template.blocks, selectedBlockId]
   );
+  const sourceFields = useMemo(() => fieldsByTable[sourceTable] ?? [], [fieldsByTable, sourceTable]);
+  const relationDetails = useMemo(
+    () =>
+      relations.map((relation) => ({
+        ...relation,
+        fields: fieldsByTable[relation.table] ?? [],
+      })),
+    [fieldsByTable, relations]
+  );
+  const commonBindingGroups = useMemo(() => {
+    const groups: BindingGroup[] = [];
+
+    const recordGroup = makeFieldBindingGroup(`Registro (${sourceTable || "tabla origen"})`, "record", sourceFields);
+    if (recordGroup) groups.push(recordGroup);
+
+    const pyGroup = makeFieldBindingGroup("Árbol relacionado (py)", "py", Object.keys((previewCtx as any)?.py ?? {}));
+    if (pyGroup) groups.push(pyGroup);
+
+    const brandingFields = Array.from(
+      new Set([
+        ...Object.keys((previewCtx as any)?.branding ?? {}),
+        ...Object.keys((previewCtx as any)?.empresa ?? {}),
+      ])
+    );
+    const brandingGroup = makeFieldBindingGroup("Branding / empresa", "branding", brandingFields);
+    if (brandingGroup) groups.push(brandingGroup);
+
+    groups.push({
+      label: "Variables especiales",
+      options: [
+        { label: "Fecha actual", token: "{{now}}" },
+      ],
+    });
+
+    return groups;
+  }, [previewCtx, sourceFields, sourceTable]);
 
   const previewUrl =
     slug && testId
@@ -613,6 +759,11 @@ function prettyJson(value: unknown) {
   }
 }
 
+function appendBindingToken(currentValue: string | undefined, token: string) {
+  const base = currentValue ?? "";
+  return `${base}${base && !/\s$/.test(base) ? " " : ""}${token}`;
+}
+
 function deleteBlock(id: string) {
   setTemplate((t) => {
     const nextBlocks = t.blocks.filter((b) => b.id !== id);
@@ -711,7 +862,15 @@ function save() {
           </div>
           <div className="col-md-4">
             <label className="form-label">Tabla origen</label>
-            <input className="form-control" value={sourceTable} disabled={readOnly} onChange={(e) => setSourceTable(e.target.value)} />
+            <select className="form-select" value={sourceTable} disabled={readOnly} onChange={(e) => setSourceTable(e.target.value)}>
+              <option value="">Selecciona una tabla</option>
+              {!tableOptions.includes(sourceTable) && sourceTable ? <option value={sourceTable}>{sourceTable}</option> : null}
+              {tableOptions.map((table) => (
+                <option key={table} value={table}>
+                  {table}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="col-md-4">
             <label className="form-label">ID prueba</label>
@@ -730,6 +889,11 @@ function save() {
         <li className="nav-item">
           <button type="button" className={`nav-link ${tab === "theme" ? "active" : ""}`} onClick={() => setTab("theme")}>
             Tema
+          </button>
+        </li>
+        <li className="nav-item">
+          <button type="button" className={`nav-link ${tab === "link" ? "active" : ""}`} onClick={() => setTab("link")}>
+            Vinculaciones
           </button>
         </li>
         <li className="nav-item">
@@ -781,350 +945,41 @@ function save() {
                 )}
             
             </div>
-            <div className="card mb-4">
-                <div className="card-header d-flex justify-content-between align-items-center">
-                    <div>
-                    <div className="fw-semibold">Relaciones (related)</div>
-                    <div className="text-muted small">
-                        Define subtablas para poder usar <code>repeat: related.key</code> en tablas.
-                    </div>
-                    </div>
-
-                    {!readOnly && (
+            {!readOnly && selectedBlock && (
+                <div className="mt-3 d-flex gap-2">
                     <button
-                        type="button"
-                        className="btn btn-sm btn-outline-primary"
-                        onClick={() =>
-                        setRelations((r) => [
-                            ...r,
-                            { key: `items${r.length + 1}`, table: "", fkField: "" },
-                        ])
-                        }
-                    >
-                        + Añadir relación
-                    </button>
-                    )}
-                </div>
-
-                <div className="card-body">
-                    {relations.length === 0 ? (
-                    <div className="text-muted">
-                        No hay relaciones definidas. Añade una para poder repetir tablas.
-                    </div>
-                    ) : (
-                    <div className="d-flex flex-column gap-2">
-                        {relations.map((rel, idx) => (
-                        <div key={idx} className="border rounded p-2">
-                          <div className="col-12 col-md-3">
-                                {!readOnly && (
-                                <button
-                                    type="button"
-                                    className="btn btn-sm btn-danger w-100"
-                                    onClick={() => setRelations((r) => r.filter((_, i) => i !== idx))}
-                                    title="Eliminar"
-                                >
-                                  Eliminar
-                                </button>
-                                )}
-                            </div>
-                            <div className="row g-2 align-items-end">
-                              
-                            <div className="col-12 col-md-3">
-                                <label className="form-label small mb-1">Key</label>
-                                <input
-                                className="form-control form-control-sm"
-                                value={rel.key}
-                                disabled={readOnly}
-                                onChange={(e) => {
-                                    const next = relations.slice();
-                                    next[idx] = { ...next[idx], key: e.target.value };
-                                    setRelations(next);
-                                }}
-                                />
-                                <div className="form-text">
-                                
-                                </div>
-                            </div>
-
-                            <div className="col-12 col-md-5">
-                                <label className="form-label small mb-1">Tabla</label>
-                                <select
-                                  className="form-select form-select-sm"
-                                  value={rel.table}
-                                  disabled={readOnly}
-                                  onChange={(e) => {
-                                    const next = relations.slice();
-                                    next[idx] = { ...next[idx], table: e.target.value, fkField: "" };
-                                    setRelations(next);
-                                  }}
-                                >
-                                  <option value="">(elige tabla)</option>
-                                  {!tableOptions.includes(rel.table) && rel.table ? (
-                                    <option value={rel.table}>{rel.table}</option>
-                                  ) : null}
-                                  {tableOptions.map((t) => (
-                                    <option key={t} value={t}>
-                                      {t}
-                                    </option>
-                                  ))}
-                                </select>
-                            </div>
-
-                            <div className="col-12 col-md-3">
-                                <label className="form-label small mb-1">FK field</label>
-                                <select
-                                  className="form-select form-select-sm"
-                                  value={rel.fkField}
-                                  disabled={readOnly || !rel.table}
-                                  onChange={(e) => {
-                                    const next = relations.slice();
-                                    next[idx] = { ...next[idx], fkField: e.target.value };
-                                    setRelations(next);
-                                  }}
-                                >
-                                  <option value="">(elige campo)</option>
-                                  {!fieldsByTable[rel.table]?.includes(rel.fkField) && rel.fkField ? (
-                                    <option value={rel.fkField}>{rel.fkField}</option>
-                                  ) : null}
-                                  {(fieldsByTable[rel.table] ?? []).map((f) => (
-                                    <option key={f} value={f}>
-                                      {f}
-                                    </option>
-                                  ))}
-                                </select>
-                            </div>
-
-                            
-
-                            <div className="col-12">
-                                <div className="alert alert-light small mb-0">
-                                Uso en tabla: <code>repeat</code> ={" "}
-                                <code>{`related.${rel.key || "key"}`}</code> 
-                                Dentro de columnas: <code>{"{{item.campo}}"}</code>
-                                </div>
-                            </div>
-                            </div>
-                        </div>
-                        ))}
-                    </div>
-                    )}
-                </div>
-            </div>
-
-            <div className="card mb-4">
-              <div className="card-header d-flex justify-content-between align-items-center">
-                <div>
-                  <div className="fw-semibold">Lookups</div>
-                  <div className="text-muted small">
-                    Convierte UUIDs en labels para usarlos como <code>{"{{item.campo__label}}"}</code> o <code>{"{{record.campo__label}}"}</code>.
-                  </div>
-                </div>
-
-                {!readOnly && (
-                  <button
                     type="button"
-                    className="btn btn-sm btn-outline-primary"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => moveBlockUp(selectedBlock.id)}
+                    title="Subir bloque"
+                    >
+                   Subir
+                    </button>
+
+                    <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => moveBlockDown(selectedBlock.id)}
+                    title="Bajar bloque"
+                    >
+                   Bajar
+                    </button>
+
+                    <button
+                    type="button"
+                    className="btn btn-outline-danger btn-sm ms-auto"
                     onClick={() => {
-                      const next = [...(template.lookups ?? [])];
-                      next.push(
-                        withDefaultsLookup({
-                          in: "related",
-                          relatedKey: relations?.[0]?.key ?? "",
-                          field: "",
-                          refTable: "",
-                          refIdField: "id",
-                          refLabelField: "",
-                        })
-                      );
-                      updateTemplate({ lookups: next });
+                        if (confirm("¿Eliminar este bloque?")) {
+                        deleteBlock(selectedBlock.id);
+                        }
                     }}
-                  >
-                    + Añadir
-                  </button>
-                )}
-              </div>
-
-              <div className="card-body">
-                {(template.lookups ?? []).length === 0 ? (
-                  <div className="text-muted">No hay lookups definidos.</div>
-                ) : (
-                  <div className="d-flex flex-column gap-2">
-                    {(template.lookups ?? []).map((lk, idx) => {
-                      const val = withDefaultsLookup(lk);
-                      const relatedTable =
-                        val.in === "related" ? relations.find((r) => r.key === val.relatedKey)?.table || "" : "";
-                      const lookupInputFields =
-                        val.in === "record"
-                          ? fieldsByTable[sourceTable] ?? []
-                          : relatedTable
-                          ? fieldsByTable[relatedTable] ?? []
-                          : [];
-                      const lookupRefFields = val.refTable ? fieldsByTable[val.refTable] ?? [] : [];
-
-                      const updateLookup = (patch: Partial<LookupSpec>) => {
-                        const next = [...(template.lookups ?? [])];
-                        next[idx] = withDefaultsLookup({ ...val, ...patch });
-                        updateTemplate({ lookups: next });
-                      };
-
-                      const removeLookup = () => {
-                        const next = [...(template.lookups ?? [])];
-                        next.splice(idx, 1);
-                        updateTemplate({ lookups: next });
-                      };
-
-                      return (
-                        <div key={idx} className="border rounded p-2">
-                          <div className="d-flex justify-content-between align-items-center mb-2">
-                            <div className="small fw-semibold">
-                              Lookup #{idx + 1}’ <code>{val.outField ?? `${val.field || "campo"}__label`}</code>
-                            </div>
-                            {!readOnly && (
-                              <button type="button" className="btn btn-sm btn-outline-danger" onClick={removeLookup}>
-                                Eliminar
-                              </button>
-                            )}
-                          </div>
-
-                          <div className="row g-2">
-                            <div className="col-6">
-                              <label className="form-label small mb-1">in</label>
-                              <select
-                                className="form-select form-select-sm"
-                                value={val.in}
-                                disabled={readOnly}
-                                onChange={(e) => updateLookup({ in: e.target.value as any })}
-                              >
-                                <option value="related">related</option>
-                                <option value="record">record</option>
-                              </select>
-                            </div>
-
-                            <div className="col-6">
-                              <label className="form-label small mb-1">relatedKey</label>
-                              <select
-                                className="form-select form-select-sm"
-                                value={val.in === "related" ? (val.relatedKey ?? "") : ""}
-                                disabled={readOnly || val.in !== "related"}
-                                onChange={(e) => updateLookup({ relatedKey: e.target.value })}
-                              >
-                                <option value="">(elige)</option>
-                                {relations.map((r) => (
-                                  <option key={r.key} value={r.key}>
-                                    {r.key}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div className="col-6">
-                              <label className="form-label small mb-1">field (uuid)</label>
-                              <select
-                                className="form-select form-select-sm"
-                                value={val.field}
-                                disabled={readOnly}
-                                onChange={(e) => updateLookup({ field: e.target.value, outField: `${e.target.value}__label` })}
-                              >
-                                <option value="">(elige campo)</option>
-                                {!lookupInputFields.includes(val.field) && val.field ? (
-                                  <option value={val.field}>{val.field}</option>
-                                ) : null}
-                                {lookupInputFields.map((f) => (
-                                  <option key={f} value={f}>
-                                    {f}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div className="col-6">
-                              <label className="form-label small mb-1">outField</label>
-                              <input
-                                className="form-control form-control-sm"
-                                value={val.outField ?? ""}
-                                disabled={readOnly}
-                                onChange={(e) => updateLookup({ outField: e.target.value })}
-                                placeholder={val.field ? `${val.field}__label` : "campo__label"}
-                              />
-                            </div>
-
-                            <div className="col-6">
-                              <label className="form-label small mb-1">refTable</label>
-                              <select
-                                className="form-select form-select-sm"
-                                value={val.refTable}
-                                disabled={readOnly}
-                                onChange={(e) =>
-                                  updateLookup({ refTable: e.target.value, refLabelField: "", refIdField: "id" })
-                                }
-                              >
-                                <option value="">(elige tabla)</option>
-                                {!tableOptions.includes(val.refTable) && val.refTable ? (
-                                  <option value={val.refTable}>{val.refTable}</option>
-                                ) : null}
-                                {tableOptions.map((t) => (
-                                  <option key={t} value={t}>
-                                    {t}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div className="col-6">
-                              <label className="form-label small mb-1">refLabelField</label>
-                              <select
-                                className="form-select form-select-sm"
-                                value={val.refLabelField}
-                                disabled={readOnly || !val.refTable}
-                                onChange={(e) => updateLookup({ refLabelField: e.target.value })}
-                              >
-                                <option value="">(elige campo label)</option>
-                                {!lookupRefFields.includes(val.refLabelField) && val.refLabelField ? (
-                                  <option value={val.refLabelField}>{val.refLabelField}</option>
-                                ) : null}
-                                {lookupRefFields.map((f) => (
-                                  <option key={f} value={f}>
-                                    {f}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div className="col-12">
-                              <label className="form-label small mb-1">refIdField</label>
-                              <select
-                                className="form-select form-select-sm"
-                                value={val.refIdField ?? "id"}
-                                disabled={readOnly || !val.refTable}
-                                onChange={(e) => updateLookup({ refIdField: e.target.value || "id" })}
-                              >
-                                {!lookupRefFields.includes(val.refIdField ?? "id") ? (
-                                  <option value={val.refIdField ?? "id"}>{val.refIdField ?? "id"}</option>
-                                ) : null}
-                                {lookupRefFields.map((f) => (
-                                  <option key={f} value={f}>
-                                    {f}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-
-                          <div className="alert alert-light small mt-2 mb-0">
-                            Usa:{" "}
-                            <code>
-                              {val.in === "record"
-                                ? `{{record.${val.outField ?? `${val.field}__label`}}}`
-                                : `{{item.${val.outField ?? `${val.field}__label`}}}`}
-                            </code>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
+                    title="Eliminar bloque"
+                    >
+                    Eliminar
+                    </button>
+                </div>
+          )}
+          
 
 
           </div>
@@ -1150,10 +1005,21 @@ function save() {
                       onChange={(e) =>
                         updateBlock(selectedBlock.id, "text", { value: e.target.value })
                       }
-                      placeholder="Escribe aquí­â€¦"
+                      placeholder="Escribe aquí..."
                     />
                   <div className="form-text mt-2">
                     Se guarda como HTML.
+                  </div>
+                  <div className="mt-3">
+                    <BindingTokenHelper
+                      groups={commonBindingGroups}
+                      disabled={readOnly}
+                      onInsert={(token) =>
+                        updateBlock(selectedBlock.id, "text", {
+                          value: appendBindingToken(selectedBlock.value, token),
+                        })
+                      }
+                    />
                   </div>
                 </div>
               </div>
@@ -1163,7 +1029,7 @@ function save() {
                     <div className="card-header">Header</div>
                     <div className="card-body">
                     <div className="mb-3">
-                        <label className="form-label">Tí­tulo</label>
+                        <label className="form-label">Título</label>
                         <input
                         className="form-control"
                         value={selectedBlock.title}
@@ -1173,7 +1039,7 @@ function save() {
                     </div>
 
                     <div className="mb-3">
-                        <label className="form-label">Subtí­tulo</label>
+                        <label className="form-label">Subtítulo</label>
                         <input
                         className="form-control"
                         value={selectedBlock.subtitle ?? ""}
@@ -1183,7 +1049,19 @@ function save() {
                     </div>
 
                     <div className="alert alert-info small mb-0">
-                        Variables: <code>{"{{record.campo}}"}</code>  <code>{"{{now}}"}</code>
+                        Variables: <code>{"{{record.campo}}"}</code> <code>{"{{branding.campo}}"}</code> <code>{"{{now}}"}</code>
+                    </div>
+                    <div className="mt-3">
+                      <BindingTokenHelper
+                        groups={commonBindingGroups}
+                        disabled={readOnly}
+                        onInsert={(token) =>
+                          updateBlock(selectedBlock.id, "header", {
+                            subtitle: appendBindingToken(selectedBlock.subtitle, token),
+                          })
+                        }
+                        title="Insertar variable en el subtítulo"
+                      />
                     </div>
                     </div>
                 </div>
@@ -1193,7 +1071,7 @@ function save() {
                     <div className="card-header">Divider</div>
                     <div className="card-body">
                     <div className="text-muted small">
-                        Este bloque es una lí­nea separadora. No tiene propiedades.
+                        Este bloque es una línea separadora. No tiene propiedades.
                     </div>
                     </div>
                 </div>
@@ -1203,7 +1081,7 @@ function save() {
                     <div className="card-header">Tabla</div>
                     <div className="card-body">
                     <div className="mb-3">
-                        <label className="form-label">Tí­tulo</label>
+                        <label className="form-label">Título</label>
                         <input
                         className="form-control"
                         value={selectedBlock.title ?? ""}
@@ -1214,14 +1092,24 @@ function save() {
 
                     <div className="mb-3">
                         <label className="form-label">Repeat (lista)</label>
-                        <input
-                        className="form-control"
-                        value={selectedBlock.repeat}
-                        disabled={readOnly}
-                        onChange={(e) => updateBlock(selectedBlock.id, "table", { repeat: e.target.value })}
-                        />
+                        <select
+                          className="form-select"
+                          value={selectedBlock.repeat}
+                          disabled={readOnly}
+                          onChange={(e) => updateBlock(selectedBlock.id, "table", { repeat: e.target.value })}
+                        >
+                          <option value="">Sin repeat</option>
+                          {!relationDetails.some((relation) => `related.${relation.key}` === selectedBlock.repeat) && selectedBlock.repeat ? (
+                            <option value={selectedBlock.repeat}>{selectedBlock.repeat}</option>
+                          ) : null}
+                          {relationDetails.map((relation) => (
+                            <option key={relation.key} value={`related.${relation.key}`}>
+                              {`related.${relation.key}`} ({relation.table || "sin tabla"})
+                            </option>
+                          ))}
+                        </select>
                         <div className="form-text">
-                        Ej: <code>related.tareas</code>
+                        Selecciona la colección que alimenta la tabla. Dentro de las columnas usarás <code>{"{{item.campo}}"}</code>.
                         </div>
                     </div>
 
@@ -1341,7 +1229,7 @@ function save() {
                         {selectedBlock.columns.map((c, idx) => (
                         <div key={idx} className="row g-2 align-items-end mb-2">
                             <div className="col-4">
-                            <label className="form-label small mb-1">Label</label>
+                            <label className="form-label small mb-1">Etiqueta</label>
                             <input
                                 className="form-control form-control-sm"
                                 value={c.label}
@@ -1355,7 +1243,7 @@ function save() {
                             </div>
 
                             <div className="col-5">
-                            <label className="form-label small mb-1">Value</label>
+                            <label className="form-label small mb-1">Contenido</label>
                             <input
                                 className="form-control form-control-sm"
                                 value={c.value}
@@ -1366,10 +1254,33 @@ function save() {
                                 updateBlock(selectedBlock.id, "table", { columns: next });
                                 }}
                             />
+                            <div className="mt-2">
+                              <BindingTokenHelper
+                                groups={[
+                                  ...commonBindingGroups,
+                                  ...(selectedBlock.repeat
+                                    ? [
+                                        makeFieldBindingGroup(
+                                          `Fila repetida (${relationDetails.find((relation) => `related.${relation.key}` === selectedBlock.repeat)?.table || "repeat"})`,
+                                          "item",
+                                          relationDetails.find((relation) => `related.${relation.key}` === selectedBlock.repeat)?.fields ?? []
+                                        ),
+                                      ].filter(Boolean) as BindingGroup[]
+                                    : []),
+                                ]}
+                                disabled={readOnly}
+                                title="Insertar variable en la columna"
+                                onInsert={(token) => {
+                                  const next = selectedBlock.columns.slice();
+                                  next[idx] = { ...next[idx], value: appendBindingToken(c.value, token) };
+                                  updateBlock(selectedBlock.id, "table", { columns: next });
+                                }}
+                              />
+                            </div>
                             </div>
 
                             <div className="col-2">
-                            <label className="form-label small mb-1">Align</label>
+                            <label className="form-label small mb-1">Alineación</label>
                             <select
                                 className="form-select form-select-sm"
                                 value={c.align ?? "left"}
@@ -1380,8 +1291,8 @@ function save() {
                                 updateBlock(selectedBlock.id, "table", { columns: next });
                                 }}
                             >
-                                <option value="left">Left</option>
-                                <option value="right">Right</option>
+                                <option value="left">Izquierda</option>
+                                <option value="right">Derecha</option>
                             </select>
                             </div>
 
@@ -1395,7 +1306,7 @@ function save() {
                                     updateBlock(selectedBlock.id, "table", { columns: next });
                                 }}
                                 >
-                                âœ•
+                                X
                                 </button>
                             )}
                             </div>
@@ -1407,7 +1318,7 @@ function save() {
                             <div>
                               <div className="fw-semibold">Filas manuales (opcional)</div>
                               <div className="text-muted small">
-                                Si defines filas aquí­, la tabla usa estas filas. Si una celda es <code>null</code>,
+                                Si defines filas aquí, la tabla usa estas filas. Si una celda es <code>null</code>,
                                 se usa el <code>value</code> de la columna como fallback.
                               </div>
                             </div>
@@ -1446,7 +1357,7 @@ function save() {
                           <div className="card-body">
                             {(((selectedBlock as any).rows ?? []) as any[]).length === 0 ? (
                               <div className="text-muted">
-                                No hay filas manuales. La tabla usarí¡ <code>repeat</code>.
+                                No hay filas manuales. La tabla usará <code>repeat</code>.
                               </div>
                             ) : (
                               <div className="d-flex flex-column gap-2">
@@ -1508,7 +1419,7 @@ function save() {
                                                   className="form-control form-control-sm"
                                                   value={v ?? ""}
                                                   disabled={readOnly}
-                                                  placeholder="(vací­o = usar fallback)"
+                                                  placeholder="(vacío = usar fallback)"
                                                   onChange={(e) => {
                                                     const txt = e.target.value;
                                                     const next = fixed.slice();
@@ -1527,7 +1438,7 @@ function save() {
                                                       patchRow(next);
                                                     }}
                                                   >
-                                                   º
+                                                   ↺
                                                   </button>
                                                 )}
                                               </div>
@@ -1546,7 +1457,7 @@ function save() {
                             )}
 
                             <div className="alert alert-light small mt-3 mb-0">
-                              Consejo: para totales, pon <code>repeat</code> vací­o y usa filas manuales + layout (45% derecha).
+                              Consejo: para totales, deja <code>repeat</code> vacío y usa filas manuales + layout (45% derecha).
                             </div>
                           </div>
                         </div>
@@ -1567,7 +1478,7 @@ function save() {
                       <div className="card-body">
                         {/* -------- Title -------- */}
                         <div className="mb-3">
-                          <label className="form-label">Tí­tulo del bloque</label>
+                          <label className="form-label">Título del bloque</label>
                           <input
                             className="form-control"
                             value={selectedBlock.title ?? ""}
@@ -1625,23 +1536,33 @@ function save() {
                         <div className="row g-2 mb-3">
                           <div className="col-12 col-md-6">
                             <label className="form-label">Agrupar por campo de tarea</label>
-                            <input
-                              className="form-control"
+                            <select
+                              className="form-select"
                               value={selectedBlock.groupByField ?? ""} // âœ… no rompe si falta
                               disabled={readOnly}
                               onChange={(e) =>
                                 updateBlock(selectedBlock.id, "budgetPartidas", { groupByField: e.target.value })
                               }
-                              placeholder="Ej: service o serviceId"
-                            />
+                            >
+                              <option value="">Selecciona un campo</option>
+                              {!((relationDetails.find((relation) => relation.key === selectedBlock.tareasKey)?.fields ?? []).includes(selectedBlock.groupByField ?? "")) &&
+                              selectedBlock.groupByField ? (
+                                <option value={selectedBlock.groupByField}>{selectedBlock.groupByField}</option>
+                              ) : null}
+                              {(relationDetails.find((relation) => relation.key === selectedBlock.tareasKey)?.fields ?? []).map((field) => (
+                                <option key={field} value={field}>
+                                  {field}
+                                </option>
+                              ))}
+                            </select>
                             <div className="form-text">
-                              Si es UUID, el renderer usarí¡{" "}
+                              Si es UUID, el renderer usará{" "}
                               <code>{(selectedBlock.groupByField ?? "campo") + "__label"}</code> si existe.
                             </div>
                           </div>
 
                           <div className="col-12 col-md-6">
-                            <label className="form-label">Tí­tulo de la partida</label>
+                            <label className="form-label">Título de la partida</label>
                             <input
                               className="form-control"
                               value={selectedBlock.groupTitleTpl ?? ""} // âœ… no rompe si falta
@@ -1695,7 +1616,7 @@ function save() {
                                             ))}
                                           </select>
                                           <div className="form-text">
-                                            Esto solo afecta a este bloque. El renderer aplicarí¡ <code>bp-{currentVariant}</code> y variables CSS.
+                                            Esto solo afecta a este bloque. El renderer aplicará <code>bp-{currentVariant}</code> y variables CSS.
                                           </div>
                                         </div>
 
@@ -1863,12 +1784,12 @@ function save() {
                                       onChange={(e) => patchOv({ showTaskBox: e.target.checked })}
                                     />
                                     <label className="form-check-label">
-                                      Mostrar tareas en â€œcajaâ€ (card)
+                                      Mostrar tareas en caja
                                     </label>
                                   </div>
 
                                   <div className="alert alert-light small mt-3 mb-0">
-                                    Estos overrides solo afectan a <b>este bloque</b>. Si lo dejas vací­o, se usa el preset del theme.
+                                    Estos overrides solo afectan a <b>este bloque</b>. Si lo dejas vacío, se usa el preset del tema.
                                   </div>
                                 </>
                               );
@@ -1915,9 +1836,8 @@ function save() {
                               <>
                                 <div className="mb-3">
                                   <label className="form-label">Tabla de referencia</label>
-                                  <input
-                                    className="form-control"
-                                    placeholder="Ej: servicios_config"
+                                  <select
+                                    className="form-select"
                                     value={(selectedBlock as any).groupByLookup?.refTable ?? ""}
                                     disabled={readOnly}
                                     onChange={(e) =>
@@ -1925,10 +1845,25 @@ function save() {
                                         groupByLookup: {
                                           ...(selectedBlock as any).groupByLookup,
                                           refTable: e.target.value,
+                                          refLabelField: "",
+                                          refIdField: "id",
                                         },
                                       } as any)
                                     }
-                                  />
+                                  >
+                                    <option value="">Selecciona una tabla</option>
+                                    {!tableOptions.includes((selectedBlock as any).groupByLookup?.refTable ?? "") &&
+                                    (selectedBlock as any).groupByLookup?.refTable ? (
+                                      <option value={(selectedBlock as any).groupByLookup?.refTable}>
+                                        {(selectedBlock as any).groupByLookup?.refTable}
+                                      </option>
+                                    ) : null}
+                                    {tableOptions.map((table) => (
+                                      <option key={table} value={table}>
+                                        {table}
+                                      </option>
+                                    ))}
+                                  </select>
                                   <div className="form-text">
                                     Tabla donde vive el UUID (servicios, partidas, etc.)
                                   </div>
@@ -1936,11 +1871,10 @@ function save() {
 
                                 <div className="mb-3">
                                   <label className="form-label">Campo visible (label)</label>
-                                  <input
-                                    className="form-control"
-                                    placeholder="Ej: nombre o title"
+                                  <select
+                                    className="form-select"
                                     value={(selectedBlock as any).groupByLookup?.refLabelField ?? ""}
-                                    disabled={readOnly}
+                                    disabled={readOnly || !(selectedBlock as any).groupByLookup?.refTable}
                                     onChange={(e) =>
                                       updateBlock(selectedBlock.id, "budgetPartidas", {
                                         groupByLookup: {
@@ -1949,18 +1883,24 @@ function save() {
                                         },
                                       } as any)
                                     }
-                                  />
+                                  >
+                                    <option value="">Selecciona el campo a mostrar</option>
+                                    {(fieldsByTable[(selectedBlock as any).groupByLookup?.refTable ?? ""] ?? []).map((field) => (
+                                      <option key={field} value={field}>
+                                        {field}
+                                      </option>
+                                    ))}
+                                  </select>
                                   <div className="form-text">Campo que quieres mostrar en el PDF</div>
                                 </div>
 
                                 <div className="row g-2">
                                   <div className="col-12 col-md-6">
                                     <label className="form-label">Campo ID (opcional)</label>
-                                    <input
-                                      className="form-control"
-                                      placeholder="id"
+                                    <select
+                                      className="form-select"
                                       value={(selectedBlock as any).groupByLookup?.refIdField ?? "id"}
-                                      disabled={readOnly}
+                                      disabled={readOnly || !(selectedBlock as any).groupByLookup?.refTable}
                                       onChange={(e) =>
                                         updateBlock(selectedBlock.id, "budgetPartidas", {
                                           groupByLookup: {
@@ -1969,7 +1909,13 @@ function save() {
                                           },
                                         } as any)
                                       }
-                                    />
+                                    >
+                                      {(fieldsByTable[(selectedBlock as any).groupByLookup?.refTable ?? ""] ?? ["id"]).map((field) => (
+                                        <option key={field} value={field}>
+                                          {field}
+                                        </option>
+                                      ))}
+                                    </select>
                                   </div>
 
                                   <div className="col-12 col-md-6">
@@ -2000,16 +1946,26 @@ function save() {
 
                         {/* -------- Materials FK -------- */}
                         <div className="mb-3 mt-3">
-                          <label className="form-label">FK en Materiales’ Tarea</label>
-                          <input
-                            className="form-control"
+                          <label className="form-label">FK en materiales hacia tarea</label>
+                          <select
+                            className="form-select"
                             value={selectedBlock.materialesFkToTarea ?? ""} // âœ… no rompe si falta
-                            disabled={readOnly}
+                            disabled={readOnly || !selectedBlock.materialesKey}
                             onChange={(e) =>
                               updateBlock(selectedBlock.id, "budgetPartidas", { materialesFkToTarea: e.target.value })
                             }
-                            placeholder="Ej: taskId"
-                          />
+                          >
+                            <option value="">Selecciona un campo</option>
+                            {!((relationDetails.find((relation) => relation.key === selectedBlock.materialesKey)?.fields ?? []).includes(selectedBlock.materialesFkToTarea ?? "")) &&
+                            selectedBlock.materialesFkToTarea ? (
+                              <option value={selectedBlock.materialesFkToTarea}>{selectedBlock.materialesFkToTarea}</option>
+                            ) : null}
+                            {(relationDetails.find((relation) => relation.key === selectedBlock.materialesKey)?.fields ?? []).map((field) => (
+                              <option key={field} value={field}>
+                                {field}
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
                         {/* -------- Templates -------- */}
@@ -2025,6 +1981,32 @@ function save() {
                             placeholder="Ej: - {{item.title}}"
                           />
                           <div className="form-text">item = tarea</div>
+                          <div className="mt-2">
+                            <BindingTokenHelper
+                              groups={[
+                                ...(makeFieldBindingGroup(
+                                  `Campos de tarea (${relationDetails.find((relation) => relation.key === selectedBlock.tareasKey)?.table || "tareas"})`,
+                                  "item",
+                                  relationDetails.find((relation) => relation.key === selectedBlock.tareasKey)?.fields ?? []
+                                )
+                                  ? [
+                                      makeFieldBindingGroup(
+                                        `Campos de tarea (${relationDetails.find((relation) => relation.key === selectedBlock.tareasKey)?.table || "tareas"})`,
+                                        "item",
+                                        relationDetails.find((relation) => relation.key === selectedBlock.tareasKey)?.fields ?? []
+                                      )!,
+                                    ]
+                                  : []),
+                              ]}
+                              disabled={readOnly}
+                              title="Insertar campo de tarea"
+                              onInsert={(token) =>
+                                updateBlock(selectedBlock.id, "budgetPartidas", {
+                                  tareaTitleTpl: appendBindingToken(selectedBlock.tareaTitleTpl, token),
+                                })
+                              }
+                            />
+                          </div>
                         </div>
 
                         <div className="mb-3">
@@ -2039,14 +2021,40 @@ function save() {
                             placeholder="Ej: - {{item.nombre}} x{{item.cantidad}} - {{item.total}} €"
                           />
                           <div className="form-text">item = material</div>
+                          <div className="mt-2">
+                            <BindingTokenHelper
+                              groups={[
+                                ...(makeFieldBindingGroup(
+                                  `Campos de material (${relationDetails.find((relation) => relation.key === selectedBlock.materialesKey)?.table || "materiales"})`,
+                                  "item",
+                                  relationDetails.find((relation) => relation.key === selectedBlock.materialesKey)?.fields ?? []
+                                )
+                                  ? [
+                                      makeFieldBindingGroup(
+                                        `Campos de material (${relationDetails.find((relation) => relation.key === selectedBlock.materialesKey)?.table || "materiales"})`,
+                                        "item",
+                                        relationDetails.find((relation) => relation.key === selectedBlock.materialesKey)?.fields ?? []
+                                      )!,
+                                    ]
+                                  : []),
+                              ]}
+                              disabled={readOnly}
+                              title="Insertar campo de material"
+                              onInsert={(token) =>
+                                updateBlock(selectedBlock.id, "budgetPartidas", {
+                                  materialLineTpl: appendBindingToken(selectedBlock.materialLineTpl, token),
+                                })
+                              }
+                            />
+                          </div>
                         </div>
 
                         {/* -------- Totals -------- */}
                         <div className="row g-2 mb-3">
                           <div className="col-12 col-md-6">
                             <label className="form-label">Campo total tarea (opcional)</label>
-                            <input
-                              className="form-control"
+                            <select
+                              className="form-select"
                               value={selectedBlock.tareaTotalField ?? ""}
                               disabled={readOnly}
                               onChange={(e) =>
@@ -2054,14 +2062,20 @@ function save() {
                                   tareaTotalField: e.target.value || undefined,
                                 })
                               }
-                              placeholder="Ej: total"
-                            />
+                            >
+                              <option value="">Sin total de tarea</option>
+                              {(relationDetails.find((relation) => relation.key === selectedBlock.tareasKey)?.fields ?? []).map((field) => (
+                                <option key={field} value={field}>
+                                  {field}
+                                </option>
+                              ))}
+                            </select>
                           </div>
 
                           <div className="col-12 col-md-6">
                             <label className="form-label">Campo total material (opcional)</label>
-                            <input
-                              className="form-control"
+                            <select
+                              className="form-select"
                               value={selectedBlock.materialTotalField ?? ""}
                               disabled={readOnly}
                               onChange={(e) =>
@@ -2069,8 +2083,14 @@ function save() {
                                   materialTotalField: e.target.value || undefined,
                                 })
                               }
-                              placeholder="Ej: total"
-                            />
+                            >
+                              <option value="">Sin total de material</option>
+                              {(relationDetails.find((relation) => relation.key === selectedBlock.materialesKey)?.fields ?? []).map((field) => (
+                                <option key={field} value={field}>
+                                  {field}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                         </div>
 
@@ -2163,9 +2183,9 @@ function save() {
                         </div>
                       </details>
                     )}
-                    {/* tí­tulo */}
+                    {/* título */}
                     <div className="mb-3">
-                      <label className="form-label">Tí­tulo</label>
+                      <label className="form-label">Título</label>
                       <input
                         className="form-control"
                         value={selectedBlock.title ?? ""}
@@ -2210,19 +2230,29 @@ function save() {
                       </div>
                     </div>
 
-                    {/* repeat (si quieres permitir diní¡mico) */}
+                    {/* repeat (si quieres permitir dinámico) */}
                     {"repeat" in selectedBlock && (
                       <div className="mb-3">
                         <label className="form-label">Repeat (opcional)</label>
-                        <input
-                          className="form-control"
+                        <select
+                          className="form-select"
                           value={selectedBlock.repeat ?? ""}
                           disabled={readOnly}
                           onChange={(e) => updateBlock(selectedBlock.id, "cards", { repeat: e.target.value } as any)}
-                          placeholder='Ej: related.contactos'
-                        />
+                        >
+                          <option value="">Sin repeat</option>
+                          {!relationDetails.some((relation) => `related.${relation.key}` === (selectedBlock.repeat ?? "")) &&
+                          selectedBlock.repeat ? (
+                            <option value={selectedBlock.repeat}>{selectedBlock.repeat}</option>
+                          ) : null}
+                          {relationDetails.map((relation) => (
+                            <option key={relation.key} value={`related.${relation.key}`}>
+                              {`related.${relation.key}`} ({relation.table || "sin tabla"})
+                            </option>
+                          ))}
+                        </select>
                         <div className="form-text">
-                          Si pones repeat, se usan tarjetas diní¡micas con <code>{"{{item.campo}}"}</code>.
+                          Si activas repeat, se usan tarjetas dinámicas con <code>{"{{item.campo}}"}</code>.
                         </div>
                       </div>
                     )}
@@ -2299,7 +2329,7 @@ function save() {
                       </div>
                     </div>
 
-                    {/* listado de tarjetas (modo estí¡tico) */}
+                    {/* listado de tarjetas (modo estático) */}
                     {"cards" in selectedBlock && (
                       <div className="border rounded p-2">
                         <div className="d-flex justify-content-between align-items-center mb-2">
@@ -2340,7 +2370,7 @@ function save() {
                                   }}
                                 />
                                 <div className="form-text">
-                                  Resuelto: <span className="text-dark">{applyBindings(c.title ?? "", previewCtx) || "(vací­o)"}</span>
+                                  Resuelto: <span className="text-dark">{applyBindings(c.title ?? "", previewCtx) || "(vacío)"}</span>
                                 </div>
                               </div>
                               <div className="col-6">
@@ -2356,7 +2386,7 @@ function save() {
                                   }}
                                 />
                                 <div className="form-text">
-                                  Resuelto: <span className="text-dark">{applyBindings(c.subtitle ?? "", previewCtx) || "(vací­o)"}</span>
+                                  Resuelto: <span className="text-dark">{applyBindings(c.subtitle ?? "", previewCtx) || "(vacío)"}</span>
                                 </div>
                               </div>
                               <div className="col-1">
@@ -2369,7 +2399,7 @@ function save() {
                                       updateBlock(selectedBlock.id, "cards", { cards: next } as any);
                                     }}
                                   >
-                                    âœ•
+                                    X
                                   </button>
                                 )}
                               </div>
@@ -2435,22 +2465,22 @@ function save() {
                                               onChange={(e) => updateInner({ value: e.target.value })}
                                             />
                                             <div className="form-text">
-                                              Preview: <span className="text-dark">{plainTextPreview(applyBindings(inner.value ?? "", previewCtx)) || "(vací­o)"}</span>
+                                              Preview: <span className="text-dark">{plainTextPreview(applyBindings(inner.value ?? "", previewCtx)) || "(vacío)"}</span>
                                             </div>
                                           </>
                                         ) : inner.type === "divider" ? (
-                                          <div className="small text-muted">Lí­nea divisoria</div>
+                                          <div className="small text-muted">Línea divisoria</div>
                                         ) : inner.type === "table" ? (
                                           <div className="small text-muted">
-                                            Tabla: {inner.title || "(sin tí­tulo)"}  columnas {(inner.columns ?? []).length}
+                                            Tabla: {inner.title || "(sin título)"}  columnas {(inner.columns ?? []).length}
                                           </div>
                                         ) : inner.type === "budgetPartidas" ? (
                                           <div className="small text-muted">
-                                            Partidas: {inner.title || "(sin tí­tulo)"}
+                                            Partidas: {inner.title || "(sin título)"}
                                           </div>
                                         ) : inner.type === "header" ? (
                                           <div className="small text-muted">
-                                            Header: {inner.title || "(sin tí­tulo)"}
+                                            Header: {inner.title || "(sin título)"}
                                           </div>
                                         ) : (
                                           <div className="small text-muted">Bloque interno configurado</div>
@@ -2464,13 +2494,13 @@ function save() {
                               )}
 
                               <div className="form-text mt-2 mb-0">
-                                Los bloques internos ya se ven aquí­; los de tipo <code>text</code> también se pueden editar directamente.
+                                Los bloques internos ya se ven aquí; los de tipo <code>text</code> también se pueden editar directamente.
                               </div>
                             </div>
 
                             <div className="alert alert-light small mt-2 mb-0">
-                              Dentro de esta tarjeta, mete bloques (text/table/divider/partidas).  
-                              *Tip*: si quieres â€œsolo datosâ€ sin HTML raro, usa el textarea normal en los `text`.
+                              Dentro de esta tarjeta mete bloques como text, table, divider o partidas.
+                              Tip: si quieres solo datos sin HTML raro, usa el textarea normal en los bloques `text`.
                             </div>
                           </div>
                         ))}
@@ -2478,10 +2508,10 @@ function save() {
                     )}
                     {"card" in selectedBlock && (
                       <div className="border rounded p-2 mt-3">
-                        <div className="fw-semibold mb-2">Plantilla de tarjeta diní¡mica</div>
+                        <div className="fw-semibold mb-2">Plantilla de tarjeta dinámica</div>
                         <div className="row g-2 align-items-end">
                           <div className="col-6">
-                            <label className="form-label small mb-1">Title</label>
+                            <label className="form-label small mb-1">Título</label>
                             <input
                               className="form-control form-control-sm"
                               value={selectedBlock.card?.title ?? ""}
@@ -2498,11 +2528,11 @@ function save() {
                                   Array.isArray(getByPath(previewCtx, selectedBlock.repeat)))
                                     ? getByPath(previewCtx, selectedBlock.repeat)?.[0]
                                     : undefined,
-                              }) || "(vací­o)"}</span>
+                              }) || "(vacío)"}</span>
                             </div>
                           </div>
                           <div className="col-6">
-                            <label className="form-label small mb-1">Subtitle</label>
+                            <label className="form-label small mb-1">Subtítulo</label>
                             <input
                               className="form-control form-control-sm"
                               value={selectedBlock.card?.subtitle ?? ""}
@@ -2519,7 +2549,7 @@ function save() {
                                   Array.isArray(getByPath(previewCtx, selectedBlock.repeat)))
                                     ? getByPath(previewCtx, selectedBlock.repeat)?.[0]
                                     : undefined,
-                              }) || "(vací­o)"}</span>
+                              }) || "(vacío)"}</span>
                             </div>
                           </div>
                         </div>
@@ -2591,7 +2621,7 @@ function save() {
                                               Array.isArray(getByPath(previewCtx, selectedBlock.repeat)))
                                                 ? getByPath(previewCtx, selectedBlock.repeat)?.[0]
                                                 : undefined,
-                                          })) || "(vací­o)"}</span>
+                                          })) || "(vacío)"}</span>
                                         </div>
                                       </>
                                     ) : (
@@ -2602,7 +2632,7 @@ function save() {
                               })}
                             </div>
                           ) : (
-                            <div className="small text-muted">Sin contenido en la plantilla diní¡mica.</div>
+                            <div className="small text-muted">Sin contenido en la plantilla dinámica.</div>
                           )}
                         </div>
                       </div>
@@ -2611,7 +2641,7 @@ function save() {
                 </div>
               )}
 
-
+            
 
             
 
@@ -2619,40 +2649,7 @@ function save() {
 
 
           </div>
-          {!readOnly && selectedBlock && (
-                <div className="mt-3 d-flex gap-2">
-                    <button
-                    type="button"
-                    className="btn btn-outline-secondary btn-sm"
-                    onClick={() => moveBlockUp(selectedBlock.id)}
-                    title="Subir bloque"
-                    >
-                   ‘
-                    </button>
-
-                    <button
-                    type="button"
-                    className="btn btn-outline-secondary btn-sm"
-                    onClick={() => moveBlockDown(selectedBlock.id)}
-                    title="Bajar bloque"
-                    >
-                   “
-                    </button>
-
-                    <button
-                    type="button"
-                    className="btn btn-outline-danger btn-sm ms-auto"
-                    onClick={() => {
-                        if (confirm("Â¿Eliminar este bloque?")) {
-                        deleteBlock(selectedBlock.id);
-                        }
-                    }}
-                    title="Eliminar bloque"
-                    >
-                    ðŸ—‘ Eliminar
-                    </button>
-                </div>
-                )}
+          
 
         </div>
       )}
@@ -2721,7 +2718,7 @@ function save() {
 
                 {/* Page margin */}
                 <div className="col-12 col-md-4">
-                  <label className="form-label">Margen pí¡gina (px)</label>
+                  <label className="form-label">Margen de página (px)</label>
                   <input
                     type="number"
                     className="form-control"
@@ -2743,7 +2740,7 @@ function save() {
 
                 {/* Colores base */}
                 <div className="col-12 col-md-3">
-                  <label className="form-label">Fondo pí¡gina</label>
+                  <label className="form-label">Fondo de página</label>
                   <input
                     type="color"
                     className="form-control form-control-color"
@@ -2965,13 +2962,119 @@ function save() {
                       })
                     }
                   />
-                  <div className="form-text">Solo si zebra estí¡ activo</div>
+                  <div className="form-text">Solo si zebra está activo</div>
                 </div>
               </div>
             </div>
           </div>
         )}
+      {/* LINK */}
+        {tab === "link" && (
+          <div className="card">
+            <div className="card mb-4 border-0 shadow-sm">
+              <div className="card-body">
+                <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
+                  <div>
+                    <div className="fw-semibold">Relaciones</div>
+                    <div className="text-muted small">
+                      Configura las colecciones que luego podrás usar como <code>related.key</code> en tablas, tarjetas y bloques repetidos.
+                    </div>
+                  </div>
+                  <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setConfigModal("related")}>
+                    Configurar
+                  </button>
+                </div>
 
+                {relationDetails.length === 0 ? (
+                  <div className="text-muted small">No hay relaciones definidas todavía.</div>
+                ) : (
+                  <div className="d-flex flex-column gap-2">
+                    {relationDetails.map((relation) => (
+                      <div key={`${relation.key}-${relation.table}-${relation.fkField}`} className="border rounded-3 p-3 bg-body-tertiary">
+                        <div className="d-flex justify-content-between align-items-center gap-2">
+                          <div className="fw-semibold">
+                            <code>{relation.key || "sin-key"}</code>
+                          </div>
+                          <span className="badge text-bg-light border">{relation.table || "sin tabla"}</span>
+                        </div>
+                        <div className="small text-muted mt-2">
+                          FK: <code>{relation.fkField || "sin campo"}</code>
+                        </div>
+                        <div className="small mt-2">
+                          Repite con <code>{`related.${relation.key || "key"}`}</code> y renderiza columnas con <code>{"{{item.campo}}"}</code>.
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="card mb-4 border-0 shadow-sm">
+              <div className="card-body">
+                <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
+                  <div>
+                    <div className="fw-semibold">Lookups</div>
+                    <div className="text-muted small">
+                      Convierte UUIDs en etiquetas para usar valores como <code>{"{{record.campo__label}}"}</code> o <code>{"{{item.campo__label}}"}</code>.
+                    </div>
+                  </div>
+                  <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => setConfigModal("lookups")}>
+                    Configurar
+                  </button>
+                </div>
+
+                {(template.lookups ?? []).length === 0 ? (
+                  <div className="text-muted small">No hay lookups definidos.</div>
+                ) : (
+                  <div className="d-flex flex-column gap-2">
+                    {(template.lookups ?? []).map((lookup, idx) => {
+                      const val = withDefaultsLookup(lookup);
+                      const scopeLabel = val.in === "record" ? "Registro principal" : `Relacionado: ${val.relatedKey || "sin key"}`;
+
+                      return (
+                        <div key={`${val.in}-${val.relatedKey}-${val.field}-${idx}`} className="border rounded-3 p-3 bg-body-tertiary">
+                          <div className="fw-semibold">Lookup #{idx + 1}</div>
+                          <div className="small text-muted mt-1">{scopeLabel}</div>
+                          <div className="small mt-2">
+                            <code>{val.field || "campo_uuid"}</code> → <code>{val.outField || `${val.field || "campo"}__label`}</code>
+                          </div>
+                          <div className="small text-muted mt-1">
+                            Referencia: <code>{val.refTable || "tabla"}</code> / <code>{val.refLabelField || "campo_label"}</code>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="card mb-4 border-0 shadow-sm">
+              <div className="card-body">
+                <div className="fw-semibold mb-2">Ayuda para variables</div>
+                <div className="small text-muted mb-3">
+                  Las líneas de texto se renderizan con llaves dobles. Usa <code>{"{{record.campo}}"}</code> para el registro principal y <code>{"{{item.campo}}"}</code> dentro de bloques con repeat.
+                </div>
+                <BindingTokenHelper
+                  groups={commonBindingGroups}
+                  disabled={readOnly}
+                  title="Constructor rápido de variables"
+                  onInsert={async (token) => {
+                    try {
+                      await navigator.clipboard.writeText(token);
+                    } catch {
+                      // noop
+                    }
+                  }}
+                />
+                <div className="form-text">
+                  El botón copia la variable para pegarla donde quieras. Además, en los editores de texto más importantes verás un insertador contextual.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
       {/* PREVIEW */}
       {tab === "preview" && (
@@ -2984,6 +3087,335 @@ function save() {
             )}
           </div>
         </div>
+      )}
+
+      {configModal === "related" && (
+        <ConfigModal
+          title="Configurar relaciones"
+          subtitle="Cada relación define una colección disponible como related.key para tablas, tarjetas y bloques repetidos."
+          onClose={() => setConfigModal(null)}
+        >
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <div className="small text-muted">
+              Ejemplo de uso: <code>repeat = related.lineas</code> y luego <code>{"{{item.descripcion}}"}</code>.
+            </div>
+            {!readOnly && (
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() =>
+                  setRelations((current) => [
+                    ...current,
+                    { key: `items${current.length + 1}`, table: "", fkField: "" },
+                  ])
+                }
+              >
+                Añadir relación
+              </button>
+            )}
+          </div>
+
+          {relations.length === 0 ? (
+            <div className="alert alert-light mb-0">No hay relaciones definidas todavía.</div>
+          ) : (
+            <div className="d-flex flex-column gap-3">
+              {relations.map((relation, idx) => (
+                <div key={`${relation.key}-${idx}`} className="border rounded-3 p-3">
+                  <div className="d-flex justify-content-between align-items-center gap-2 mb-3">
+                    <div className="fw-semibold">Relación #{idx + 1}</div>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-danger"
+                        onClick={() => setRelations((current) => current.filter((_, currentIdx) => currentIdx !== idx))}
+                      >
+                        Eliminar
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="row g-3">
+                    <div className="col-12 col-md-4">
+                      <label className="form-label">Clave interna</label>
+                      <input
+                        className="form-control"
+                        value={relation.key}
+                        disabled={readOnly}
+                        onChange={(e) => {
+                          const next = relations.slice();
+                          next[idx] = { ...next[idx], key: e.target.value };
+                          setRelations(next);
+                        }}
+                        placeholder="Ej: lineas"
+                      />
+                      <div className="form-text">Será accesible como <code>{`related.${relation.key || "clave"}`}</code>.</div>
+                    </div>
+
+                    <div className="col-12 col-md-4">
+                      <label className="form-label">Tabla relacionada</label>
+                      <select
+                        className="form-select"
+                        value={relation.table}
+                        disabled={readOnly}
+                        onChange={(e) => {
+                          const next = relations.slice();
+                          next[idx] = { ...next[idx], table: e.target.value, fkField: "" };
+                          setRelations(next);
+                        }}
+                      >
+                        <option value="">Selecciona una tabla</option>
+                        {!tableOptions.includes(relation.table) && relation.table ? <option value={relation.table}>{relation.table}</option> : null}
+                        {tableOptions.map((table) => (
+                          <option key={table} value={table}>
+                            {table}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="col-12 col-md-4">
+                      <label className="form-label">Campo FK hacia el registro principal</label>
+                      <select
+                        className="form-select"
+                        value={relation.fkField}
+                        disabled={readOnly || !relation.table}
+                        onChange={(e) => {
+                          const next = relations.slice();
+                          next[idx] = { ...next[idx], fkField: e.target.value };
+                          setRelations(next);
+                        }}
+                      >
+                        <option value="">Selecciona un campo</option>
+                        {!((fieldsByTable[relation.table] ?? []).includes(relation.fkField)) && relation.fkField ? (
+                          <option value={relation.fkField}>{relation.fkField}</option>
+                        ) : null}
+                        {(fieldsByTable[relation.table] ?? []).map((field) => (
+                          <option key={field} value={field}>
+                            {field}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="alert alert-light small mt-3 mb-0">
+                    En un bloque con repeat usarás <code>{`related.${relation.key || "clave"}`}</code> y dentro de la fila <code>{"{{item.campo}}"}</code>.
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </ConfigModal>
+      )}
+
+      {configModal === "lookups" && (
+        <ConfigModal
+          title="Configurar lookups"
+          subtitle="Los lookups resuelven UUIDs contra otra tabla y generan un campo de salida con etiqueta."
+          onClose={() => setConfigModal(null)}
+        >
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <div className="small text-muted">
+              Ejemplo: <code>service</code> → <code>service__label</code> para mostrar nombres en vez de UUIDs.
+            </div>
+            {!readOnly && (
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={() => {
+                  const next = [...(template.lookups ?? [])];
+                  next.push(
+                    withDefaultsLookup({
+                      in: relations[0]?.key ? "related" : "record",
+                      relatedKey: relations[0]?.key ?? "",
+                      field: "",
+                      refTable: "",
+                      refIdField: "id",
+                      refLabelField: "",
+                    })
+                  );
+                  updateTemplate({ lookups: next });
+                }}
+              >
+                Añadir lookup
+              </button>
+            )}
+          </div>
+
+          {(template.lookups ?? []).length === 0 ? (
+            <div className="alert alert-light mb-0">No hay lookups definidos.</div>
+          ) : (
+            <div className="d-flex flex-column gap-3">
+              {(template.lookups ?? []).map((lookup, idx) => {
+                const currentLookup = withDefaultsLookup(lookup);
+                const relatedTable =
+                  currentLookup.in === "related"
+                    ? relations.find((relation) => relation.key === currentLookup.relatedKey)?.table || ""
+                    : "";
+                const inputFields =
+                  currentLookup.in === "record"
+                    ? sourceFields
+                    : relatedTable
+                    ? fieldsByTable[relatedTable] ?? []
+                    : [];
+                const refFields = currentLookup.refTable ? fieldsByTable[currentLookup.refTable] ?? [] : [];
+
+                const updateLookup = (patch: Partial<LookupSpec>) => {
+                  const next = [...(template.lookups ?? [])];
+                  next[idx] = withDefaultsLookup({ ...currentLookup, ...patch });
+                  updateTemplate({ lookups: next });
+                };
+
+                return (
+                  <div key={`${currentLookup.in}-${currentLookup.relatedKey}-${idx}`} className="border rounded-3 p-3">
+                    <div className="d-flex justify-content-between align-items-center gap-2 mb-3">
+                      <div className="fw-semibold">Lookup #{idx + 1}</div>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => {
+                            const next = [...(template.lookups ?? [])];
+                            next.splice(idx, 1);
+                            updateTemplate({ lookups: next });
+                          }}
+                        >
+                          Eliminar
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="row g-3">
+                      <div className="col-12 col-md-4">
+                        <label className="form-label">Origen</label>
+                        <select
+                          className="form-select"
+                          value={currentLookup.in}
+                          disabled={readOnly}
+                          onChange={(e) =>
+                            updateLookup({
+                              in: e.target.value as "record" | "related",
+                              relatedKey: e.target.value === "record" ? undefined : relations[0]?.key ?? "",
+                              field: "",
+                            })
+                          }
+                        >
+                          <option value="record">Registro principal</option>
+                          <option value="related">Relación</option>
+                        </select>
+                      </div>
+
+                      <div className="col-12 col-md-4">
+                        <label className="form-label">Relación</label>
+                        <select
+                          className="form-select"
+                          value={currentLookup.in === "related" ? currentLookup.relatedKey ?? "" : ""}
+                          disabled={readOnly || currentLookup.in !== "related"}
+                          onChange={(e) => updateLookup({ relatedKey: e.target.value, field: "" })}
+                        >
+                          <option value="">Selecciona una relación</option>
+                          {relations.map((relation) => (
+                            <option key={relation.key} value={relation.key}>
+                              {relation.key} ({relation.table})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="col-12 col-md-4">
+                        <label className="form-label">Campo UUID</label>
+                        <select
+                          className="form-select"
+                          value={currentLookup.field}
+                          disabled={readOnly}
+                          onChange={(e) => updateLookup({ field: e.target.value, outField: `${e.target.value}__label` })}
+                        >
+                          <option value="">Selecciona un campo</option>
+                          {!inputFields.includes(currentLookup.field) && currentLookup.field ? (
+                            <option value={currentLookup.field}>{currentLookup.field}</option>
+                          ) : null}
+                          {inputFields.map((field) => (
+                            <option key={field} value={field}>
+                              {field}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="col-12 col-md-4">
+                        <label className="form-label">Campo de salida</label>
+                        <input
+                          className="form-control"
+                          value={currentLookup.outField ?? ""}
+                          disabled={readOnly}
+                          onChange={(e) => updateLookup({ outField: e.target.value })}
+                          placeholder={currentLookup.field ? `${currentLookup.field}__label` : "campo__label"}
+                        />
+                      </div>
+
+                      <div className="col-12 col-md-4">
+                        <label className="form-label">Tabla de referencia</label>
+                        <select
+                          className="form-select"
+                          value={currentLookup.refTable}
+                          disabled={readOnly}
+                          onChange={(e) => updateLookup({ refTable: e.target.value, refLabelField: "", refIdField: "id" })}
+                        >
+                          <option value="">Selecciona una tabla</option>
+                          {!tableOptions.includes(currentLookup.refTable) && currentLookup.refTable ? (
+                            <option value={currentLookup.refTable}>{currentLookup.refTable}</option>
+                          ) : null}
+                          {tableOptions.map((table) => (
+                            <option key={table} value={table}>
+                              {table}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="col-12 col-md-4">
+                        <label className="form-label">Campo visible</label>
+                        <select
+                          className="form-select"
+                          value={currentLookup.refLabelField}
+                          disabled={readOnly || !currentLookup.refTable}
+                          onChange={(e) => updateLookup({ refLabelField: e.target.value })}
+                        >
+                          <option value="">Selecciona el campo a mostrar</option>
+                          {refFields.map((field) => (
+                            <option key={field} value={field}>
+                              {field}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="col-12 col-md-4">
+                        <label className="form-label">Campo ID</label>
+                        <select
+                          className="form-select"
+                          value={currentLookup.refIdField ?? "id"}
+                          disabled={readOnly || !currentLookup.refTable}
+                          onChange={(e) => updateLookup({ refIdField: e.target.value || "id" })}
+                        >
+                          {(refFields.length ? refFields : ["id"]).map((field) => (
+                            <option key={field} value={field}>
+                              {field}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="alert alert-light small mt-3 mb-0">
+                      Usa luego <code>{currentLookup.in === "record" ? `{{record.${currentLookup.outField || `${currentLookup.field || "campo"}__label`}}}` : `{{item.${currentLookup.outField || `${currentLookup.field || "campo"}__label`}}}`}</code>.
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </ConfigModal>
       )}
     </form>
   );

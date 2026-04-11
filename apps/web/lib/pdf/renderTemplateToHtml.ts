@@ -215,8 +215,7 @@ function safeHtml(html: any) {
 }
 
 function renderCell(cellTpl: any, ctx: AnyObj) {
-  // 1) Resolver bindings (funciona con {{...}} y tambiÃ©n con {{{...}}} si los usas)
-  // Nota: tpl() resuelve {{...}}. Si quieres tambiÃ©n {{{...}}}, hacemos un â€œdoble paseâ€.
+
   const resolved = tpl(tplRaw(cellTpl ?? "", ctx), ctx);
   const raw = unescapeHtml(String(resolved ?? ""));
   return safeHtml(raw);
@@ -224,11 +223,7 @@ function renderCell(cellTpl: any, ctx: AnyObj) {
 
 
 
-/**
- * âœ… Theme ampliado SIN romper plantillas viejas:
- * - mutedColor nuevo (si no existe, cae a #6b7280)
- * - radius/sombra opcional (pro, pero safe defaults)
- */
+
 type Theme = {
   fontFamily?: "inter" | "roboto" | "times" | "georgia";
   baseFontSize?: number;

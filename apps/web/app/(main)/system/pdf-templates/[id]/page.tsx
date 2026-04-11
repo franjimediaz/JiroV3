@@ -1,4 +1,4 @@
-import { isUUID } from "@/lib/utils/isUUID";
+﻿import { isUUID } from "@/lib/utils/isUUID";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import PdfTemplateForm from "@/lib/PdfTemplateForm";
@@ -27,8 +27,8 @@ async function getTableCatalog() {
     const fields = Array.isArray(props?.fields) ? props.fields : [];
     if (!byTable.has(table)) byTable.set(table, new Set<string>());
 
-    for (const f of fields) {
-      const name = String((f as any)?.name || "").trim();
+    for (const field of fields) {
+      const name = String((field as any)?.name || "").trim();
       if (!name) continue;
       byTable.get(table)!.add(name);
     }
@@ -43,7 +43,6 @@ export default async function PdfTemplateUnifiedPage(props: {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ edit?: string }>;
 }) {
-  // ✅ desenvuelve promises como haces en módulos
   const { id } = await props.params;
   const { edit } = await props.searchParams;
 
@@ -51,14 +50,18 @@ export default async function PdfTemplateUnifiedPage(props: {
   const isEdit = isNew || edit === "true";
   const tableCatalog = await getTableCatalog();
 
-  // (opcional) require auth
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   if (!user) {
     return (
       <main className="container py-5">
         <h1 className="h4 mb-3">No autenticado</h1>
-        <a className="btn btn-primary btn-sm" href="/login">Ir a login</a>
+        <a className="btn btn-primary btn-sm" href="/login">
+          Ir a login
+        </a>
       </main>
     );
   }
@@ -80,7 +83,9 @@ export default async function PdfTemplateUnifiedPage(props: {
       <main className="container-fluid py-4">
         <header className="d-flex justify-content-between align-items-center mb-4">
           <h1 className="h4 mb-0">Crear plantilla PDF</h1>
-          <a className="btn btn-outline-secondary btn-sm" href="/system/pdf-templates">← Volver</a>
+          <a className="btn btn-outline-secondary btn-sm" href="/system/pdf-templates">
+            Volver
+          </a>
         </header>
 
         <PdfTemplateForm initialData={initial} mode="create" />
@@ -93,28 +98,30 @@ export default async function PdfTemplateUnifiedPage(props: {
       <main className="container py-5">
         <h1 className="h4 text-danger mb-2">ID inválido</h1>
         <p className="text-danger mb-4">El parámetro no es un UUID válido.</p>
-        <a className="btn btn-outline-secondary btn-sm" href="/system/pdf-templates">← Volver</a>
+        <a className="btn btn-outline-secondary btn-sm" href="/system/pdf-templates">
+          Volver
+        </a>
       </main>
     );
   }
 
-  const { data: tpl, error } = await getPdfTemplateById(id);
+  const { data: template, error } = await getPdfTemplateById(id);
 
-  if (!tpl) {
+  if (!template) {
     return (
       <main className="container py-5">
         <h1 className="h4 text-danger mb-2">Plantilla no encontrada</h1>
-        {error && <p className="text-danger small mb-3">Detalle: {error}</p>}
-        <a className="btn btn-outline-secondary btn-sm" href="/system/pdf-templates">← Volver</a>
+        {error ? <p className="text-danger small mb-3">Detalle: {error}</p> : null}
+        <a className="btn btn-outline-secondary btn-sm" href="/system/pdf-templates">
+          Volver
+        </a>
       </main>
     );
   }
 
-  const mode = isEdit ? ("edit" as const) : ("view" as const);
-
   return (
     <main className="container-fluid py-4">
-      <PdfTemplateForm initialData={{ ...tpl, tableCatalog }} mode={mode} />
+      <PdfTemplateForm initialData={{ ...template, tableCatalog }} mode={isEdit ? "edit" : "view"} />
     </main>
   );
 }
