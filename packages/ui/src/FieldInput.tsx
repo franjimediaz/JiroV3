@@ -2,9 +2,9 @@
 
 import { IconPicker } from "./IconPicker";
 import Selector from "./Selector";
-import type { Field, ModuleSchema, FieldType, UiTab, FormSection,TreeViewDataProvider } from "@repo/types";
+import type { Field, ModuleSchema, FieldType } from "@repo/types";
 import RichTextEditor from "./RichTextEditor";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 type Props = {
   field: Field;

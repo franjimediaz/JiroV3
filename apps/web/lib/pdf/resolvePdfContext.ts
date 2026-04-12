@@ -307,6 +307,99 @@ function pickNestedValue(source: any, paths: string[]) {
   return "";
 }
 
+function tryParseJsonString(value: any) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) return value;
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function buildPublicStorageUrl(bucket: string, path: string) {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base || !bucket || !path) return "";
+  return `${base}/storage/v1/object/public/${bucket}/${path}`;
+}
+
+function extractAssetUrl(raw: any, depth = 0): string {
+  if (depth > 4 || raw == null) return "";
+
+  const parsed = tryParseJsonString(raw);
+  if (parsed !== raw) return extractAssetUrl(parsed, depth + 1);
+
+  if (typeof parsed === "string") {
+    const value = parsed.trim();
+    if (!value) return "";
+
+    if (
+      value.startsWith("http://") ||
+      value.startsWith("https://") ||
+      value.startsWith("/") ||
+      value.startsWith("data:image/")
+    ) {
+      return value;
+    }
+
+    return "";
+  }
+
+  if (Array.isArray(parsed)) {
+    for (const item of parsed) {
+      const url = extractAssetUrl(item, depth + 1);
+      if (url) return url;
+    }
+    return "";
+  }
+
+  if (typeof parsed === "object") {
+    const candidates = [
+      parsed.url,
+      parsed.publicUrl,
+      parsed.public_url,
+      parsed.signedUrl,
+      parsed.signed_url,
+      parsed.logoUrl,
+      parsed.logo_url,
+      parsed.imageUrl,
+      parsed.image_url,
+      parsed.src,
+      parsed.href,
+      parsed.logo,
+      parsed.file,
+      parsed.asset,
+      parsed.value,
+    ];
+
+    for (const candidate of candidates) {
+      const url = extractAssetUrl(candidate, depth + 1);
+      if (url) return url;
+    }
+
+    const bucket = firstNonEmptyString(
+      parsed.bucket,
+      parsed.storageBucket,
+      parsed.storage_bucket,
+    );
+    const path = firstNonEmptyString(
+      parsed.path,
+      parsed.storagePath,
+      parsed.storage_path,
+      parsed.key,
+      parsed.filename,
+    );
+
+    if (bucket && path) {
+      return buildPublicStorageUrl(bucket, path);
+    }
+  }
+
+  return "";
+}
+
 function normalizeBranding(raw: any) {
   const branding = raw && typeof raw === "object" ? { ...raw } : {};
 
@@ -341,11 +434,22 @@ function normalizeBranding(raw: any) {
     branding.correo,
     branding.mail,
   );
-  const logoUrl = firstNonEmptyString(
+  const logoUrl = extractAssetUrl(
+    branding.logoUrl ||
+      branding.logo ||
+      branding.logo_url ||
+      branding.imageUrl ||
+      branding.image_url ||
+      branding.imagen ||
+      branding.image ||
+      branding.logoFile ||
+      branding.logo_file,
+  ) || firstNonEmptyString(
     branding.logoUrl,
     branding.logo,
     branding.logo_url,
     branding.imageUrl,
+    branding.image_url,
     branding.imagen,
   );
   const website = firstNonEmptyString(

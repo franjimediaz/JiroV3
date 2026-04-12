@@ -200,12 +200,29 @@ function safeHtml(html: any) {
       "h1", "h2", "h3", "h4",
       "blockquote",
       "a",
+      "img",
       "table", "thead", "tbody", "tr", "th", "td",
       "span", "div"
     ],
     allowedAttributes: {
       a: ["href", "target", "rel"],
+      img: ["src", "alt", "width", "height", "style"],
       "*": ["style"],
+    },
+    allowedSchemes: ["http", "https", "data"],
+    allowedStyles: {
+      "*": {
+        color: [/^.*$/],
+        "font-weight": [/^.*$/],
+        "text-align": [/^.*$/],
+      },
+      img: {
+        width: [/^.*$/],
+        height: [/^.*$/],
+        "max-width": [/^.*$/],
+        "object-fit": [/^.*$/],
+        display: [/^.*$/],
+      },
     },
     // opcional, recomendado:
     transformTags: {
@@ -399,6 +416,150 @@ type TableStyle = {
   borderColor?: string;
 };
 
+function formatBudgetCounter(path: number[], style = "decimal") {
+  if (!Array.isArray(path) || path.length === 0) return "";
+  if (style === "decimal") return path.join(".");
+  return path.join(".");
+}
+
+function budgetLevelDefaultColumns(level: any, block: any) {
+  if (level?.source === "group") {
+    return [{ label: "Partida", value: "{{groupLabel}}" }];
+  }
+
+  if (level?.source === "task") {
+    const columns: any[] = [{ label: "Tarea", value: block.tareaTitleTpl || "{{item.nombre}}" }];
+    if (block.tareaTotalField) {
+      columns.push({
+        label: "Total",
+        value: `{{item.${String(block.tareaTotalField)}}}`,
+        align: "right",
+      });
+    }
+    return columns;
+  }
+
+  const columns: any[] = [{ label: "Detalle", value: block.materialLineTpl || "{{item.nombre}}" }];
+  if (block.materialTotalField) {
+    columns.push({
+      label: "Total",
+      value: `{{item.${String(block.materialTotalField)}}}`,
+      align: "right",
+    });
+  }
+  return columns;
+}
+
+function normalizeBudgetTableMode(block: any) {
+  const raw = block?.tableMode;
+  const enabled =
+    raw === true ||
+    (raw && typeof raw === "object" && raw.enabled !== false) ||
+    block?.mode === "table";
+
+  if (!enabled) return null;
+
+  const tableMode = raw && typeof raw === "object" ? raw : {};
+  const columnsByLevel =
+    tableMode.columnsByLevel && typeof tableMode.columnsByLevel === "object"
+      ? tableMode.columnsByLevel
+      : tableMode.columns && typeof tableMode.columns === "object"
+      ? tableMode.columns
+      : {};
+
+  const explicitLevels = Array.isArray(tableMode.levels) ? tableMode.levels.filter(Boolean) : [];
+  const childDefs = Array.isArray(tableMode.children) ? tableMode.children.filter(Boolean) : [];
+
+  const levels = explicitLevels.length
+    ? explicitLevels.map((level: any, index: number) => {
+        const source =
+          level?.source === "group" || level?.source === "child" ? level.source : "task";
+        const key =
+          String(
+            level?.key ||
+              (source === "group"
+                ? "group"
+                : source === "child"
+                ? level?.relationKey || `child_${index + 1}`
+                : "task"),
+          ).trim() || `level_${index + 1}`;
+
+        return {
+          ...level,
+          key,
+          source,
+          relationKey:
+            source === "child" ? String(level?.relationKey || "").trim() : undefined,
+          parentLevelKey:
+            source === "child"
+              ? String(level?.parentLevelKey || "task").trim() || "task"
+              : undefined,
+          parentFkField:
+            source === "child"
+              ? String(
+                  level?.parentFkField ||
+                    (String(level?.relationKey || "") === String(block?.materialesKey || "")
+                      ? block?.materialesFkToTarea
+                      : "taskId"),
+                ).trim() || "taskId"
+              : undefined,
+          columns: Array.isArray(level?.columns) && level.columns.length
+            ? level.columns
+            : budgetLevelDefaultColumns(level, block),
+        };
+      })
+    : [
+        columnsByLevel.group
+          ? {
+              key: "group",
+              source: "group",
+              columns: columnsByLevel.group,
+              titleTpl: tableMode.groupTitleTpl,
+            }
+          : null,
+        {
+          key: "task",
+          source: "task",
+          columns:
+            Array.isArray(columnsByLevel.task) && columnsByLevel.task.length
+              ? columnsByLevel.task
+              : budgetLevelDefaultColumns({ source: "task" }, block),
+          titleTpl: tableMode.taskTitleTpl,
+        },
+        ...(
+          childDefs.length
+            ? childDefs
+            : block?.materialesKey
+            ? [
+                {
+                  key: String(block.materialesKey),
+                  source: "child",
+                  relationKey: String(block.materialesKey),
+                  parentLevelKey: "task",
+                  parentFkField: String(block.materialesFkToTarea || "taskId"),
+                  columns:
+                    Array.isArray(columnsByLevel.material) && columnsByLevel.material.length
+                      ? columnsByLevel.material
+                      : budgetLevelDefaultColumns({ source: "child" }, block),
+                  titleTpl: tableMode.materialTitleTpl,
+                },
+              ]
+            : []
+        ),
+      ].filter(Boolean);
+
+  return {
+    enabled: true,
+    counter: {
+      enabled: tableMode.counter?.enabled !== false,
+      style: String(tableMode.counter?.style || "decimal"),
+      columnLabel: String(tableMode.counter?.columnLabel || "N"),
+      position: tableMode.counter?.position === "last" ? "last" : "first",
+    },
+    levels,
+  };
+}
+
 function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof normalizeTheme>) {
   const title = escHtml(tpl(block.title ?? "", ctx));
 
@@ -424,6 +585,256 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
 
   // tareas por groupByField
   const tareasGrouped = groupBy(tareas, (t) => String(t?.[groupByField] ?? "Sin partida"));
+
+  const tableMode = normalizeBudgetTableMode(block);
+
+  if (tableMode?.enabled) {
+    const related = (ctx?.related && typeof ctx.related === "object") ? ctx.related : {};
+    const childLevelsByParent = new Map<string, any[]>();
+
+    for (const level of tableMode.levels) {
+      if (level?.source !== "child") continue;
+      const parentKey = String(level?.parentLevelKey || "task");
+      const arr = childLevelsByParent.get(parentKey) || [];
+      arr.push(level);
+      childLevelsByParent.set(parentKey, arr);
+    }
+
+    const renderLevel = (
+      level: any,
+      rows: any[],
+      baseCtx: AnyObj,
+      parentCounter: number[],
+    ): string => {
+      const safeRows = Array.isArray(rows) ? rows : [];
+      const columns = Array.isArray(level?.columns) ? level.columns.filter(Boolean) : [];
+      const childLevels = childLevelsByParent.get(String(level?.key || "")) || [];
+      const titleTpl = typeof level?.titleTpl === "string" ? level.titleTpl : "";
+      const emptyText = String(level?.emptyText || "Sin datos");
+      const hasCounter = tableMode.counter.enabled;
+      const counterLabel = escHtml(tableMode.counter.columnLabel);
+      const counterPosition = tableMode.counter.position;
+      const colCount = columns.length + (hasCounter ? 1 : 0);
+
+      if (safeRows.length === 0) {
+        if (level?.showWhenEmpty === true) {
+          return `
+            <div class="bp-level">
+              ${titleTpl ? `<div class="bp-level-title">${escHtml(tpl(titleTpl, baseCtx))}</div>` : ""}
+              <div class="bp-empty">${escHtml(emptyText)}</div>
+            </div>
+          `;
+        }
+        return "";
+      }
+
+      const theadCells = [
+        hasCounter && counterPosition === "first" ? `<th class="bp-col-counter">${counterLabel}</th>` : "",
+        ...columns.map((column: any) => {
+          const css: string[] = [];
+          if (column?.align) css.push(`text-align:${column.align}`);
+          if (column?.width) css.push(`width:${column.width}`);
+          const inline = css.length ? ` style="${css.join(";")}"` : "";
+          return `<th${inline}>${escHtml(tpl(column?.label ?? "", baseCtx))}</th>`;
+        }),
+        hasCounter && counterPosition === "last" ? `<th class="bp-col-counter">${counterLabel}</th>` : "",
+      ]
+        .filter(Boolean)
+        .join("");
+
+      const tbody = safeRows
+        .map((row: any, index: number) => {
+          const itemCounter = [...parentCounter, index + 1];
+          const rowCtx = {
+            ...baseCtx,
+            item: row,
+            counter: formatBudgetCounter(itemCounter, tableMode.counter.style),
+            levelKey: level?.key,
+          };
+          const cells = [
+            hasCounter && counterPosition === "first"
+              ? `<td class="bp-col-counter">${escHtml(rowCtx.counter)}</td>`
+              : "",
+            ...columns.map((column: any) => {
+              const css: string[] = [];
+              if (column?.align) css.push(`text-align:${column.align}`);
+              if (column?.width) css.push(`width:${column.width}`);
+              const inline = css.length ? ` style="${css.join(";")}"` : "";
+              const rendered = renderCell(
+                column?.value ?? column?.tpl ?? "",
+                rowCtx,
+              );
+              const fallback = column?.emptyFallback ? escHtml(String(column.emptyFallback)) : "";
+              return `<td${inline}>${rendered || fallback}</td>`;
+            }),
+            hasCounter && counterPosition === "last"
+              ? `<td class="bp-col-counter">${escHtml(rowCtx.counter)}</td>`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("");
+
+          const childrenHtml = childLevels
+            .map((childLevel: any) => {
+              const relationKey = String(childLevel?.relationKey || "").trim();
+              if (!relationKey) return "";
+
+              const childRows = ((related?.[relationKey] as any[]) || []).filter(
+                (childRow: any) =>
+                  String(childRow?.[String(childLevel?.parentFkField || "taskId")] ?? "") ===
+                  String(row?.id ?? ""),
+              );
+
+              return renderLevel(
+                childLevel,
+                childRows,
+                {
+                  ...rowCtx,
+                  parent: row,
+                },
+                itemCounter,
+              );
+            })
+            .join("");
+
+          return `
+            <tr>${cells}</tr>
+            ${childrenHtml ? `<tr class="bp-table-children"><td colspan="${colCount}">${childrenHtml}</td></tr>` : ""}
+          `;
+        })
+        .join("");
+
+      return `
+        <div class="bp-level">
+          ${titleTpl ? `<div class="bp-level-title">${escHtml(tpl(titleTpl, baseCtx))}</div>` : ""}
+          <table class="bp-table">
+            <thead><tr>${theadCells}</tr></thead>
+            <tbody>${tbody}</tbody>
+          </table>
+        </div>
+      `;
+    };
+
+    const body = Array.from(tareasGrouped.entries())
+      .map(([groupValue, groupTasks], groupIndex) => {
+        const labelField = `${groupByField}__label`;
+        const groupLabel = groupTasks?.[0]?.[labelField]
+          ? String(groupTasks[0][labelField])
+          : groupValue;
+
+        const groupCtx = {
+          ...ctx,
+          groupValue,
+          groupLabel,
+          group: {
+            value: groupValue,
+            label: groupLabel,
+            tareas: groupTasks,
+            total: tareaTotalField ? sumField(groupTasks, tareaTotalField) : 0,
+          },
+          item: {
+            value: groupValue,
+            label: groupLabel,
+            tareas: groupTasks,
+          },
+        };
+        const chapterTitle = escHtml(tpl(groupTitleTpl, groupCtx));
+        const groupCounter = [groupIndex + 1];
+
+        const groupLevel = tableMode.levels.find((level: any) => level?.source === "group");
+        const taskLevel = tableMode.levels.find((level: any) => level?.source === "task");
+
+        const groupLevelHtml = groupLevel
+          ? renderLevel(
+              groupLevel,
+              [{ value: groupValue, label: groupLabel, tareas: groupTasks }],
+              groupCtx,
+              [],
+            )
+          : "";
+
+        const taskLevelHtml = taskLevel
+          ? renderLevel(taskLevel, groupTasks, groupCtx, groupCounter)
+          : "";
+
+        const levelHtml =
+          `${groupLevelHtml}${taskLevelHtml}` || `<div class="bp-empty">Sin configuración de niveles</div>`;
+
+        let subtotal = 0;
+        if (showSubtotals) {
+          if (tareaTotalField) subtotal += sumField(groupTasks, tareaTotalField);
+          if (materialTotalField && materiales.length) {
+            const tIds = new Set(groupTasks.map((x: any) => String(x?.id ?? "")));
+            const matsForGroup = materiales.filter((m: any) =>
+              tIds.has(String(m?.[materialesFkToTarea] ?? "")),
+            );
+            subtotal += sumField(matsForGroup, materialTotalField);
+          }
+        }
+
+        const subtotalHtml =
+          showSubtotals && (tareaTotalField || materialTotalField)
+            ? `<div class="bp-subtotal">
+                 <span>Subtotal</span>
+                 <strong>${escHtml(subtotal.toFixed(2))} ${EURO_HTML}</strong>
+               </div>`
+            : "";
+
+        return `
+          <div class="bp-chapter">
+            <div class="bp-chapter-title">${chapterTitle}</div>
+            <div class="bp-chapter-body">
+              ${levelHtml || `<div class="bp-empty">Sin tareas</div>`}
+              ${subtotalHtml}
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    const totalTareas = tareaTotalField ? sumField(tareas, tareaTotalField) : 0;
+    const totalMateriales = materialTotalField ? sumField(materiales, materialTotalField) : 0;
+    const totalGeneral =
+      (tareaTotalField ? totalTareas : 0) + (materialTotalField ? totalMateriales : 0);
+    const grandTotalHtml =
+      tareaTotalField || materialTotalField
+        ? `<div class="bp-grand">
+             <span>Total</span>
+             <strong>${escHtml(totalGeneral.toFixed(2))} ${EURO_HTML}</strong>
+           </div>`
+        : "";
+    const variant = String(block.variant || "classic");
+    const preset = (theme as any)?.budgetPartidas?.variants?.[variant]
+      ?? (theme as any)?.budgetPartidas?.variants?.classic
+      ?? {};
+    const override =
+      block.variantOverrides && typeof block.variantOverrides === "object"
+        ? block.variantOverrides
+        : {};
+    const bpStyle = { ...preset, ...override };
+    const vars = [
+      bpStyle.chapterBg ? `--bp-chapter-bg:${bpStyle.chapterBg}` : "",
+      bpStyle.chapterBorder ? `--bp-chapter-bd:${bpStyle.chapterBorder}` : "",
+      bpStyle.taskMuted ? `--bp-task-muted:${bpStyle.taskMuted}` : "",
+      bpStyle.materialMuted ? `--bp-mat-muted:${bpStyle.materialMuted}` : "",
+      bpStyle.totalBg ? `--bp-total-bg:${bpStyle.totalBg}` : "",
+      bpStyle.taskBorder ? `--bp-task-bd:${bpStyle.taskBorder}` : "",
+      bpStyle.taskBg ? `--bp-task-bg:${bpStyle.taskBg}` : "",
+      typeof bpStyle.taskRadius === "number" ? `--bp-task-r:${bpStyle.taskRadius}px` : "",
+      typeof bpStyle.chapterRadius === "number" ? `--bp-chapter-r:${bpStyle.chapterRadius}px` : "",
+    ]
+      .filter(Boolean)
+      .join(";");
+    const bpInline = vars ? ` style="${vars}"` : "";
+
+    return `
+      <div class="bp bp-${escHtml(variant)} bp-table-mode"${bpInline}${styleToInline(block.style)}>
+        ${title ? `<div class="bp-title">${title}</div>` : ""}
+        ${body}
+        ${grandTotalHtml}
+      </div>
+    `;
+  }
 
   
 
@@ -1111,6 +1522,43 @@ export function renderTemplateToHtml(template: any, ctx: AnyObj) {
     border-radius: 12px;
     border: 1px solid var(--tbl-border, #e5e7eb);
     font-size: ${theme.baseFontSize + 1}px;
+  }
+
+  .bp-level { margin-top: 8px; }
+  .bp-level-title{
+    font-size: ${Math.max(10, theme.baseFontSize - 1)}px;
+    font-weight: 700;
+    color: var(--muted);
+    margin: 0 0 6px;
+  }
+  .bp-table{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: ${Math.max(10, theme.baseFontSize - 1)}px;
+  }
+  .bp-table th,
+  .bp-table td{
+    border: 1px solid var(--tbl-border, #e5e7eb);
+    padding: 7px 8px;
+    vertical-align: top;
+  }
+  .bp-table th{
+    background: var(--tbl-headbg);
+    color: var(--tbl-headfg);
+    text-align: left;
+    font-weight: 700;
+  }
+  .bp-col-counter{
+    width: 56px;
+    white-space: nowrap;
+    font-weight: 700;
+  }
+  .bp-table-children td{
+    background: #fcfcfd;
+    padding: 10px;
+  }
+  .bp-table-children .bp-level{
+    margin-top: 0;
   }
 
   /* Variantes (opcionales, por clase) */

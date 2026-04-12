@@ -706,6 +706,7 @@ export default function Form({
         <div className="field-box">
           <label style={labelStyle()} className="form-label">
             {field.label}
+            {field.required && <span style={{ color: "red", marginLeft: 4 }}>*</span>}
           </label>
 
           {(field as any).allowOverride && (

@@ -114,6 +114,30 @@ type BudgetPartidasVariantOverrides = Partial<{
   chapterRadius: number;
   showTaskBox: boolean;
 }>;
+type BudgetPartidasTableColumn = {
+  label: string;
+  value: string;
+  align?: "left" | "center" | "right";
+};
+type BudgetPartidasTableLevel = {
+  key: string;
+  source: "group" | "task" | "child";
+  relationKey?: string;
+  parentLevelKey?: string;
+  parentFkField?: string;
+  titleTpl?: string;
+  columns: BudgetPartidasTableColumn[];
+};
+type BudgetPartidasTableMode = {
+  enabled?: boolean;
+  counter?: {
+    enabled?: boolean;
+    style?: "decimal" | string;
+    columnLabel?: string;
+  };
+  levels?: BudgetPartidasTableLevel[];
+  columnsByLevel?: Record<string, BudgetPartidasTableColumn[]>;
+};
 type BudgetPartidasBlock = {
   id: string;
   type: "budgetPartidas";
@@ -139,6 +163,7 @@ type BudgetPartidasBlock = {
   // âœ… NUEVO (opcional, safe)
   variant?: BudgetPartidasVariantName; // ej: "classic"
   variantOverrides?: BudgetPartidasVariantOverrides; // override por bloque
+  tableMode?: BudgetPartidasTableMode;
 
   // LEGACY (no tocar)
   partidasKey?: string;
@@ -180,12 +205,23 @@ type CardsBlock =
       repeat: string;         // ej: "related.contactos"
       card: CardBlock;        // plantilla de tarjeta
     };
+type TotalsBoxRow = {
+  label: string;
+  value: string;
+};
+type TotalsBoxBlock = {
+  id: string;
+  type: "totalsBox";
+  rows: TotalsBoxRow[];
+  style?: BlockStyle;
+};
 type PdfBlock =
-  | { id: string; type: "header"; title: string; subtitle?: string; style?: BlockStyle }
-  | { id: string; type: "text"; value: string; variant?: "normal" | "h1" | "h2" | "muted"; style?: BlockStyle }
+  | { id: string; type: "header"; title: string; subtitle?: string;  style?: BlockStyle; rightText?: string }
+  | { id: string; type: "text"; value: string; variant?: "normal" |"richtext"| "h1" | "h2" | "muted"; style?: BlockStyle }
   | { id: string; type: "divider" }
   | BudgetPartidasBlock
   | CardsBlock
+  | TotalsBoxBlock
   | {
       id: string;
       type: "table";
@@ -561,6 +597,7 @@ export default function PdfTemplateForm({
       label: "Variables especiales",
       options: [
         { label: "Fecha actual", token: "{{now}}" },
+        { label: "Logo branding", token: "{{branding.logoUrl}}" },
       ],
     });
 
@@ -642,7 +679,7 @@ function addBlock(type: PdfBlock["type"]) {
     type === "header"
       ? { id: uid(), type: "header", title: "Encabezado", subtitle: "" }
       : type === "text"
-      ? { id: uid(), type: "text", value: "Texto", variant: "normal" }
+      ? { id: uid(), type: "text", value: "Texto", variant: "richtext" }
       : type === "divider"
       ? { id: uid(), type: "divider" }
       : type === "cards"
@@ -703,6 +740,16 @@ function addBlock(type: PdfBlock["type"]) {
           materialTotalField: "total",
           showSubtotals: true,
         }
+      : type === "totalsBox"
+      ? {
+          id: uid(),
+          type: "totalsBox",
+          rows: [
+            { label: "Base imponible", value: "{{record.base_imponible}} €" },
+            { label: "IVA", value: "{{record.iva}} €" },
+            { label: "Total", value: "{{record.total}} €" },
+          ],
+        }
       : {
           id: uid(),
           type: "table",
@@ -762,6 +809,241 @@ function prettyJson(value: unknown) {
 function appendBindingToken(currentValue: string | undefined, token: string) {
   const base = currentValue ?? "";
   return `${base}${base && !/\s$/.test(base) ? " " : ""}${token}`;
+}
+
+function createDefaultBudgetTableColumn(): BudgetPartidasTableColumn {
+  return { label: "Nueva columna", value: "{{item.campo}}", align: "left" };
+}
+
+function createDefaultBudgetTableLevel(): BudgetPartidasTableLevel {
+  return {
+    key: `level_${uid()}`,
+    source: "task",
+    titleTpl: "",
+    columns: [createDefaultBudgetTableColumn()],
+  };
+}
+
+function createDefaultBudgetTableMode(): BudgetPartidasTableMode {
+  return {
+    enabled: false,
+    counter: {
+      enabled: true,
+      style: "decimal",
+      columnLabel: "#",
+    },
+    levels: [],
+  };
+}
+
+function createDefaultTotalsBoxRow(): TotalsBoxRow {
+  return {
+    label: "Concepto",
+    value: "{{record.total}} €",
+  };
+}
+
+function normalizeBudgetTableModeInput(value: BudgetPartidasBlock["tableMode"]): BudgetPartidasTableMode {
+  const tableMode = value && typeof value === "object" ? value : {};
+  const counter = tableMode.counter && typeof tableMode.counter === "object" ? tableMode.counter : {};
+  const levels = Array.isArray(tableMode.levels)
+    ? tableMode.levels.map((level) => ({
+        key: String(level?.key || `level_${uid()}`),
+        source: (
+          level?.source === "group" || level?.source === "child" ? level.source : "task"
+        ) as BudgetPartidasTableLevel["source"],
+        relationKey: level?.relationKey ? String(level.relationKey) : undefined,
+        parentLevelKey: level?.parentLevelKey ? String(level.parentLevelKey) : undefined,
+        parentFkField: level?.parentFkField ? String(level.parentFkField) : undefined,
+        titleTpl: level?.titleTpl ? String(level.titleTpl) : "",
+        columns: Array.isArray(level?.columns) && level.columns.length
+          ? level.columns.map((column) => ({
+              label: String(column?.label ?? ""),
+              value: String(column?.value ?? ""),
+              align: (
+                column?.align === "center" || column?.align === "right" ? column.align : "left"
+              ) as BudgetPartidasTableColumn["align"],
+            }))
+          : [],
+      }))
+    : [];
+
+  return {
+    ...createDefaultBudgetTableMode(),
+    ...tableMode,
+    counter: {
+      ...createDefaultBudgetTableMode().counter,
+      ...counter,
+    },
+    levels,
+  };
+}
+
+function patchBudgetTableMode(
+  blockId: string,
+  currentTableMode: BudgetPartidasBlock["tableMode"],
+  patch: Partial<BudgetPartidasTableMode>
+) {
+  const nextTableMode = {
+    ...normalizeBudgetTableModeInput(currentTableMode),
+    ...patch,
+  };
+  updateBlock(blockId, "budgetPartidas", { tableMode: nextTableMode } as any);
+}
+
+function patchBudgetTableCounter(
+  blockId: string,
+  currentTableMode: BudgetPartidasBlock["tableMode"],
+  patch: Partial<NonNullable<BudgetPartidasTableMode["counter"]>>
+) {
+  const current = normalizeBudgetTableModeInput(currentTableMode);
+  patchBudgetTableMode(blockId, currentTableMode, {
+    counter: {
+      ...(current.counter || {}),
+      ...patch,
+    },
+  });
+}
+
+function addBudgetTableLevel(blockId: string, currentTableMode: BudgetPartidasBlock["tableMode"]) {
+  const current = normalizeBudgetTableModeInput(currentTableMode);
+  patchBudgetTableMode(blockId, currentTableMode, {
+    levels: [...(current.levels || []), createDefaultBudgetTableLevel()],
+  });
+}
+
+function updateBudgetTableLevel(
+  blockId: string,
+  currentTableMode: BudgetPartidasBlock["tableMode"],
+  levelIndex: number,
+  patch: Partial<BudgetPartidasTableLevel>
+) {
+  const current = normalizeBudgetTableModeInput(currentTableMode);
+  const next = [...(current.levels || [])];
+  next[levelIndex] = { ...(next[levelIndex] || createDefaultBudgetTableLevel()), ...patch };
+  patchBudgetTableMode(blockId, currentTableMode, { levels: next });
+}
+
+function removeBudgetTableLevel(blockId: string, currentTableMode: BudgetPartidasBlock["tableMode"], levelIndex: number) {
+  const current = normalizeBudgetTableModeInput(currentTableMode);
+  patchBudgetTableMode(blockId, currentTableMode, {
+    levels: (current.levels || []).filter((_, index) => index !== levelIndex),
+  });
+}
+
+function moveBudgetTableLevel(
+  blockId: string,
+  currentTableMode: BudgetPartidasBlock["tableMode"],
+  levelIndex: number,
+  direction: -1 | 1
+) {
+  const current = normalizeBudgetTableModeInput(currentTableMode);
+  const levels = [...(current.levels || [])];
+  const nextIndex = levelIndex + direction;
+  if (nextIndex < 0 || nextIndex >= levels.length) return;
+  [levels[levelIndex], levels[nextIndex]] = [levels[nextIndex], levels[levelIndex]];
+  patchBudgetTableMode(blockId, currentTableMode, { levels });
+}
+
+function addBudgetTableColumn(
+  blockId: string,
+  currentTableMode: BudgetPartidasBlock["tableMode"],
+  levelIndex: number
+) {
+  const current = normalizeBudgetTableModeInput(currentTableMode);
+  const levels = [...(current.levels || [])];
+  const level = levels[levelIndex] || createDefaultBudgetTableLevel();
+  levels[levelIndex] = {
+    ...level,
+    columns: [...(level.columns || []), createDefaultBudgetTableColumn()],
+  };
+  patchBudgetTableMode(blockId, currentTableMode, { levels });
+}
+
+function updateBudgetTableColumn(
+  blockId: string,
+  currentTableMode: BudgetPartidasBlock["tableMode"],
+  levelIndex: number,
+  columnIndex: number,
+  patch: Partial<BudgetPartidasTableColumn>
+) {
+  const current = normalizeBudgetTableModeInput(currentTableMode);
+  const levels = [...(current.levels || [])];
+  const level = levels[levelIndex] || createDefaultBudgetTableLevel();
+  const columns = [...(level.columns || [])];
+  columns[columnIndex] = { ...(columns[columnIndex] || createDefaultBudgetTableColumn()), ...patch };
+  levels[levelIndex] = { ...level, columns };
+  patchBudgetTableMode(blockId, currentTableMode, { levels });
+}
+
+function removeBudgetTableColumn(
+  blockId: string,
+  currentTableMode: BudgetPartidasBlock["tableMode"],
+  levelIndex: number,
+  columnIndex: number
+) {
+  const current = normalizeBudgetTableModeInput(currentTableMode);
+  const levels = [...(current.levels || [])];
+  const level = levels[levelIndex] || createDefaultBudgetTableLevel();
+  levels[levelIndex] = {
+    ...level,
+    columns: (level.columns || []).filter((_, index) => index !== columnIndex),
+  };
+  patchBudgetTableMode(blockId, currentTableMode, { levels });
+}
+
+function moveBudgetTableColumn(
+  blockId: string,
+  currentTableMode: BudgetPartidasBlock["tableMode"],
+  levelIndex: number,
+  columnIndex: number,
+  direction: -1 | 1
+) {
+  const current = normalizeBudgetTableModeInput(currentTableMode);
+  const levels = [...(current.levels || [])];
+  const level = levels[levelIndex] || createDefaultBudgetTableLevel();
+  const columns = [...(level.columns || [])];
+  const nextIndex = columnIndex + direction;
+  if (nextIndex < 0 || nextIndex >= columns.length) return;
+  [columns[columnIndex], columns[nextIndex]] = [columns[nextIndex], columns[columnIndex]];
+  levels[levelIndex] = { ...level, columns };
+  patchBudgetTableMode(blockId, currentTableMode, { levels });
+}
+
+function addTotalsBoxRow(blockId: string, block: TotalsBoxBlock) {
+  updateBlock(blockId, "totalsBox", {
+    rows: [...(Array.isArray(block.rows) ? block.rows : []), createDefaultTotalsBoxRow()],
+  });
+}
+
+function updateTotalsBoxRow(
+  blockId: string,
+  block: TotalsBoxBlock,
+  rowIndex: number,
+  patch: Partial<TotalsBoxRow>
+) {
+  const next = [...(Array.isArray(block.rows) ? block.rows : [])];
+  next[rowIndex] = { ...(next[rowIndex] || createDefaultTotalsBoxRow()), ...patch };
+  updateBlock(blockId, "totalsBox", { rows: next });
+}
+
+function removeTotalsBoxRow(blockId: string, block: TotalsBoxBlock, rowIndex: number) {
+  updateBlock(blockId, "totalsBox", {
+    rows: (Array.isArray(block.rows) ? block.rows : []).filter((_, index) => index !== rowIndex),
+  });
+}
+
+function moveTotalsBoxRow(
+  blockId: string,
+  block: TotalsBoxBlock,
+  rowIndex: number,
+  direction: -1 | 1
+) {
+  const rows = [...(Array.isArray(block.rows) ? block.rows : [])];
+  const nextIndex = rowIndex + direction;
+  if (nextIndex < 0 || nextIndex >= rows.length) return;
+  [rows[rowIndex], rows[nextIndex]] = [rows[nextIndex], rows[rowIndex]];
+  updateBlock(blockId, "totalsBox", { rows });
 }
 
 function deleteBlock(id: string) {
@@ -941,6 +1223,9 @@ function save() {
                     <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("cards")}>
                       + Tarjetas
                     </button>
+                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("totalsBox")}>
+                      + Totales
+                    </button>
                 </div>
                 )}
             
@@ -1045,6 +1330,16 @@ function save() {
                         value={selectedBlock.subtitle ?? ""}
                         disabled={readOnly}
                         onChange={(e) => updateBlock(selectedBlock.id, "header", { subtitle: e.target.value })}
+                        />
+                    </div>
+
+                     <div className="mb-3">
+                        <label className="form-label">Texto a la derecha</label>
+                        <input
+                        className="form-control"
+                        value={selectedBlock.rightText ?? ""}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "header", { rightText: e.target.value })}
                         />
                     </div>
 
@@ -1487,6 +1782,469 @@ function save() {
                               updateBlock(selectedBlock.id, "budgetPartidas", { title: e.target.value })
                             }
                           />
+                        </div>
+
+                        <div className="card mb-3 border-0 shadow-sm">
+                          <div className="card-header d-flex justify-content-between align-items-center">
+                            <div>
+                              <div className="fw-semibold">Modo tabla</div>
+                              <div className="small text-muted">
+                                Activa la configuración nueva de <code>tableMode</code> sin tocar el modo legacy.
+                              </div>
+                            </div>
+                            <div className="form-check form-switch mb-0">
+                              <input
+                                className="form-check-input"
+                                type="checkbox"
+                                role="switch"
+                                checked={!!selectedBlock.tableMode?.enabled}
+                                disabled={readOnly}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    updateBlock(selectedBlock.id, "budgetPartidas", {
+                                      tableMode: {
+                                        ...createDefaultBudgetTableMode(),
+                                        ...normalizeBudgetTableModeInput(selectedBlock.tableMode),
+                                        enabled: true,
+                                      },
+                                    } as any);
+                                  } else {
+                                    updateBlock(selectedBlock.id, "budgetPartidas", {
+                                      tableMode: {
+                                        ...normalizeBudgetTableModeInput(selectedBlock.tableMode),
+                                        enabled: false,
+                                      },
+                                    } as any);
+                                  }
+                                }}
+                              />
+                              <label className="form-check-label">Activar modo tabla</label>
+                            </div>
+                          </div>
+
+                          {!!selectedBlock.tableMode?.enabled && (
+                            <div className="card-body">
+                              <div className="card mb-3">
+                                <div className="card-header">Contador</div>
+                                <div className="card-body">
+                                  <div className="row g-3 align-items-end">
+                                    <div className="col-12 col-md-4">
+                                      <div className="form-check">
+                                        <input
+                                          className="form-check-input"
+                                          type="checkbox"
+                                          checked={normalizeBudgetTableModeInput(selectedBlock.tableMode).counter?.enabled !== false}
+                                          disabled={readOnly}
+                                          onChange={(e) =>
+                                            patchBudgetTableCounter(selectedBlock.id, selectedBlock.tableMode, {
+                                              enabled: e.target.checked,
+                                            })
+                                          }
+                                        />
+                                        <label className="form-check-label">Mostrar contador</label>
+                                      </div>
+                                    </div>
+
+                                    <div className="col-12 col-md-4">
+                                      <label className="form-label">Estilo</label>
+                                      <select
+                                        className="form-select"
+                                        value={normalizeBudgetTableModeInput(selectedBlock.tableMode).counter?.style ?? "decimal"}
+                                        disabled={readOnly}
+                                        onChange={(e) =>
+                                          patchBudgetTableCounter(selectedBlock.id, selectedBlock.tableMode, {
+                                            style: e.target.value,
+                                          })
+                                        }
+                                      >
+                                        <option value="decimal">decimal</option>
+                                      </select>
+                                    </div>
+
+                                    <div className="col-12 col-md-4">
+                                      <label className="form-label">Label de columna</label>
+                                      <input
+                                        className="form-control"
+                                        value={normalizeBudgetTableModeInput(selectedBlock.tableMode).counter?.columnLabel ?? "#"}
+                                        disabled={readOnly}
+                                        onChange={(e) =>
+                                          patchBudgetTableCounter(selectedBlock.id, selectedBlock.tableMode, {
+                                            columnLabel: e.target.value,
+                                          })
+                                        }
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="card">
+                                <div className="card-header d-flex justify-content-between align-items-center">
+                                  <div>
+                                    <div className="fw-semibold">Niveles</div>
+                                    <div className="small text-muted">
+                                      Configura niveles <code>group</code>, <code>task</code> y <code>child</code>.
+                                    </div>
+                                  </div>
+                                  {!readOnly && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-outline-primary"
+                                      onClick={() => addBudgetTableLevel(selectedBlock.id, selectedBlock.tableMode)}
+                                    >
+                                      + Nivel
+                                    </button>
+                                  )}
+                                </div>
+                                <div className="card-body">
+                                  {(normalizeBudgetTableModeInput(selectedBlock.tableMode).levels ?? []).length === 0 ? (
+                                    <div className="text-muted small">
+                                      No hay niveles todavía. Añade al menos uno para usar el modo tabla.
+                                    </div>
+                                  ) : (
+                                    <div className="d-flex flex-column gap-3">
+                                      {(normalizeBudgetTableModeInput(selectedBlock.tableMode).levels ?? []).map((level, levelIdx) => (
+                                        <div key={`${level.key}-${levelIdx}`} className="border rounded-3 p-3">
+                                          <div className="d-flex justify-content-between align-items-center gap-2 mb-3">
+                                            <div className="fw-semibold">Nivel #{levelIdx + 1}</div>
+                                            <div className="d-flex gap-2">
+                                              {!readOnly && (
+                                                <>
+                                                  <button
+                                                    type="button"
+                                                    className="btn btn-sm btn-outline-secondary"
+                                                    onClick={() =>
+                                                      moveBudgetTableLevel(selectedBlock.id, selectedBlock.tableMode, levelIdx, -1)
+                                                    }
+                                                    disabled={levelIdx === 0}
+                                                  >
+                                                    ↑
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    className="btn btn-sm btn-outline-secondary"
+                                                    onClick={() =>
+                                                      moveBudgetTableLevel(selectedBlock.id, selectedBlock.tableMode, levelIdx, 1)
+                                                    }
+                                                    disabled={levelIdx === (normalizeBudgetTableModeInput(selectedBlock.tableMode).levels ?? []).length - 1}
+                                                  >
+                                                    ↓
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    className="btn btn-sm btn-outline-danger"
+                                                    onClick={() =>
+                                                      removeBudgetTableLevel(selectedBlock.id, selectedBlock.tableMode, levelIdx)
+                                                    }
+                                                  >
+                                                    Eliminar
+                                                  </button>
+                                                </>
+                                              )}
+                                            </div>
+                                          </div>
+
+                                          <div className="row g-3">
+                                            <div className="col-12 col-md-4">
+                                              <label className="form-label">Key</label>
+                                              <input
+                                                className="form-control"
+                                                value={level.key}
+                                                disabled={readOnly}
+                                                onChange={(e) =>
+                                                  updateBudgetTableLevel(selectedBlock.id, selectedBlock.tableMode, levelIdx, {
+                                                    key: e.target.value,
+                                                  })
+                                                }
+                                              />
+                                            </div>
+
+                                            <div className="col-12 col-md-4">
+                                              <label className="form-label">Source</label>
+                                              <select
+                                                className="form-select"
+                                                value={level.source}
+                                                disabled={readOnly}
+                                                onChange={(e) =>
+                                                  updateBudgetTableLevel(selectedBlock.id, selectedBlock.tableMode, levelIdx, {
+                                                    source: e.target.value as BudgetPartidasTableLevel["source"],
+                                                    relationKey: e.target.value === "child" ? level.relationKey ?? selectedBlock.materialesKey ?? "" : undefined,
+                                                    parentLevelKey: e.target.value === "child" ? level.parentLevelKey ?? "task" : undefined,
+                                                    parentFkField:
+                                                      e.target.value === "child"
+                                                        ? level.parentFkField ?? selectedBlock.materialesFkToTarea ?? "taskId"
+                                                        : undefined,
+                                                  })
+                                                }
+                                              >
+                                                <option value="group">group</option>
+                                                <option value="task">task</option>
+                                                <option value="child">child</option>
+                                              </select>
+                                            </div>
+
+                                            <div className="col-12 col-md-4">
+                                              <label className="form-label">Title Tpl</label>
+                                              <input
+                                                className="form-control"
+                                                value={level.titleTpl ?? ""}
+                                                disabled={readOnly}
+                                                onChange={(e) =>
+                                                  updateBudgetTableLevel(selectedBlock.id, selectedBlock.tableMode, levelIdx, {
+                                                    titleTpl: e.target.value,
+                                                  })
+                                                }
+                                              />
+                                            </div>
+
+                                            {level.source === "child" && (
+                                              <>
+                                                <div className="col-12 col-md-4">
+                                                  <label className="form-label">relationKey</label>
+                                                  <select
+                                                    className="form-select"
+                                                    value={level.relationKey ?? ""}
+                                                    disabled={readOnly}
+                                                    onChange={(e) =>
+                                                      updateBudgetTableLevel(selectedBlock.id, selectedBlock.tableMode, levelIdx, {
+                                                        relationKey: e.target.value,
+                                                      })
+                                                    }
+                                                  >
+                                                    <option value="">Selecciona relación</option>
+                                                    {!relationDetails.some((relation) => relation.key === (level.relationKey ?? "")) && level.relationKey ? (
+                                                      <option value={level.relationKey}>{level.relationKey}</option>
+                                                    ) : null}
+                                                    {relationDetails
+                                                      .filter((relation) => relation.key !== selectedBlock.tareasKey)
+                                                      .map((relation) => (
+                                                        <option key={relation.key} value={relation.key}>
+                                                          {relation.key} ({relation.table})
+                                                        </option>
+                                                      ))}
+                                                  </select>
+                                                </div>
+
+                                                <div className="col-12 col-md-4">
+                                                  <label className="form-label">parentLevelKey</label>
+                                                  <select
+                                                    className="form-select"
+                                                    value={level.parentLevelKey ?? "task"}
+                                                    disabled={readOnly}
+                                                    onChange={(e) =>
+                                                      updateBudgetTableLevel(selectedBlock.id, selectedBlock.tableMode, levelIdx, {
+                                                        parentLevelKey: e.target.value,
+                                                      })
+                                                    }
+                                                  >
+                                                    <option value="task">task</option>
+                                                    {(normalizeBudgetTableModeInput(selectedBlock.tableMode).levels ?? [])
+                                                      .filter((candidate) => candidate.key && candidate.key !== level.key)
+                                                      .map((candidate) => (
+                                                        <option key={candidate.key} value={candidate.key}>
+                                                          {candidate.key}
+                                                        </option>
+                                                      ))}
+                                                  </select>
+                                                </div>
+
+                                                <div className="col-12 col-md-4">
+                                                  <label className="form-label">parentFkField</label>
+                                                  <select
+                                                    className="form-select"
+                                                    value={level.parentFkField ?? ""}
+                                                    disabled={readOnly}
+                                                    onChange={(e) =>
+                                                      updateBudgetTableLevel(selectedBlock.id, selectedBlock.tableMode, levelIdx, {
+                                                        parentFkField: e.target.value,
+                                                      })
+                                                    }
+                                                  >
+                                                    <option value="">Selecciona campo</option>
+                                                    {!((relationDetails.find((relation) => relation.key === level.relationKey)?.fields ?? []).includes(level.parentFkField ?? "")) &&
+                                                    level.parentFkField ? (
+                                                      <option value={level.parentFkField}>{level.parentFkField}</option>
+                                                    ) : null}
+                                                    {(relationDetails.find((relation) => relation.key === level.relationKey)?.fields ?? []).map((field) => (
+                                                      <option key={field} value={field}>
+                                                        {field}
+                                                      </option>
+                                                    ))}
+                                                  </select>
+                                                </div>
+                                              </>
+                                            )}
+                                          </div>
+
+                                          <div className="mt-3 border rounded p-2 bg-light-subtle">
+                                            <div className="d-flex justify-content-between align-items-center mb-2">
+                                              <div className="fw-semibold">Columnas</div>
+                                              {!readOnly && (
+                                                <button
+                                                  type="button"
+                                                  className="btn btn-sm btn-outline-primary"
+                                                  onClick={() =>
+                                                    addBudgetTableColumn(selectedBlock.id, selectedBlock.tableMode, levelIdx)
+                                                  }
+                                                >
+                                                  + Columna
+                                                </button>
+                                              )}
+                                            </div>
+
+                                            {level.columns.length === 0 ? (
+                                              <div className="text-muted small">Este nivel no tiene columnas todavía.</div>
+                                            ) : (
+                                              <div className="d-flex flex-column gap-3">
+                                                {level.columns.map((column, columnIdx) => {
+                                                  const levelFields =
+                                                    level.source === "group"
+                                                      ? [selectedBlock.groupByField].filter(Boolean)
+                                                      : level.source === "task"
+                                                      ? relationDetails.find((relation) => relation.key === selectedBlock.tareasKey)?.fields ?? []
+                                                      : relationDetails.find((relation) => relation.key === level.relationKey)?.fields ?? [];
+
+                                                  const levelTokenGroup = makeFieldBindingGroup(
+                                                    level.source === "child"
+                                                      ? `Campos de ${relationDetails.find((relation) => relation.key === level.relationKey)?.table || level.relationKey || "relación"}`
+                                                      : level.source === "task"
+                                                      ? `Campos de ${relationDetails.find((relation) => relation.key === selectedBlock.tareasKey)?.table || "tareas"}`
+                                                      : "Variables de partida",
+                                                    "item",
+                                                    levelFields,
+                                                  );
+
+                                                  return (
+                                                    <div key={`${level.key}-column-${columnIdx}`} className="border rounded p-2 bg-white">
+                                                      <div className="d-flex justify-content-between align-items-center gap-2 mb-2">
+                                                        <div className="small fw-semibold">Columna #{columnIdx + 1}</div>
+                                                        <div className="d-flex gap-2">
+                                                          {!readOnly && (
+                                                            <>
+                                                              <button
+                                                                type="button"
+                                                                className="btn btn-sm btn-outline-secondary"
+                                                                onClick={() =>
+                                                                  moveBudgetTableColumn(selectedBlock.id, selectedBlock.tableMode, levelIdx, columnIdx, -1)
+                                                                }
+                                                                disabled={columnIdx === 0}
+                                                              >
+                                                                ↑
+                                                              </button>
+                                                              <button
+                                                                type="button"
+                                                                className="btn btn-sm btn-outline-secondary"
+                                                                onClick={() =>
+                                                                  moveBudgetTableColumn(selectedBlock.id, selectedBlock.tableMode, levelIdx, columnIdx, 1)
+                                                                }
+                                                                disabled={columnIdx === level.columns.length - 1}
+                                                              >
+                                                                ↓
+                                                              </button>
+                                                              <button
+                                                                type="button"
+                                                                className="btn btn-sm btn-outline-danger"
+                                                                onClick={() =>
+                                                                  removeBudgetTableColumn(selectedBlock.id, selectedBlock.tableMode, levelIdx, columnIdx)
+                                                                }
+                                                              >
+                                                                Eliminar
+                                                              </button>
+                                                            </>
+                                                          )}
+                                                        </div>
+                                                      </div>
+
+                                                      <div className="row g-2">
+                                                        <div className="col-12 col-md-3">
+                                                          <label className="form-label small mb-1">Label</label>
+                                                          <input
+                                                            className="form-control form-control-sm"
+                                                            value={column.label}
+                                                            disabled={readOnly}
+                                                            onChange={(e) =>
+                                                              updateBudgetTableColumn(selectedBlock.id, selectedBlock.tableMode, levelIdx, columnIdx, {
+                                                                label: e.target.value,
+                                                              })
+                                                            }
+                                                          />
+                                                        </div>
+
+                                                        <div className="col-12 col-md-6">
+                                                          <label className="form-label small mb-1">Value</label>
+                                                          <input
+                                                            className="form-control form-control-sm"
+                                                            value={column.value}
+                                                            disabled={readOnly}
+                                                            onChange={(e) =>
+                                                              updateBudgetTableColumn(selectedBlock.id, selectedBlock.tableMode, levelIdx, columnIdx, {
+                                                                value: e.target.value,
+                                                              })
+                                                            }
+                                                          />
+                                                          <div className="mt-2">
+                                                            <BindingTokenHelper
+                                                              groups={[
+                                                                ...commonBindingGroups,
+                                                                ...(level.source === "group"
+                                                                  ? [{
+                                                                      label: "Variables de partida",
+                                                                      options: [
+                                                                        { label: "Label", token: "{{groupLabel}}" },
+                                                                        { label: "Valor", token: "{{groupValue}}" },
+                                                                      ],
+                                                                    }]
+                                                                  : []),
+                                                                ...(levelTokenGroup ? [levelTokenGroup] : []),
+                                                              ]}
+                                                              disabled={readOnly}
+                                                              title="Insertar variable en la columna"
+                                                              onInsert={(token) =>
+                                                                updateBudgetTableColumn(selectedBlock.id, selectedBlock.tableMode, levelIdx, columnIdx, {
+                                                                  value: appendBindingToken(column.value, token),
+                                                                })
+                                                              }
+                                                            />
+                                                          </div>
+                                                        </div>
+
+                                                        <div className="col-12 col-md-3">
+                                                          <label className="form-label small mb-1">Align</label>
+                                                          <select
+                                                            className="form-select form-select-sm"
+                                                            value={column.align ?? "left"}
+                                                            disabled={readOnly}
+                                                            onChange={(e) =>
+                                                              updateBudgetTableColumn(selectedBlock.id, selectedBlock.tableMode, levelIdx, columnIdx, {
+                                                                align: e.target.value as BudgetPartidasTableColumn["align"],
+                                                              })
+                                                            }
+                                                          >
+                                                            <option value="left">left</option>
+                                                            <option value="center">center</option>
+                                                            <option value="right">right</option>
+                                                          </select>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="alert alert-light small mt-3 mb-0">
+                                Tip: puedes usar <code>{"{{branding.logoUrl}}"}</code> en bloques de texto o richtext, por ejemplo con
+                                <code>{" <img src=\"{{branding.logoUrl}}\" alt=\"Logo\" style=\"max-width:140px;\" />"}</code>.
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         {/* -------- Related keys -------- */}
@@ -2640,6 +3398,112 @@ function save() {
                   </div>
                 </div>
               )}
+            {selectedBlock && selectedBlock.type == "totalsBox" && (
+              <div className="card">
+                    <div className="card-header d-flex justify-content-between align-items-center">
+                    <div>Totales</div>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary"
+                        onClick={() => addTotalsBoxRow(selectedBlock.id, selectedBlock)}
+                      >
+                        + Fila
+                      </button>
+                    )}
+                    </div>
+                    <div className="card-body">
+                    <div className="text-muted small mb-3">
+                      El bloque lee <code>rows</code> con pares <code>label</code> y <code>value</code>.
+                    </div>
+
+                    {(Array.isArray(selectedBlock.rows) ? selectedBlock.rows : []).length === 0 ? (
+                      <div className="text-muted small">No hay filas todavía.</div>
+                    ) : (
+                      <div className="d-flex flex-column gap-3">
+                        {(Array.isArray(selectedBlock.rows) ? selectedBlock.rows : []).map((row, rowIdx) => (
+                          <div key={rowIdx} className="border rounded p-3">
+                            <div className="d-flex justify-content-between align-items-center mb-2">
+                              <div className="fw-semibold small">Fila #{rowIdx + 1}</div>
+                              {!readOnly && (
+                                <div className="d-flex gap-2">
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-secondary"
+                                    onClick={() => moveTotalsBoxRow(selectedBlock.id, selectedBlock, rowIdx, -1)}
+                                    disabled={rowIdx === 0}
+                                  >
+                                    ↑
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-secondary"
+                                    onClick={() => moveTotalsBoxRow(selectedBlock.id, selectedBlock, rowIdx, 1)}
+                                    disabled={rowIdx === selectedBlock.rows.length - 1}
+                                  >
+                                    ↓
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-danger"
+                                    onClick={() => removeTotalsBoxRow(selectedBlock.id, selectedBlock, rowIdx)}
+                                  >
+                                    Eliminar
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="row g-3">
+                              <div className="col-12 col-md-4">
+                                <label className="form-label">Label</label>
+                                <input
+                                  className="form-control"
+                                  value={row.label ?? ""}
+                                  disabled={readOnly}
+                                  onChange={(e) =>
+                                    updateTotalsBoxRow(selectedBlock.id, selectedBlock, rowIdx, {
+                                      label: e.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+
+                              <div className="col-12 col-md-8">
+                                <label className="form-label">Value</label>
+                                <input
+                                  className="form-control"
+                                  value={row.value ?? ""}
+                                  disabled={readOnly}
+                                  onChange={(e) =>
+                                    updateTotalsBoxRow(selectedBlock.id, selectedBlock, rowIdx, {
+                                      value: e.target.value,
+                                    })
+                                  }
+                                />
+                                <div className="mt-2">
+                                  <BindingTokenHelper
+                                    groups={commonBindingGroups}
+                                    disabled={readOnly}
+                                    title="Insertar variable"
+                                    onInsert={(token) =>
+                                      updateTotalsBoxRow(selectedBlock.id, selectedBlock, rowIdx, {
+                                        value: appendBindingToken(row.value, token),
+                                      })
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+                
+            )}
 
             
 
