@@ -28,6 +28,7 @@ type ResolveArgs = {
   recordId: string;
   related?: RelatedSpec[];
   labelResolvers?: LabelResolver[];
+  recordOverride?: Record<string, any> | null;
 };
 
 async function addLabelsToRows(args: {
@@ -400,7 +401,7 @@ function extractAssetUrl(raw: any, depth = 0): string {
   return "";
 }
 
-function normalizeBranding(raw: any) {
+export function normalizeBranding(raw: any) {
   const branding = raw && typeof raw === "object" ? { ...raw } : {};
 
   const nombre = firstNonEmptyString(
@@ -856,17 +857,22 @@ export async function resolvePdfContext(args: ResolveArgs) {
   const supabase = await createClient();
 
   // 1) Registro principal
-  const { data: record, error: e1 } = await supabase
+  const { data: baseRecord, error: e1 } = await supabase
     .from(args.sourceTable)
     .select("*")
     .eq("id", args.recordId)
     .maybeSingle();
 
   if (e1) throw new Error(`resolvePdfContext: error record: ${e1.message}`);
-  if (!record)
+  if (!baseRecord)
     throw new Error(
       `resolvePdfContext: record no encontrado (${args.sourceTable} id=${args.recordId})`,
     );
+
+  const record = {
+    ...baseRecord,
+    ...((args.recordOverride && typeof args.recordOverride === "object") ? args.recordOverride : {}),
+  };
 
   // 2) Relaciones
   const related: Record<string, any[]> = {};

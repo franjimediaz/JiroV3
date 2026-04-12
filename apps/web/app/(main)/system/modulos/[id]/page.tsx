@@ -24,6 +24,7 @@ async function loadFieldsForTable(tableSlug: string) {
       .map((f: any) => ({
         name: String(f?.name ?? ""),
         label: f?.label ? String(f.label) : undefined,
+        type: f?.type ? String(f.type) : undefined,
       }))
       .filter((x: any) => x.name);
   }

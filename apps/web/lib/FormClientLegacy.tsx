@@ -169,6 +169,8 @@ export default function FormClient({
             <Form
               schema={schema}
               initialData={initialData}
+              recordId={id || initialData?.[primaryKey] || initialData?.id}
+              moduleSlug={table}
               mode={mode}
               onSubmit={onSubmit}
               modulesBySlug={modulesBySlug}

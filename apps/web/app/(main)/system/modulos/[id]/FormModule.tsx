@@ -12,7 +12,7 @@ export default function FormModules({
 }: {
   initialData: any;
   mode: "view" | "edit" | "create";
-  loadFieldsForTable?: (tableSlug: string) => Promise<{ name: string; label?: string }[]>;
+  loadFieldsForTable?: (tableSlug: string) => Promise<{ name: string; label?: string; type?: string }[]>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();

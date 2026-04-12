@@ -112,6 +112,7 @@ export default function NewFormClient({
       <Form
         schema={schema}
         initialData={initialData}
+        moduleSlug={table}
         mode="create"
         onSubmit={onSubmit}
       />

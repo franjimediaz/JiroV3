@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useState, useTransition, useEffect, useRef, useCallback} from "react";
 import styles from "./modulo-detalle.module.css";
 import  Selector from "../Selector";
 import {IconPicker} from "@repo/ui";
-import type { Field as FieldSchema, ModuleSchema, Field, FormSection, UiTab} from "@repo/types";
+import type { CalendarSpecialViewConfig, CalendarViewMode, Field as FieldSchema, ModuleSchema, Field, FormPreviewTab, FormSection, SpecialViewConfig, UiTab} from "@repo/types";
 import {VALID_FIELD_TYPES} from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
 import {FieldRow} from "./FieldRow"
@@ -12,6 +12,7 @@ import UiFormActionsEditor, { type UiFormAction } from "./UiFormActionsEditor";
 import { useSearchParams, useRouter } from "next/dist/client/components/navigation";
 
 type PickTarget = "columns" | "groupByField" | "parentFilterField" | "sumField";
+type ModuleFieldOption = { name: string; label?: string; type?: string };
 
 
 
@@ -25,7 +26,7 @@ const isPickMultiple = (target: PickTarget) => target === "columns";
 const getPickValue = (target: PickTarget, t: any) => {
   switch (target) {
     case "columns":
-      return extractColumnFields(t.config?.columns); // 👈 usa el helper bueno
+      return extractColumnFields(t.config?.columns); // usa el helper correcto
     case "groupByField":
       return t.config?.grouping?.groupByField || (t.config?.groupBy || [])[0] || "";
     case "parentFilterField":
@@ -100,7 +101,7 @@ function validatePropsClient(props: any): string | null {
   return null;
 }
 
-// —— Subcomponentes UI simples ————————————————————————————————
+// Subcomponentes UI simples
 function getSectionFieldSet(sections: Array<{ fields: string[] }>) {
   const set = new Set<string>();
   for (const s of sections) {
@@ -132,6 +133,67 @@ function buildColumnsObjects(selectedNames: string[], availableFields: TableFiel
   }));
 }
 
+function mapPreviewTabsToSpecialViews(previewTabs: FormPreviewTab[]): SpecialViewConfig[] {
+  return previewTabs.map((tab, index) => ({
+    id: String(tab.id || `special_view_${index + 1}`),
+    label: String(tab.label || `Vista especial ${index + 1}`),
+    type: "pdfPreview",
+    config: {
+      pdfTemplateId: String(tab.pdfTemplateId || ""),
+    },
+  }));
+}
+
+function defaultCalendarConfig(): CalendarSpecialViewConfig {
+  return {
+    sourceModuleSlug: "",
+    titleField: "",
+    startField: "",
+    endField: "",
+    allDayField: "",
+    colorField: "",
+    descriptionField: "",
+    resourceField: "",
+    parentLinkField: "",
+    enabledViews: ["month", "week", "day"],
+    defaultView: "month",
+  };
+}
+
+function normalizeCalendarConfig(input: any): CalendarSpecialViewConfig {
+  const cfg = input && typeof input === "object" ? input : {};
+  const sourceModuleSlug = String(cfg.sourceModuleSlug || cfg.sourceTable || "").trim();
+  const enabledViews = Array.isArray(cfg.enabledViews)
+    ? cfg.enabledViews.filter((v: any) => ["month", "week", "day"].includes(String(v)))
+    : ["month", "week", "day"];
+
+  return {
+    sourceModuleSlug,
+    titleField: String(cfg.titleField || "").trim(),
+    startField: String(cfg.startField || "").trim(),
+    endField: String(cfg.endField || "").trim(),
+    allDayField: String(cfg.allDayField || "").trim(),
+    colorField: String(cfg.colorField || "").trim(),
+    descriptionField: String(cfg.descriptionField || "").trim(),
+    resourceField: String(cfg.resourceField || "").trim(),
+    parentLinkField: String(cfg.parentLinkField || "").trim(),
+    enabledViews: enabledViews.length ? (enabledViews as CalendarViewMode[]) : ["month", "week", "day"],
+    defaultView: ["month", "week", "day"].includes(String(cfg.defaultView))
+      ? (cfg.defaultView as CalendarViewMode)
+      : "month",
+  };
+}
+
+function sortFieldsForCalendar(fields: ModuleFieldOption[], preferredTypes: string[]) {
+  const preferred = new Set(preferredTypes);
+  return [...fields].sort((a, b) => {
+    const aPref = a.type && preferred.has(a.type) ? 0 : 1;
+    const bPref = b.type && preferred.has(b.type) ? 0 : 1;
+    if (aPref !== bPref) return aPref - bPref;
+    return (a.label || a.name).localeCompare(b.label || b.name, "es");
+  });
+}
+
 // Helpers para el selector de modo
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -142,7 +204,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-// —— Form principal ————————————————————————————————————————————————
+// Form principal
 
 
 
@@ -156,7 +218,7 @@ export default function ModuloForm({
   initialData: any;
   mode: "view" | "edit" | "create";
   onSave: (fd: FormData) => Promise<{ ok: boolean; detail: string; id?: string }>;
-  loadFieldsForTable?: (tableSlug: string) => Promise<{ name: string; label?: string }[]>;
+  loadFieldsForTable?: (tableSlug: string) => Promise<ModuleFieldOption[]>;
 }) {
   
   const [pending, start] = useTransition();
@@ -172,9 +234,9 @@ export default function ModuloForm({
   const [parentId, setParentId] = useState<string | null>(initialData?.parent_id ?? null);
   const [pickOpen, setPickOpen] = useState(false);
   const [pickTarget, setPickTarget] = useState<PickTarget>("columns");
-  const [fieldsByTable, setFieldsByTable] = useState<Record<string, { name: string; label?: string }[]>>({});
+  const [fieldsByTable, setFieldsByTable] = useState<Record<string, ModuleFieldOption[]>>({});
   const [loadingByTable, setLoadingByTable] = useState<Record<string, boolean>>({});
-  const fieldsCacheRef = useRef<Record<string, { name: string; label?: string }[]>>({});
+  const fieldsCacheRef = useRef<Record<string, ModuleFieldOption[]>>({});
   const loadingCacheRef = useRef<Record<string, boolean>>({});
   const router = useRouter();
 const searchParams = useSearchParams();
@@ -192,10 +254,10 @@ useEffect(() => {
   if (!key) return;
   if (!loadFieldsForTable) return;
 
-  // ✅ cache estable (ref), no depende de fieldsByTable
+  // cache estable (ref), no depende de fieldsByTable
   if (fieldsCacheRef.current[key]) return;
 
-  // ✅ evita doble fetch si ya está cargando
+  // evita doble fetch si ya está cargando
   if (loadingCacheRef.current[key]) return;
 
   setLoadingByTable((p) => ({ ...p, [key]: true }));
@@ -253,6 +315,20 @@ useEffect(() => {
         }
       }
 
+      const specialViews = Array.isArray(uiAny.specialViews)
+        ? (uiAny.specialViews as SpecialViewConfig[])
+        : [];
+      const legacyPreviewTabs = Array.isArray(uiAny.previewTabs)
+        ? (uiAny.previewTabs as FormPreviewTab[])
+        : [];
+
+      if (specialViews.length === 0 && legacyPreviewTabs.length > 0) {
+        next.ui = {
+          ...(next.ui || {}),
+          specialViews: mapPreviewTabsToSpecialViews(legacyPreviewTabs),
+        };
+      }
+
       return next;
     } catch {
       return base;
@@ -278,6 +354,24 @@ const getFormActions = (): UiFormAction[] => {
 
 const setFormActions = (actions: UiFormAction[]) => {
   const ui = { ...(propsObj.ui || {}), formActions: actions as any };
+  const next = { ...propsObj, ui };
+  setPropsObj(next);
+  setRawText(JSON.stringify(next, null, 2));
+};
+
+const getSpecialViews = (): SpecialViewConfig[] => {
+  const uiAny = (propsObj.ui || {}) as any;
+  if (Array.isArray(uiAny.specialViews)) return uiAny.specialViews as SpecialViewConfig[];
+  if (Array.isArray(uiAny.previewTabs)) {
+    return mapPreviewTabsToSpecialViews(uiAny.previewTabs as FormPreviewTab[]);
+  }
+  return [];
+};
+
+const setSpecialViews = (specialViews: SpecialViewConfig[]) => {
+  const currentUi = { ...(propsObj.ui || {}) } as any;
+  const { previewTabs: _legacyPreviewTabs, ...restUi } = currentUi;
+  const ui = { ...restUi, specialViews };
   const next = { ...propsObj, ui };
   setPropsObj(next);
   setRawText(JSON.stringify(next, null, 2));
@@ -463,6 +557,7 @@ const setFormActions = (actions: UiFormAction[]) => {
       fd.set("tipo", tipo);
       fd.set("orden", String(orden));
       fd.set("activo", String(activo));
+      fd.set("sidebar", String(sidebar));
       fd.set("props", JSON.stringify(toSave));
 
       const res = await onSave(fd);
@@ -482,6 +577,7 @@ const setFormActions = (actions: UiFormAction[]) => {
 
   const readOnlyAttr = { disabled: readOnly } as const;
   const [activeTabId, setActiveTabId] = useState<string>("");
+  const [activeViewEditorId, setActiveViewEditorId] = useState<string>("");
       useEffect(() => {
       const tabs = getTabs();
       if (!tabs.length) {
@@ -495,8 +591,25 @@ const setFormActions = (actions: UiFormAction[]) => {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [propsObj.ui]);
 
+    useEffect(() => {
+      const viewIds = [
+        ...getTabs().filter((tab) => tab.type !== "form").map((tab) => `tab:${tab.id}`),
+        ...getSpecialViews().map((view) => `special:${view.id}`),
+      ];
 
-type SimpleField = { name: string; label?: string };
+      if (!viewIds.length) {
+        if (activeViewEditorId) setActiveViewEditorId("");
+        return;
+      }
+
+      if (!activeViewEditorId || !viewIds.includes(activeViewEditorId)) {
+        setActiveViewEditorId(viewIds[0]);
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [propsObj.ui]);
+
+
+type SimpleField = ModuleFieldOption;
 
 const sourceFields: SimpleField[] = (propsObj.fields || []).map((f: any) => ({
   name: f.name,
@@ -633,12 +746,19 @@ const editorTabs = [
           />
         </div>
 
+
         <div className={styles.switchRow}>
-          <label className={styles.label}>Sidebar</label>
+          <label className={styles.label}>Quitar del sidebar</label>
           <input
             type="checkbox"
-            checked={sidebar}
-            onChange={(e) => setSidebar(e.target.checked)}
+            checked={!!propsObj.ui?.sidebar}
+            onChange={(e) => {
+              const ui = { ...propsObj.ui, sidebar: e.target.checked };
+              const next = { ...propsObj, ui };
+              setPropsObj(next);
+              setRawText(JSON.stringify(next, null, 2));
+              setSidebar(e.target.checked);
+            }}
             {...readOnlyAttr}
           />
         </div>
@@ -1269,67 +1389,462 @@ const editorTabs = [
           type="button"
           className={styles.btnAdd}
           onClick={() => {
-            const tabs = getTabs();
-            const n = tabs.length + 1;
-            setTabs([
-              ...tabs,
+            const current = getSpecialViews();
+            const n = current.length + 1;
+            const nextId = `special_view_${n}`;
+            setSpecialViews([
+              ...current,
               {
-                id: `tab_${n}`,
+                id: nextId,
                 label: `Calendario ${n}`,
                 type: "calendar",
-                config: {
-                  sourceTable: "",
-                  startField: "",
-                  endField: "",
-                  titleField: "",
-                  colorField: "",
-                },
+                config: defaultCalendarConfig(),
               },
             ]);
+            setActiveViewEditorId(`special:${nextId}`);
           }}
           disabled={readOnly}
         >
           + Añadir Calendario
         </button>
+
+        <button
+          type="button"
+          className={styles.btnAdd}
+          onClick={() => {
+            const current = getSpecialViews();
+            const n = current.length + 1;
+            const nextId = `special_view_${n}`;
+            setSpecialViews([
+              ...current,
+              {
+                id: nextId,
+                label: `Preview ${n}`,
+                type: "pdfPreview",
+                config: { pdfTemplateId: "" },
+              },
+            ]);
+            setActiveViewEditorId(`special:${nextId}`);
+          }}
+          disabled={readOnly}
+        >
+          + Añadir Preview
+        </button>
       </div>
 
-      {getTabs().filter((tab) => tab.type !== "form").length > 0 && (
+      {(() => {
+        const viewItems = [
+          ...getTabs().filter((tab) => tab.type !== "form").map((tab) => ({
+            key: `tab:${tab.id}`,
+            label: tab.label,
+            type: tab.type,
+          })),
+          ...getSpecialViews().map((view) => ({
+            key: `special:${view.id}`,
+            label: view.label,
+            type: view.type,
+          })),
+        ];
+
+        if (viewItems.length === 0) return null;
+
+        return (
         <div className={styles.card} style={{ marginTop: 12 }}>
           <div className={styles.grid}>
             <div className="full">
               <label className={styles.label}>Vista activa</label>
               <select
                 className={styles.input}
-                value={
-                  (() => {
-                    const viewTabs = getTabs().filter((tab) => tab.type !== "form");
-                    const currentExists = viewTabs.some((tab) => tab.id === activeTabId);
-                    return currentExists ? activeTabId : viewTabs[0]?.id || "";
-                  })()
-                }
-                onChange={(e) => setActiveTabId(e.target.value)}
+                value={viewItems.some((item) => item.key === activeViewEditorId) ? activeViewEditorId : viewItems[0]?.key || ""}
+                onChange={(e) => setActiveViewEditorId(e.target.value)}
                 disabled={readOnly}
               >
-                {getTabs()
-                  .filter((tab) => tab.type !== "form")
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.label} — ({t.type})
-                    </option>
-                  ))}
+                {viewItems.map((item) => (
+                  <option key={item.key} value={item.key}>
+                    {item.label} — ({item.type})
+                  </option>
+                ))}
               </select>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {(() => {
+        const selectedKey = activeViewEditorId;
+
+        if (selectedKey.startsWith("special:")) {
+          const specialViews = getSpecialViews();
+          const specialId = selectedKey.slice("special:".length);
+          const viewIdx = specialViews.findIndex((view) => view.id === specialId);
+          if (viewIdx === -1) return null;
+
+          const view = specialViews[viewIdx];
+          const updateView = (updater: (prev: SpecialViewConfig) => SpecialViewConfig) => {
+            const nextViews = [...getSpecialViews()];
+            nextViews[viewIdx] = updater(nextViews[viewIdx]);
+            setSpecialViews(nextViews);
+            const nextId = nextViews[viewIdx]?.id;
+            if (nextId && `special:${nextId}` !== activeViewEditorId) {
+              setActiveViewEditorId(`special:${nextId}`);
+            }
+          };
+
+          const removeView = () => {
+            const next = getSpecialViews().filter((_, idx) => idx !== viewIdx);
+            setSpecialViews(next);
+            setActiveViewEditorId(next[0] ? `special:${next[0].id}` : "");
+          };
+          const calendarConfig = view.type === "calendar" ? normalizeCalendarConfig(view.config) : null;
+          const calendarFields = calendarConfig ? getTableFields(calendarConfig.sourceModuleSlug) : [];
+          const titleFieldOptions = sortFieldsForCalendar(calendarFields, ["text", "textarea", "select"]);
+          const startFieldOptions = sortFieldsForCalendar(calendarFields, ["datetime", "date"]);
+          const endFieldOptions = sortFieldsForCalendar(calendarFields, ["datetime", "date"]);
+          const allDayFieldOptions = sortFieldsForCalendar(calendarFields, ["boolean"]);
+          const colorFieldOptions = sortFieldsForCalendar(calendarFields, ["color", "text"]);
+          const descriptionFieldOptions = sortFieldsForCalendar(calendarFields, ["textarea", "text"]);
+          const resourceFieldOptions = sortFieldsForCalendar(calendarFields, ["text", "select", "selectorTabla"]);
+          const parentLinkFieldOptions = sortFieldsForCalendar(calendarFields, ["selectorTabla"]);
+
+          const updateCalendarConfig = (patch: Partial<CalendarSpecialViewConfig>) => {
+            updateView((prev) => ({
+              ...prev,
+              type: "calendar",
+              config: {
+                ...normalizeCalendarConfig(prev.type === "calendar" ? prev.config : defaultCalendarConfig()),
+                ...patch,
+              },
+            }));
+          };
+
+          return (
+            <div key={view.id} className={styles.card} style={{ marginTop: 12 }}>
+              <div className={styles.grid}>
+                <div>
+                  <label className={styles.label}>ID</label>
+                  <input
+                    className={styles.input}
+                    value={view.id}
+                    onChange={(e) => updateView((prev) => ({ ...prev, id: e.target.value || `special_view_${viewIdx + 1}` }))}
+                    disabled={readOnly}
+                  />
+                </div>
+
+                <div>
+                  <label className={styles.label}>Label</label>
+                  <input
+                    className={styles.input}
+                    value={view.label}
+                    onChange={(e) => updateView((prev) => ({ ...prev, label: e.target.value }))}
+                    disabled={readOnly}
+                  />
+                </div>
+
+                <div>
+                  <label className={styles.label}>Tipo</label>
+                  <select
+                    className={styles.input}
+                    value={view.type}
+                    onChange={(e) => {
+                      const nextType = e.target.value as SpecialViewConfig["type"];
+                      updateView((prev) => {
+                        if (nextType === "calendar") {
+                          return {
+                            id: prev.id,
+                            label: prev.label,
+                            type: "calendar",
+                            config:
+                              prev.type === "calendar"
+                                ? normalizeCalendarConfig(prev.config)
+                                : defaultCalendarConfig(),
+                          };
+                        }
+
+                        return {
+                          id: prev.id,
+                          label: prev.label,
+                          type: "pdfPreview",
+                          config: {
+                            pdfTemplateId: prev.type === "pdfPreview" ? prev.config?.pdfTemplateId || "" : "",
+                          },
+                        };
+                      });
+                    }}
+                    disabled={readOnly}
+                  >
+                    <option value="pdfPreview">Preview PDF</option>
+                    <option value="calendar">Calendario</option>
+                  </select>
+                </div>
+              </div>
+
+              {view.type === "pdfPreview" && (
+                <div className={styles.card} style={{ marginTop: 12 }}>
+                  <h4 style={{ marginTop: 0 }}>Configuración Preview PDF</h4>
+                  <Selector
+                    moduleSlug="pdf_templates"
+                    displayField="name"
+                    valueField="id"
+                    value={view.config?.pdfTemplateId || ""}
+                    readOnly={readOnly}
+                    placeholder="— Seleccionar plantilla PDF —"
+                    label="Template PDF"
+                    onChange={(nextTemplateId: string) =>
+                      updateView((prev) => ({
+                        ...prev,
+                        type: "pdfPreview",
+                        config: { pdfTemplateId: nextTemplateId || "" },
+                      }))
+                    }
+                  />
+                </div>
+              )}
+
+              {view.type === "calendar" && calendarConfig && (
+                <div className={styles.card} style={{ marginTop: 12 }}>
+                  <h4 style={{ marginTop: 0 }}>Configuración Calendario</h4>
+                  <div className={styles.grid}>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label className={styles.label}>Módulo fuente</label>
+                      <Selector
+                        moduleSlug="modulos"
+                        displayField="nombre"
+                        valueField="slug"
+                        value={calendarConfig.sourceModuleSlug || ""}
+                        readOnly={readOnly}
+                        placeholder="— Seleccionar módulo —"
+                        label="Selecciona el módulo fuente"
+                        filters={[
+                          { field: "activo", op: "=", value: true },
+                          { field: "tipo", op: "in", value: ["tabla", "subtabla", "vista"] },
+                        ]}
+                        sort={[{ field: "orden", direction: "asc" }]}
+                        onChange={(moduleSlug: string) => {
+                          ensureTableFields(moduleSlug);
+                          updateCalendarConfig({
+                            sourceModuleSlug: moduleSlug || "",
+                            titleField: "",
+                            startField: "",
+                            endField: "",
+                            allDayField: "",
+                            colorField: "",
+                            descriptionField: "",
+                            resourceField: "",
+                            parentLinkField: "",
+                          });
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={styles.label}>Título del evento</label>
+                      <select
+                        className={styles.input}
+                        value={calendarConfig.titleField || ""}
+                        onChange={(e) => updateCalendarConfig({ titleField: e.target.value })}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug}
+                      >
+                        <option value="">— Seleccionar campo —</option>
+                        {titleFieldOptions.map((field) => (
+                          <option key={field.name} value={field.name}>
+                            {field.label || field.name}{field.type ? ` (${field.type})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={styles.label}>Fecha inicio</label>
+                      <select
+                        className={styles.input}
+                        value={calendarConfig.startField || ""}
+                        onChange={(e) => updateCalendarConfig({ startField: e.target.value })}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug}
+                      >
+                        <option value="">— Seleccionar campo —</option>
+                        {startFieldOptions.map((field) => (
+                          <option key={field.name} value={field.name}>
+                            {field.label || field.name}{field.type ? ` (${field.type})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={styles.label}>Fecha fin</label>
+                      <select
+                        className={styles.input}
+                        value={calendarConfig.endField || ""}
+                        onChange={(e) => updateCalendarConfig({ endField: e.target.value })}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug}
+                      >
+                        <option value="">— Sin campo —</option>
+                        {endFieldOptions.map((field) => (
+                          <option key={field.name} value={field.name}>
+                            {field.label || field.name}{field.type ? ` (${field.type})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={styles.label}>Todo el día</label>
+                      <select
+                        className={styles.input}
+                        value={calendarConfig.allDayField || ""}
+                        onChange={(e) => updateCalendarConfig({ allDayField: e.target.value })}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug}
+                      >
+                        <option value="">— Sin campo —</option>
+                        {allDayFieldOptions.map((field) => (
+                          <option key={field.name} value={field.name}>
+                            {field.label || field.name}{field.type ? ` (${field.type})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={styles.label}>Color</label>
+                      <select
+                        className={styles.input}
+                        value={calendarConfig.colorField || ""}
+                        onChange={(e) => updateCalendarConfig({ colorField: e.target.value })}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug}
+                      >
+                        <option value="">— Sin campo —</option>
+                        {colorFieldOptions.map((field) => (
+                          <option key={field.name} value={field.name}>
+                            {field.label || field.name}{field.type ? ` (${field.type})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={styles.label}>Descripción</label>
+                      <select
+                        className={styles.input}
+                        value={calendarConfig.descriptionField || ""}
+                        onChange={(e) => updateCalendarConfig({ descriptionField: e.target.value })}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug}
+                      >
+                        <option value="">— Sin campo —</option>
+                        {descriptionFieldOptions.map((field) => (
+                          <option key={field.name} value={field.name}>
+                            {field.label || field.name}{field.type ? ` (${field.type})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={styles.label}>Resource / responsable</label>
+                      <select
+                        className={styles.input}
+                        value={calendarConfig.resourceField || ""}
+                        onChange={(e) => updateCalendarConfig({ resourceField: e.target.value })}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug}
+                      >
+                        <option value="">— Sin campo —</option>
+                        {resourceFieldOptions.map((field) => (
+                          <option key={field.name} value={field.name}>
+                            {field.label || field.name}{field.type ? ` (${field.type})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={styles.label}>Campo vínculo con el registro actual</label>
+                      <select
+                        className={styles.input}
+                        value={calendarConfig.parentLinkField || ""}
+                        onChange={(e) => updateCalendarConfig({ parentLinkField: e.target.value })}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug}
+                      >
+                        <option value="">— Autodetectar vínculo —</option>
+                        {parentLinkFieldOptions.map((field) => (
+                          <option key={field.name} value={field.name}>
+                            {field.label || field.name}{field.type ? ` (${field.type})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={styles.label}>Vista por defecto</label>
+                      <select
+                        className={styles.input}
+                        value={calendarConfig.defaultView || "month"}
+                        onChange={(e) => updateCalendarConfig({ defaultView: e.target.value as CalendarViewMode })}
+                        disabled={readOnly}
+                      >
+                        {(calendarConfig.enabledViews || ["month", "week", "day"]).map((viewMode) => (
+                          <option key={viewMode} value={viewMode}>
+                            {viewMode === "month" ? "Mensual" : viewMode === "week" ? "Semanal" : "Diaria"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label className={styles.label}>Vistas habilitadas</label>
+                      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                        {(["month", "week", "day"] as CalendarViewMode[]).map((viewMode) => {
+                          const enabled = (calendarConfig.enabledViews || []).includes(viewMode);
+                          return (
+                            <label key={viewMode} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <input
+                                type="checkbox"
+                                checked={enabled}
+                                disabled={readOnly}
+                                onChange={(e) => {
+                                  const current = calendarConfig.enabledViews || ["month", "week", "day"];
+                                  const nextEnabled = e.target.checked
+                                    ? Array.from(new Set([...current, viewMode]))
+                                    : current.filter((item) => item !== viewMode);
+                                  const safeEnabled = nextEnabled.length ? nextEnabled : [viewMode];
+                                  updateCalendarConfig({
+                                    enabledViews: safeEnabled,
+                                    defaultView: safeEnabled.includes(calendarConfig.defaultView || "month")
+                                      ? (calendarConfig.defaultView || "month")
+                                      : safeEnabled[0],
+                                  });
+                                }}
+                              />
+                              <span>{viewMode === "month" ? "Mensual" : viewMode === "week" ? "Semanal" : "Diaria"}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className={styles.btn}
+                  onClick={removeView}
+                  disabled={readOnly}
+                  style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}
+                >
+                  Eliminar vista
+                </button>
+              </div>
+            </div>
+          );
+        }
+
         const tabs = getTabs().filter((tab) => tab.type !== "form");
         if (tabs.length === 0) return null;
 
         const idx = Math.max(
           0,
-          tabs.findIndex((t) => t.id === (activeTabId || tabs[0].id))
+          tabs.findIndex((t) => `tab:${t.id}` === (activeViewEditorId || `tab:${tabs[0].id}`))
         );
 
         const t = tabs[idx];
@@ -1341,7 +1856,7 @@ const editorTabs = [
           nextTabs[realIdx] = updater(nextTabs[realIdx]);
           setTabs(nextTabs);
           const nextId = nextTabs[realIdx]?.id;
-          if (nextId && nextId !== activeTabId) setActiveTabId(nextId);
+          if (nextId && `tab:${nextId}` !== activeViewEditorId) setActiveViewEditorId(`tab:${nextId}`);
         };
 
         const removeTab = () => {
@@ -1349,7 +1864,7 @@ const editorTabs = [
           const next = allTabs.filter((_, i) => i !== realIdx);
           setTabs(next);
           const nextViewTab = next.find((tab) => tab.type !== "form");
-          setActiveTabId(nextViewTab?.id || "");
+          setActiveViewEditorId(nextViewTab ? `tab:${nextViewTab.id}` : "");
         };
 
         return (
@@ -1397,13 +1912,7 @@ const editorTabs = [
                         id: prev.id,
                         label: prev.label,
                         type: "calendar",
-                        config: {
-                          sourceTable: "",
-                          startField: "",
-                          endField: "",
-                          titleField: "",
-                          colorField: "",
-                        },
+                        config: { ...defaultCalendarConfig(), sourceTable: "" },
                       };
                     });
                   }}
@@ -1675,100 +2184,178 @@ const editorTabs = [
             )}
 
             {t.type === "calendar" && (
-              <div className={styles.card} style={{ marginTop: 12 }}>
-                <h4 style={{ marginTop: 0 }}>Config Calendario</h4>
-                <div className={styles.grid}>
-                  <div>
-                    <label className={styles.label}>Tabla (sourceTable)</label>
-                    <input
-                      className={styles.input}
-                      value={t.config?.sourceTable || ""}
-                      onChange={(e) =>
-                        updateTab((prev) => {
-                          if (prev.type !== "calendar") return prev;
-                          return {
-                            ...prev,
-                            config: { ...(prev.config || {}), sourceTable: e.target.value },
-                          };
-                        })
-                      }
-                      disabled={readOnly}
-                    />
-                  </div>
+              (() => {
+                const calendarConfig = normalizeCalendarConfig(t.config);
+                const sourceModuleSlug = calendarConfig.sourceModuleSlug || t.config?.sourceTable || "";
+                const calendarFields = getTableFields(sourceModuleSlug);
+                const titleFieldOptions = sortFieldsForCalendar(calendarFields, ["text", "textarea", "select"]);
+                const startFieldOptions = sortFieldsForCalendar(calendarFields, ["datetime", "date"]);
+                const endFieldOptions = sortFieldsForCalendar(calendarFields, ["datetime", "date"]);
+                const allDayFieldOptions = sortFieldsForCalendar(calendarFields, ["boolean"]);
+                const colorFieldOptions = sortFieldsForCalendar(calendarFields, ["color", "text"]);
+                const descriptionFieldOptions = sortFieldsForCalendar(calendarFields, ["textarea", "text"]);
+                const resourceFieldOptions = sortFieldsForCalendar(calendarFields, ["text", "select", "selectorTabla"]);
+                const parentLinkFieldOptions = sortFieldsForCalendar(calendarFields, ["selectorTabla"]);
 
-                  <div>
-                    <label className={styles.label}>startField</label>
-                    <input
-                      className={styles.input}
-                      value={t.config?.startField || ""}
-                      onChange={(e) =>
-                        updateTab((prev) => {
-                          if (prev.type !== "calendar") return prev;
-                          return {
-                            ...prev,
-                            config: { ...(prev.config || {}), startField: e.target.value },
-                          };
-                        })
-                      }
-                      disabled={readOnly}
-                    />
-                  </div>
+                const updateCalendarTabConfig = (patch: Partial<CalendarSpecialViewConfig>) =>
+                  updateTab((prev) => {
+                    if (prev.type !== "calendar") return prev;
+                    return {
+                      ...prev,
+                      config: {
+                        ...normalizeCalendarConfig(prev.config),
+                        ...patch,
+                        sourceTable: patch.sourceModuleSlug ?? sourceModuleSlug,
+                      },
+                    };
+                  });
 
-                  <div>
-                    <label className={styles.label}>endField</label>
-                    <input
-                      className={styles.input}
-                      value={t.config?.endField || ""}
-                      onChange={(e) =>
-                        updateTab((prev) => {
-                          if (prev.type !== "calendar") return prev;
-                          return {
-                            ...prev,
-                            config: { ...(prev.config || {}), endField: e.target.value },
-                          };
-                        })
-                      }
-                      disabled={readOnly}
-                    />
-                  </div>
+                return (
+                  <div className={styles.card} style={{ marginTop: 12 }}>
+                    <h4 style={{ marginTop: 0 }}>Config Calendario</h4>
+                    <div className={styles.grid}>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label className={styles.label}>Módulo fuente</label>
+                        <Selector
+                          moduleSlug="modulos"
+                          displayField="nombre"
+                          valueField="slug"
+                          value={sourceModuleSlug}
+                          readOnly={readOnly}
+                          placeholder="— Seleccionar módulo —"
+                          label="Selecciona el módulo fuente"
+                          filters={[
+                            { field: "activo", op: "=", value: true },
+                            { field: "tipo", op: "in", value: ["tabla", "subtabla", "vista"] },
+                          ]}
+                          sort={[{ field: "orden", direction: "asc" }]}
+                          onChange={(moduleSlug: string) => {
+                            ensureTableFields(moduleSlug);
+                            updateCalendarTabConfig({
+                            sourceModuleSlug: moduleSlug || "",
+                            titleField: "",
+                            startField: "",
+                            endField: "",
+                            allDayField: "",
+                            colorField: "",
+                            descriptionField: "",
+                            resourceField: "",
+                            parentLinkField: "",
+                          });
+                        }}
+                      />
+                    </div>
 
-                  <div>
-                    <label className={styles.label}>titleField</label>
-                    <input
-                      className={styles.input}
-                      value={t.config?.titleField || ""}
-                      onChange={(e) =>
-                        updateTab((prev) => {
-                          if (prev.type !== "calendar") return prev;
-                          return {
-                            ...prev,
-                            config: { ...(prev.config || {}), titleField: e.target.value },
-                          };
-                        })
-                      }
-                      disabled={readOnly}
-                    />
-                  </div>
+                      <div>
+                        <label className={styles.label}>Título del evento</label>
+                        <select className={styles.input} value={calendarConfig.titleField || ""} onChange={(e) => updateCalendarTabConfig({ titleField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                          <option value="">— Seleccionar campo —</option>
+                          {titleFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
+                        </select>
+                      </div>
 
-                  <div>
-                    <label className={styles.label}>colorField</label>
-                    <input
-                      className={styles.input}
-                      value={t.config?.colorField || ""}
-                      onChange={(e) =>
-                        updateTab((prev) => {
-                          if (prev.type !== "calendar") return prev;
-                          return {
-                            ...prev,
-                            config: { ...(prev.config || {}), colorField: e.target.value },
-                          };
-                        })
-                      }
-                      disabled={readOnly}
-                    />
+                      <div>
+                        <label className={styles.label}>Fecha inicio</label>
+                        <select className={styles.input} value={calendarConfig.startField || ""} onChange={(e) => updateCalendarTabConfig({ startField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                          <option value="">— Seleccionar campo —</option>
+                          {startFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={styles.label}>Fecha fin</label>
+                        <select className={styles.input} value={calendarConfig.endField || ""} onChange={(e) => updateCalendarTabConfig({ endField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                          <option value="">— Sin campo —</option>
+                          {endFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={styles.label}>Todo el día</label>
+                        <select className={styles.input} value={calendarConfig.allDayField || ""} onChange={(e) => updateCalendarTabConfig({ allDayField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                          <option value="">— Sin campo —</option>
+                          {allDayFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={styles.label}>Color</label>
+                        <select className={styles.input} value={calendarConfig.colorField || ""} onChange={(e) => updateCalendarTabConfig({ colorField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                          <option value="">— Sin campo —</option>
+                          {colorFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={styles.label}>Descripción</label>
+                        <select className={styles.input} value={calendarConfig.descriptionField || ""} onChange={(e) => updateCalendarTabConfig({ descriptionField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                          <option value="">— Sin campo —</option>
+                          {descriptionFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={styles.label}>Resource / responsable</label>
+                        <select className={styles.input} value={calendarConfig.resourceField || ""} onChange={(e) => updateCalendarTabConfig({ resourceField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                          <option value="">— Sin campo —</option>
+                          {resourceFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={styles.label}>Campo vínculo con el registro actual</label>
+                        <select className={styles.input} value={calendarConfig.parentLinkField || ""} onChange={(e) => updateCalendarTabConfig({ parentLinkField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                          <option value="">— Autodetectar vínculo —</option>
+                          {parentLinkFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={styles.label}>Vista por defecto</label>
+                        <select className={styles.input} value={calendarConfig.defaultView || "month"} onChange={(e) => updateCalendarTabConfig({ defaultView: e.target.value as CalendarViewMode })} disabled={readOnly}>
+                          {(calendarConfig.enabledViews || ["month", "week", "day"]).map((viewMode) => (
+                            <option key={viewMode} value={viewMode}>
+                              {viewMode === "month" ? "Mensual" : viewMode === "week" ? "Semanal" : "Diaria"}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label className={styles.label}>Vistas habilitadas</label>
+                        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                          {(["month", "week", "day"] as CalendarViewMode[]).map((viewMode) => {
+                            const enabled = (calendarConfig.enabledViews || []).includes(viewMode);
+                            return (
+                              <label key={viewMode} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={enabled}
+                                  disabled={readOnly}
+                                  onChange={(e) => {
+                                    const current = calendarConfig.enabledViews || ["month", "week", "day"];
+                                    const nextEnabled = e.target.checked
+                                      ? Array.from(new Set([...current, viewMode]))
+                                      : current.filter((item) => item !== viewMode);
+                                    const safeEnabled = nextEnabled.length ? nextEnabled : [viewMode];
+                                    updateCalendarTabConfig({
+                                      enabledViews: safeEnabled,
+                                      defaultView: safeEnabled.includes(calendarConfig.defaultView || "month")
+                                        ? (calendarConfig.defaultView || "month")
+                                        : safeEnabled[0],
+                                    });
+                                  }}
+                                />
+                                <span>{viewMode === "month" ? "Mensual" : viewMode === "week" ? "Semanal" : "Diaria"}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                );
+              })()
             )}
 
             <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>

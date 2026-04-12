@@ -2,10 +2,12 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  CalendarSpecialViewConfig,
   Field,
   FieldType,
   FormSection,
   ModuleSchema,
+  SpecialViewConfig,
   TreeViewDataProvider,
   UiTab,
 } from "@repo/types";
@@ -17,6 +19,8 @@ import TreeView from "./TreeView";
 import FormActionsBar from "./ModuloForm/FormActionsBar";
 import type { FormAction } from "./ModuloForm/FormActionsBar";
 import DetachedFieldInput from "./FieldInput";
+import ModuleCalendarView from "./ModuleCalendarView";
+import PdfTemplatePreview from "./PdfTemplatePreview";
 import {
   buildRelationDisplayEntry,
   getRelationCacheKey,
@@ -28,10 +32,20 @@ import {
 type Mode = "view" | "edit" | "create";
 type FormValues = Record<string, any>;
 type ResolvedDisplayState = Record<string, { value: string; icon?: string; color?: string }>;
+type RuntimeTab =
+  | UiTab
+  | {
+      id: string;
+      label: string;
+      type: "special-view";
+      config: SpecialViewConfig;
+    };
 
 type Props = {
   schema: ModuleSchema;
   initialData?: any;
+  recordId?: string;
+  moduleSlug?: string;
   onChange?: (values: any) => void | Promise<void>;
   readOnly?: boolean;
   mode?: Mode;
@@ -199,9 +213,40 @@ function getColumnClass(field: Field): string {
   }
 }
 
+function mapLegacyPreviewTabsToSpecialViews(rawTabs: any[]): SpecialViewConfig[] {
+  return rawTabs
+    .map((tab: any, index: number) => ({
+      id: String(tab?.id || `special_view_${index + 1}`),
+      label: String(tab?.label || tab?.title || `Vista especial ${index + 1}`),
+      type: "pdfPreview" as const,
+      config: {
+        pdfTemplateId: String(tab?.pdfTemplateId || ""),
+      },
+    }))
+    .filter((tab: SpecialViewConfig) => !!tab.id);
+}
+
+function normalizeCalendarConfig(input: any): CalendarSpecialViewConfig {
+  const cfg = input && typeof input === "object" ? input : {};
+  return {
+    sourceModuleSlug: String(cfg.sourceModuleSlug || cfg.sourceTable || "").trim(),
+    titleField: String(cfg.titleField || "").trim(),
+    startField: String(cfg.startField || "").trim(),
+    endField: String(cfg.endField || "").trim(),
+    allDayField: String(cfg.allDayField || "").trim(),
+    colorField: String(cfg.colorField || "").trim(),
+    descriptionField: String(cfg.descriptionField || "").trim(),
+    resourceField: String(cfg.resourceField || "").trim(),
+    enabledViews: Array.isArray(cfg.enabledViews) ? cfg.enabledViews : ["month", "week", "day"],
+    defaultView: ["month", "week", "day"].includes(String(cfg.defaultView)) ? cfg.defaultView : "month",
+  };
+}
+
 export default function Form({
   schema,
   initialData = {},
+  recordId,
+  moduleSlug,
   onChange,
   readOnly,
   mode,
@@ -218,6 +263,20 @@ export default function Form({
   modulesBySlug,
 }: Props) {
   const effectiveMode: Mode = mode || (readOnly ? "view" : "edit");
+  const effectiveRecordId = useMemo(
+    () => String(recordId ?? initialData?.id ?? initialData?.[schema?.db?.primaryKey || "id"] ?? "").trim(),
+    [recordId, initialData, schema?.db?.primaryKey]
+  );
+  const effectiveModuleSlug = useMemo(() => {
+    if (moduleSlug) return String(moduleSlug).trim();
+    const schemaTable = String(schema?.db?.table || "").trim();
+    if (!schemaTable || !modulesBySlug) return "";
+    if (modulesBySlug[schemaTable]) return schemaTable;
+    for (const [slug, mod] of Object.entries(modulesBySlug)) {
+      if (mod?.db?.table === schemaTable) return slug;
+    }
+    return "";
+  }, [moduleSlug, schema?.db?.table, modulesBySlug]);
 
   const tabsDesdeSchema = useMemo<UiTab[]>(() => {
     const uiAny = (schema.ui || {}) as any;
@@ -231,6 +290,15 @@ export default function Form({
         return { id, label, type, config: tab?.config ?? tab };
       })
       .filter((tab: UiTab) => ["form", "treeview", "calendar"].includes(tab.type));
+  }, [schema.ui]);
+
+  const specialViews = useMemo<SpecialViewConfig[]>(() => {
+    const uiAny = (schema.ui || {}) as any;
+    const rawSpecialViews = Array.isArray(uiAny?.specialViews) ? uiAny.specialViews : [];
+    if (rawSpecialViews.length > 0) return rawSpecialViews as SpecialViewConfig[];
+
+    const rawPreviewTabs = Array.isArray(uiAny?.previewTabs) ? uiAny.previewTabs : [];
+    return mapLegacyPreviewTabsToSpecialViews(rawPreviewTabs);
   }, [schema.ui]);
 
   const legacyTreeCfg = useMemo(() => {
@@ -279,6 +347,31 @@ export default function Form({
     return tabs;
   }, [tabsDesdeSchema, legacyTreeCfg, legacyCalendarCfg, schema.ui]);
 
+  const runtimeTabs = useMemo<RuntimeTab[]>(() => {
+    const baseTabs = [...uiTabs];
+    const hasSpecialViews = specialViews.length > 0;
+    const hasFormTab = baseTabs.some((tab) => tab.type === "form");
+
+    if (hasSpecialViews && !hasFormTab) {
+      baseTabs.unshift({
+        id: "__form__",
+        label: "Formulario",
+        type: "form",
+        config: { formSections: (schema.ui as any)?.formSections || [] },
+      });
+    }
+
+    return [
+      ...baseTabs,
+      ...specialViews.map<RuntimeTab>((view) => ({
+        id: `special:${view.id}`,
+        label: view.label,
+        type: "special-view",
+        config: view,
+      })),
+    ];
+  }, [specialViews, schema.ui, uiTabs]);
+
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [computing, setComputing] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
@@ -296,20 +389,20 @@ export default function Form({
   const displayRequestRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
-    if (!uiTabs.length) {
+    if (!runtimeTabs.length) {
       setActiveTabId(null);
       return;
     }
 
-    if (!activeTabId || !uiTabs.some((tab) => tab.id === activeTabId)) {
-      setActiveTabId(uiTabs[0].id);
+    if (!activeTabId || !runtimeTabs.some((tab) => tab.id === activeTabId)) {
+      setActiveTabId(runtimeTabs[0].id);
     }
-  }, [uiTabs, activeTabId]);
+  }, [runtimeTabs, activeTabId]);
 
   const activeTab = useMemo(() => {
-    if (!uiTabs.length) return null;
-    return uiTabs.find((tab) => tab.id === activeTabId) ?? uiTabs[0];
-  }, [uiTabs, activeTabId]);
+    if (!runtimeTabs.length) return null;
+    return runtimeTabs.find((tab) => tab.id === activeTabId) ?? runtimeTabs[0];
+  }, [runtimeTabs, activeTabId]);
 
   useEffect(() => {
     valuesRef.current = values;
@@ -746,8 +839,9 @@ export default function Form({
     );
   };
 
-  const showMainTabs = uiTabs.length > 0;
+  const showMainTabs = runtimeTabs.length > 0;
   const showFormContent = !activeTab || activeTab.type === "form";
+  const showSpecialViewContent = activeTab?.type === "special-view";
   const showReverseLinks = showFormContent;
 
   const resolveTable = useMemo(() => {
@@ -806,11 +900,154 @@ export default function Form({
     return moduleSchema?.fields || schema.fields;
   }, [schemasBySlug, treeSourceSlug, schema.fields]);
 
+  const renderFormContent = () => {
+    if (formSections.length > 0) {
+      return (
+        <div className="d-flex flex-column gap-3">
+          {formSections.map((section) => {
+            const isOpen = !!openSections[section.id];
+
+            return (
+              <div key={section.id} className="card">
+                <button
+                  type="button"
+                  className="card-header d-flex justify-content-between align-items-center w-100"
+                  onClick={() => toggleSection(section.id)}
+                  style={{
+                    cursor: "pointer",
+                    background: "transparent",
+                    border: "none",
+                    textAlign: "left",
+                  }}
+                >
+                  <div>
+                    <div className="fw-semibold">{section.label}</div>
+                    {section.description && <div className="small text-muted">{section.description}</div>}
+                  </div>
+                  <span className="text-muted">{isOpen ? "v" : ">"}</span>
+                </button>
+
+                {isOpen && (
+                  <div className="card-body">
+                    <div className="row g-3">
+                      {section.fields.map((fieldName) => {
+                        const field = fieldsByName[fieldName];
+                        if (!field) return null;
+                        return renderField(field);
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    return <div className="row g-3">{(schema.fields || []).map((field) => renderField(field))}</div>;
+  };
+
+  const renderTreeViewContent = () => (
+    <div className="card">
+      <div className="card-header">
+        <div className="fw-semibold">{treeViewConfig?.ui?.title || ""}</div>
+        <div className="small text-muted">
+          {treeViewConfig?.source?.table ? `Tabla: ${treeViewConfig.source.table}` : ""}
+          {treeViewConfig?.grouping?.groupByField ? ` | groupBy: ${treeViewConfig.grouping.groupByField}` : ""}
+        </div>
+      </div>
+
+      <div className="card-body">
+        {!treeViewConfig ? (
+          <div className="alert alert-warning mb-0">
+            No hay configuracion de TreeView en el modulo (schema.ui.treeView o tab.config).
+          </div>
+        ) : !treeViewProvider ? (
+          <div className="alert alert-warning mb-0">
+            TreeView esta configurado, pero falta <code>treeViewProvider</code> en el Form.
+            <div className="small text-muted mt-2">
+              Esto es intencional: el componente de UI no debe importar Supabase ni createClient.
+            </div>
+          </div>
+        ) : (
+          <TreeView
+            config={treeViewConfig}
+            dataProvider={treeViewProvider}
+            parentRecord={treeViewParentRecord ?? values}
+            schemaFields={treeSchemaFields}
+            onViewRow={onTreeViewRowView}
+            onEditRow={onTreeViewRowEdit}
+            confirmDelete={confirmTreeViewDelete}
+            resolveTable={resolveTable}
+            resolveRoute={resolveRoute}
+          />
+        )}
+      </div>
+    </div>
+  );
+
+  const renderCalendarContent = () => (
+    <div className="card">
+      <div className="card-header">
+        <div className="fw-semibold">{calendarConfig?.ui?.title || "Calendario"}</div>
+        <div className="small text-muted">
+          Módulo fuente: {calendarConfig?.sourceModuleSlug || calendarConfig?.sourceTable || "-"}
+        </div>
+      </div>
+
+      <div className="card-body">
+        <ModuleCalendarView
+          config={normalizeCalendarConfig(calendarConfig)}
+          dataProvider={dataProvider}
+          sourceSchema={schemasBySlug?.[normalizeCalendarConfig(calendarConfig).sourceModuleSlug]}
+          parentSchema={schema}
+          parentModuleSlug={effectiveModuleSlug}
+          parentRecordId={effectiveRecordId}
+        />
+      </div>
+    </div>
+  );
+
+  const renderSpecialView = (view: SpecialViewConfig) => {
+    switch (view.type) {
+      case "pdfPreview":
+        return (
+          <PdfTemplatePreview
+            templateId={view.config?.pdfTemplateId}
+            recordId={effectiveRecordId}
+            recordData={values}
+            schema={schema}
+            active={showSpecialViewContent}
+            emptyMessage="Esta vista especial todavía no tiene una plantilla PDF seleccionada."
+          />
+        );
+      case "calendar":
+        return (
+          <ModuleCalendarView
+            config={normalizeCalendarConfig(view.config)}
+            dataProvider={dataProvider}
+            sourceSchema={schemasBySlug?.[normalizeCalendarConfig(view.config).sourceModuleSlug]}
+            parentSchema={schema}
+            parentModuleSlug={effectiveModuleSlug}
+            parentRecordId={effectiveRecordId}
+          />
+        );
+      default:
+        return <div className="alert alert-warning mb-0">Tipo de vista no soportado.</div>;
+    }
+  };
+
+  const renderSpecialViewContent = () => {
+    if (!activeTab || activeTab.type !== "special-view") return null;
+    return renderSpecialView(activeTab.config);
+  };
+
   return (
     <form className="d-flex flex-column gap-4" onSubmit={handleSubmit}>
       {showMainTabs && (
         <div className="d-flex gap-4 mb-3 border-bottom" style={{ borderColor: "#e5e7eb" }}>
-          {uiTabs.map((tab) => {
+          {runtimeTabs.map((tab) => {
             const isActive = activeTab?.id === tab.id;
 
             return (
@@ -835,104 +1072,13 @@ export default function Form({
       )}
 
       {showFormContent ? (
-        formSections.length > 0 ? (
-          <div className="d-flex flex-column gap-3">
-            {formSections.map((section) => {
-              const isOpen = !!openSections[section.id];
-
-              return (
-                <div key={section.id} className="card">
-                  <button
-                    type="button"
-                    className="card-header d-flex justify-content-between align-items-center w-100"
-                    onClick={() => toggleSection(section.id)}
-                    style={{
-                      cursor: "pointer",
-                      background: "transparent",
-                      border: "none",
-                      textAlign: "left",
-                    }}
-                  >
-                    <div>
-                      <div className="fw-semibold">{section.label}</div>
-                      {section.description && <div className="small text-muted">{section.description}</div>}
-                    </div>
-                    <span className="text-muted">{isOpen ? "v" : ">"}</span>
-                  </button>
-
-                  {isOpen && (
-                    <div className="card-body">
-                      <div className="row g-3">
-                        {section.fields.map((fieldName) => {
-                          const field = fieldsByName[fieldName];
-                          if (!field) return null;
-                          return renderField(field);
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-           
-          </div>
-        ) : (
-          <div className="row g-3">{(schema.fields || []).map((field) => renderField(field))}</div>
-        )
+        renderFormContent()
+      ) : showSpecialViewContent ? (
+        renderSpecialViewContent()
       ) : activeTab?.type === "treeview" ? (
-        <div className="card">
-          <div className="card-header">
-            <div className="fw-semibold">{treeViewConfig?.ui?.title || ""}</div>
-            <div className="small text-muted">
-              {treeViewConfig?.source?.table ? `Tabla: ${treeViewConfig.source.table}` : ""}
-              {treeViewConfig?.grouping?.groupByField ? ` | groupBy: ${treeViewConfig.grouping.groupByField}` : ""}
-            </div>
-          </div>
-
-          <div className="card-body">
-            {!treeViewConfig ? (
-              <div className="alert alert-warning mb-0">
-                No hay configuracion de TreeView en el modulo (schema.ui.treeView o tab.config).
-              </div>
-            ) : !treeViewProvider ? (
-              <div className="alert alert-warning mb-0">
-                TreeView esta configurado, pero falta <code>treeViewProvider</code> en el Form.
-                <div className="small text-muted mt-2">
-                  Esto es intencional: el componente de UI no debe importar Supabase ni createClient.
-                </div>
-              </div>
-            ) : (
-              <TreeView
-                config={treeViewConfig}
-                dataProvider={treeViewProvider}
-                parentRecord={treeViewParentRecord ?? values}
-                schemaFields={treeSchemaFields}
-                onViewRow={onTreeViewRowView}
-                onEditRow={onTreeViewRowEdit}
-                confirmDelete={confirmTreeViewDelete}
-                resolveTable={resolveTable}
-                resolveRoute={resolveRoute}
-              />
-            )}
-          </div>
-        </div>
+        renderTreeViewContent()
       ) : (
-        <div className="card">
-          <div className="card-header">
-            <div className="fw-semibold">{calendarConfig?.ui?.title || "Calendario"}</div>
-            <div className="small text-muted">
-              Tabla: {calendarConfig?.source?.table || calendarConfig?.sourceTable || "-"}
-            </div>
-          </div>
-
-          <div className="card-body">
-            <div className="text-muted small">
-              startField: {calendarConfig?.startField || "-"} | endField: {calendarConfig?.endField || "-"} |
-              titleField: {calendarConfig?.titleField || "-"} | colorField: {calendarConfig?.colorField || "-"}
-            </div>
-          </div>
-        </div>
+        renderCalendarContent()
       )}
 
       {showReverseLinks && reverseLinkFields.length > 0 && (
@@ -982,5 +1128,3 @@ export default function Form({
     </form>
   );
 }
-
-

@@ -251,6 +251,8 @@ export default function FormClient({
         <Form
           schema={schema}
           initialData={initialData}
+          recordId={initialData?.[resolved.primaryKey] ?? initialData?.id}
+          moduleSlug={resolved.slug}
           mode={mode}
           onSubmit={onSubmit}
           onBack={onBack}

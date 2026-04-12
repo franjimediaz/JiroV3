@@ -13,6 +13,7 @@ export default function NewUserClientForm({ schema }: { schema: any }) {
     <Form
       schema={schema}
       initialData={{ meta: { overrides: {} } }}
+      moduleSlug="users"
       mode="create"
       onSubmit={async (values: any) => {
         

@@ -46,6 +46,42 @@ export type FormSection = {
   description?: string;
   fields: string[]; // names de campos
 };
+export type FormPreviewTab = {
+  id: string;
+  label: string;
+  pdfTemplateId: string;
+};
+export type CalendarViewMode = "month" | "week" | "day";
+export type SpecialViewType = "pdfPreview" | "calendar";
+export type PdfPreviewSpecialViewConfig = {
+  pdfTemplateId?: string;
+};
+export type CalendarSpecialViewConfig = {
+  sourceModuleSlug: string;
+  titleField: string;
+  startField: string;
+  endField?: string;
+  allDayField?: string;
+  colorField?: string;
+  descriptionField?: string;
+  resourceField?: string;
+  parentLinkField?: string;
+  defaultView?: CalendarViewMode;
+  enabledViews?: CalendarViewMode[];
+};
+export type PdfPreviewSpecialView = {
+  id: string;
+  label: string;
+  type: "pdfPreview";
+  config?: PdfPreviewSpecialViewConfig;
+};
+export type CalendarSpecialView = {
+  id: string;
+  label: string;
+  type: "calendar";
+  config?: CalendarSpecialViewConfig;
+};
+export type SpecialViewConfig = PdfPreviewSpecialView | CalendarSpecialView;
 export type SelectorTablaRef = {
   moduleSlug: string;
   multiple?: boolean;
@@ -168,8 +204,18 @@ export type UiTab =
                         id: string;
                         label: string;
                         type: "calendar";
-                        config?: { sourceTable?: string; startField?: string; endField?: string; titleField?: string; colorField?: string };
+                        config?: CalendarSpecialViewConfig & { sourceTable?: string };
                       };
+export type ModuleUiSchema = {
+  icon?: string;
+  color?: string;
+  sidebar?: boolean;
+  formSections?: FormSection[];
+  previewTabs?: FormPreviewTab[];
+  specialViews?: SpecialViewConfig[];
+  tabs?: UiTab[];
+  formActions?: FormAction[];
+};
 export type ModuleSchema = {
   db: {
     name?:string;
@@ -178,14 +224,7 @@ export type ModuleSchema = {
     primaryKey?: string;
   };
   fields: Field[]; // ← aquí se usa el array de Field
-  ui?: {
-    icon?: string;
-    color?: string;
-    sidebar?: boolean;
-    tabs?: UiTab[];
-    formActions?: FormAction[];
-
-  };
+  ui?: ModuleUiSchema;
 
 };
 

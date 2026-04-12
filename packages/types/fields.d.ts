@@ -66,6 +66,78 @@ export type Field = {
 };
 export declare const VALID_FIELD_TYPES: FieldType[];
 export declare const Appareance_Valid_Types: Appareance[];
+export type FormSection = {
+    id: string;
+    label: string;
+    description?: string;
+    fields: string[];
+};
+export type FormPreviewTab = {
+    id: string;
+    label: string;
+    pdfTemplateId: string;
+};
+export type CalendarViewMode = "month" | "week" | "day";
+export type SpecialViewType = "pdfPreview" | "calendar";
+export type PdfPreviewSpecialViewConfig = {
+    pdfTemplateId?: string;
+};
+export type CalendarSpecialViewConfig = {
+    sourceModuleSlug: string;
+    titleField: string;
+    startField: string;
+    endField?: string;
+    allDayField?: string;
+    colorField?: string;
+    descriptionField?: string;
+    resourceField?: string;
+    parentLinkField?: string;
+    defaultView?: CalendarViewMode;
+    enabledViews?: CalendarViewMode[];
+};
+export type PdfPreviewSpecialView = {
+    id: string;
+    label: string;
+    type: "pdfPreview";
+    config?: PdfPreviewSpecialViewConfig;
+};
+export type CalendarSpecialView = {
+    id: string;
+    label: string;
+    type: "calendar";
+    config?: CalendarSpecialViewConfig;
+};
+export type SpecialViewConfig = PdfPreviewSpecialView | CalendarSpecialView;
+export type UiTab = {
+    id: string;
+    label: string;
+    type: "form";
+    config?: {
+        formSections?: FormSection[];
+    };
+} | {
+    id: string;
+    label: string;
+    type: "treeview";
+    config?: any;
+} | {
+    id: string;
+    label: string;
+    type: "calendar";
+    config?: CalendarSpecialViewConfig & {
+        sourceTable?: string;
+    };
+};
+export type ModuleUiSchema = {
+    icon?: string;
+    color?: string;
+    sidebar?: boolean;
+    formSections?: FormSection[];
+    previewTabs?: FormPreviewTab[];
+    specialViews?: SpecialViewConfig[];
+    tabs?: UiTab[];
+    formActions?: any[];
+};
 export type ModuleSchema = {
     db: {
         table: string;
@@ -73,9 +145,6 @@ export type ModuleSchema = {
         primaryKey?: string;
     };
     fields: Field[];
-    ui?: {
-        icon?: string;
-        color?: string;
-    };
+    ui?: ModuleUiSchema;
 };
 
