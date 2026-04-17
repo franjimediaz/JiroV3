@@ -214,7 +214,7 @@ export default function ListView({
             <button
               type="button"
               className="btn btn-sm btn-success"
-              onClick={onCreate}
+              onClick={onExport}
             >
               <i className="bi bi-download" />
               
@@ -224,7 +224,7 @@ export default function ListView({
             <button
               type="button"
               className="btn btn-sm btn-success"
-              onClick={onCreate}
+              onClick={onImport}
             >
               <i className="bi bi-upload" />
               

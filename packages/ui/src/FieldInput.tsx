@@ -515,17 +515,52 @@ export default function FieldInput({
     );
   }
 
-  if (type === "number" || type === "money" || type === "percent") {
+if (type === "number" || type === "money" || type === "percent") {
+  if (type === "percent") {
     return (
-      <input
-        type="number"
-        className="form-control"
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value === "" ? "" : Number(e.target.value))}
-        disabled={readOnly}
-      />
+      <div className="input-group">
+        <input
+          type="number"
+          className="form-control"
+          value={value ?? ""}
+          onChange={(e) =>
+            onChange(e.target.value === "" ? "" : Number(e.target.value))
+          }
+          disabled={readOnly}
+        />
+        <span className="input-group-text">%</span>
+      </div>
     );
   }
+  if (type === "money") {
+    return (
+      <div className="input-group">
+        <input
+          type="number"
+          className="form-control"
+          value={value ?? ""}
+          onChange={(e) =>
+            onChange(e.target.value === "" ? "" : Number(e.target.value))
+          }
+          disabled={readOnly}
+        />
+        <span className="input-group-text">€</span>
+      </div>
+    );
+  }
+
+  return (
+    <input
+      type="number"
+      className="form-control"
+      value={value ?? ""}
+      onChange={(e) =>
+        onChange(e.target.value === "" ? "" : Number(e.target.value))
+      }
+      disabled={readOnly}
+    />
+  );
+}
 
   if (type === "date" || type === "datetime") {
     const inputValue = type === "date" ? toInputDate(value) : toInputDateTimeLocal(value);
