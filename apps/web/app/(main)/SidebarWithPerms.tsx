@@ -10,6 +10,8 @@ export function SidebarWithPerms(props: {
   title?: string;
   isOpen?: boolean;
   onClose?: () => void;
+  miniMode?: boolean;
+  onToggleMini?: () => void;
 }) {
   const { loading, hasPermiso } = usePerms();
 

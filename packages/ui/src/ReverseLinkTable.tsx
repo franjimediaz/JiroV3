@@ -306,7 +306,10 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
               <div className="text-muted small">No hay campos con appareance List/Always en {ref?.moduleSlug}.</div>
             ) : (
               <div className="table-responsive">
-                <table className="table table-sm align-middle mb-0">
+                 <table
+                      className="table table-sm table-striped align-middle mb-0"
+                      style={{ borderCollapse: "separate", borderSpacing: 0 }}
+                    >
                   <thead>
                     <tr>
                       {columnsFull.map((column) => (
@@ -314,11 +317,12 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
                           key={column.name}
                           style={{
                             width: 180,
-                            background: "linear-gradient(90deg, #0c1f49ab, #1f407546, #4d648aaf)",
+                            background: "linear-gradient(90deg, #112c66, #112c66, #112c66)",
                             color: "white",
                             fontWeight: 600,
                             padding: "12px 16px",
                             borderBottom: "2px solid #1e40af",
+                            borderRight: "1px solid rgb(0, 0, 0)",
                           }}
                         >
                           {column.label || column.name}
@@ -327,23 +331,34 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
                       <th
                         style={{
                           width: 180,
-                          background: "linear-gradient(90deg, #0c1f49ff, #1f407546)",
+                          background: "linear-gradient(90deg, #112c66, #112c66)",
                           color: "white",
                           fontWeight: 600,
                           padding: "12px 16px",
                           borderBottom: "2px solid #1e40af",
+                          
                         }}
                       >
-                        Acciones
+                        
                       </th>
                     </tr>
                   </thead>
 
                   <tbody>
                     {rows.map((row, index) => (
-                      <tr key={row?.id || index}>
+                      <tr 
+                        key={row?.id || index}
+                          style={{
+                          backgroundColor: index % 2 === 0 ? "#000000" : "#000000",
+                        }}>
                         {columnsFull.map((column) => (
-                          <td key={column.name}>{renderCellValue(row, column)}</td>
+                          <td key={column.name}
+                          style={{
+                          
+                          borderBottom: "1px solid #e5e7eb",
+                          borderRight: "1px solid #000000",
+                        }}
+                          >{renderCellValue(row, column)}</td>
                         ))}
                         <td>
                           <ActionMenu

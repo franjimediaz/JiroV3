@@ -20,6 +20,8 @@ export type {
     Appareance,
     FormSection,
     ListViewProps,
+    ListViewExportColumn,
+    ListViewExportPayload,
     ActionMenuItem,
     ActionMenuProps,
     SeedNode,

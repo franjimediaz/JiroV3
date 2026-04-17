@@ -3,83 +3,71 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { SidebarItem } from "./types";
-import { isActive, isBranchActive,isExactActive } from "./utils";
+import { isActive, isBranchActive, isExactActive } from "./utils";
 
 export type SidebarVariant = "fixed" | "drawer";
 
 export function Sidebar({
   items,
-  title = "Navegación",
+  title = "Navegacion",
   variant = "fixed",
   isOpen = false,
   onClose,
-  canView, // ✅ NUEVO: se inyecta desde fuera
+  miniMode = false,
+  onToggleMini,
+  canView,
 }: {
   items: SidebarItem[];
   title?: string;
   variant?: SidebarVariant;
-  isOpen?: boolean
+  isOpen?: boolean;
   onClose?: () => void;
+  miniMode?: boolean;
+  onToggleMini?: () => void;
   icon?: string;
-  canView?: (slug: string) => boolean; // true si puede VER ese slug
+  canView?: (slug: string) => boolean;
 }) {
-  
   const pathname = usePathname();
-    // ✅ cerrar con ESC en drawer
+
   useEffect(() => {
     if (variant !== "drawer" || !isOpen) return;
 
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose?.();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose?.();
     };
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [variant, isOpen, onClose]);
 
-  // ✅ cerrar al navegar
   useEffect(() => {
     if (variant === "drawer" && isOpen) onClose?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
+  }, [variant, isOpen, onClose, pathname]);
 
-
-  // 1) Calculamos qué nodos deben estar abiertos por contener la ruta activa
-  // ✅ Respeta permisos y sidebar=true (promueve hijos)
   const activeSet = useMemo(() => {
     const set = new Set<string>();
-    
 
-    const visit = (n: SidebarItem): boolean => {
-      // ✅ Permisos: si no puede ver, no cuenta para activos ni expansión
-      const hasChildren = (n.hijos?.length ?? 0) > 0;
+    const visit = (node: SidebarItem): boolean => {
+      const hasChildren = (node.hijos?.length ?? 0) > 0;
+      const isFolder = node.tipo === "carpeta" || (hasChildren && (!node.route || node.route.trim() === ""));
 
-  const isFolder =
-    n.tipo === "carpeta" ||
-    (hasChildren && (!n.route || n.route.trim() === ""));
+      if (!isFolder && canView && !canView(node.slug)) return false;
 
-  // ✅ Permisos SOLO para tablas/subtablas
-  if (!isFolder) {
-    if (canView && !canView(n.slug)) return false;
-  }
+      if (node.sidebar === true && node.tipo !== "carpeta") {
+        return (node.hijos ?? []).some(visit);
+      }
 
-  // ✅ sidebar=true => el nodo no cuenta, pero visitar hijos
-  if (n.sidebar === true) {
-    return (n.hijos ?? []).some(visit);
-  }
+      const here = node.route ? isActive(pathname, node.route) : false;
+      const childActive = (node.hijos ?? []).some(visit);
 
-  const here = n.route ? isActive(pathname, n.route) : false;
-  const childActive = (n.hijos ?? []).some(visit);
-
-  if (here || childActive) set.add(n.id);
-  return here || childActive;
-};
+      if (here || childActive) set.add(node.id);
+      return here || childActive;
+    };
 
     items.forEach(visit);
     return set;
   }, [items, pathname, canView]);
 
-  // 2) Estado real de expansión
   const [openSet, setOpenSet] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -102,44 +90,25 @@ export function Sidebar({
       toggleNode={toggleNode}
       activeSet={activeSet}
       canView={canView}
+      miniMode={miniMode && variant === "fixed"}
+      onNavigate={variant === "drawer" ? onClose : undefined}
     />
   );
 
   if (variant === "drawer") {
-      return (
+    return (
       <>
-        {/* Overlay */}
-        <div
-          className={`sidebarOverlay ${isOpen ? "show" : ""}`}
-          onClick={() => onClose?.()}
-        />
+        <div className={`sidebarOverlay ${isOpen ? "show" : ""}`} onClick={() => onClose?.()} />
 
-        {/* Panel */}
         <aside className={`sidebarDrawer ${isOpen ? "open" : ""}`}>
           <div className="sidebarDrawerHeader">
             <h5 className="m-0">{title}</h5>
-
-            <button
-              type="button"
-              className="btnClose"
-              onClick={() => onClose?.()}
-              aria-label="Cerrar"
-            >
+            <button type="button" className="btnClose" onClick={() => onClose?.()} aria-label="Cerrar">
               ✕
             </button>
           </div>
 
-          <div className="sidebarDrawerBody">
-            <NavTree
-              nodes={items}
-              openSet={openSet}
-              toggleNode={toggleNode}
-              activeSet={activeSet}
-              canView={canView}
-              onNavigate={onClose} // ✅ cierra al clicar en link
-            />
-          </div>
-
+          <div className="sidebarDrawerBody">{tree}</div>
           <div className="sidebarDrawerFooter">
             <SidebarUser />
           </div>
@@ -148,19 +117,29 @@ export function Sidebar({
     );
   }
 
-  // fixed
   return (
-    <aside className="sidebar-desktop border-end h-100">
-        <div className="p-4 sidebar-sticky">
-        <h6 className="sidebar-title">{title}</h6>
-        {tree}
+    <aside className={`sidebar-desktop border-end h-100 ${miniMode ? "is-mini" : ""}`}>
+      <div className={`p-4 sidebar-sticky ${miniMode ? "is-mini" : ""}`}>
+        <div className="sidebar-topbar">
+          <h6 className={`sidebar-title ${miniMode ? "is-mini" : ""}`}>{title}</h6>
+          {onToggleMini ? (
+            <button
+              type="button"
+              className={`sidebar-pin-btn ${miniMode ? "is-mini" : ""}`}
+              onClick={onToggleMini}
+              aria-label={miniMode ? "Expandir sidebar" : "Compactar sidebar"}
+              title={miniMode ? "Expandir sidebar" : "Compactar sidebar"}
+            >
+              <i className={`bi ${miniMode ? "bi-pin-angle-fill" : "bi-pin-angle"}`} />
+            </button>
+          ) : null}
+        </div>
+        {miniMode ? null : tree}
       </div>
-      <SidebarUser />
+      <SidebarUser miniMode={miniMode} />
     </aside>
   );
 }
-
-
 
 function NavTree({
   nodes,
@@ -170,6 +149,7 @@ function NavTree({
   offcanvasDismiss = false,
   canView,
   onNavigate,
+  miniMode = false,
 }: {
   nodes: SidebarItem[];
   openSet: Set<string>;
@@ -178,27 +158,27 @@ function NavTree({
   offcanvasDismiss?: boolean;
   canView?: (slug: string) => boolean;
   onNavigate?: () => void;
+  miniMode?: boolean;
 }) {
   return (
     <ul className="nav flex-column">
-      {nodes.map((n) => (
+      {nodes.map((node) => (
         <NavItem
-          key={n.id}
-          node={n}
+          key={node.id}
+          node={node}
           openSet={openSet}
           toggleNode={toggleNode}
           activeSet={activeSet}
           offcanvasDismiss={offcanvasDismiss}
           level={0}
           canView={canView}
+          miniMode={miniMode}
+          onNavigate={onNavigate}
         />
       ))}
     </ul>
   );
 }
-
-
-
 
 function NavItem({
   node,
@@ -207,7 +187,9 @@ function NavItem({
   activeSet,
   offcanvasDismiss,
   level,
-  canView, // ✅ inyectado desde el Sidebar (no hooks aquí)
+  canView,
+  miniMode = false,
+  onNavigate,
 }: {
   node: SidebarItem;
   openSet: Set<string>;
@@ -215,106 +197,99 @@ function NavItem({
   activeSet: Set<string>;
   offcanvasDismiss: boolean;
   level: number;
-  canView?: (slug: string) => boolean; // devuelve true si puede VER en sidebar
+  canView?: (slug: string) => boolean;
+  miniMode?: boolean;
+  onNavigate?: () => void;
 }) {
-
   const pathname = usePathname();
-  //  Permisos: si no puede "ver", fuera
-  
   const hasChildren = (node.hijos?.length ?? 0) > 0;
+  const isFolder = node.tipo === "carpeta" || (hasChildren && (!node.route || node.route.trim() === ""));
 
-//  Carpeta REAL: por tipo o por estructura (fallback)
-const isFolder =
-  node.tipo === "carpeta" ||
-  (hasChildren && (!node.route || node.route.trim() === ""));
+  if (!isFolder && canView && !canView(node.slug)) return null;
 
-// Permisos SOLO para tablas/subtablas (no carpetas)
-if (!isFolder) {
-  if (canView && !canView(node.slug)) return null;
-}
-
-  // sidebar=true => NO se muestra el nodo, pero sus hijos sí (promovidos al mismo nivel)
-  if (node.sidebar === true) { 
-  if (node.tipo === "carpeta") {
-  // la carpeta no se oculta, ignora sidebar para carpetas
-  } else {
+  if (node.sidebar === true && node.tipo !== "carpeta") {
     if (!hasChildren) return null;
     return (
       <>
-        {node.hijos!.map((h) => (
+        {node.hijos!.map((child) => (
           <NavItem
-            key={h.id}
-            node={h}
+            key={child.id}
+            node={child}
             openSet={openSet}
             toggleNode={toggleNode}
             activeSet={activeSet}
             offcanvasDismiss={offcanvasDismiss}
             level={level}
             canView={canView}
+            miniMode={miniMode}
+            onNavigate={onNavigate}
           />
         ))}
       </>
     );
   }
-}
 
   const indent = { paddingLeft: `${level * 12}px` };
-
   const exact = node.route ? isExactActive(pathname, node.route) : false;
   const branch = node.route ? isBranchActive(pathname, node.route) : false;
+  const expanded = openSet.has(node.id) || branch || activeSet.has(node.id);
+  const itemClass = ["nav-link", exact ? "active text-success" : "text-body-secondary", "sidebar-nav-link", miniMode ? "is-mini" : ""]
+    .filter(Boolean)
+    .join(" ");
 
-  const itemClass = ["nav-link", exact ? "active text-success" : "text-body-secondary"].join(" ");
+  const icon = node.icon ? <i className={`bi ${node.icon} sidebar-item-icon ${miniMode ? "is-hidden" : "me-2"}`} /> : null;
+  const label = <span className={`sidebar-item-label ${miniMode ? "is-hidden" : ""}`}>{node.nombre}</span>;
 
-  const expanded = openSet.has(node.id) || branch;
-
-  // ✅ NODO CON HIJOS
   if (hasChildren) {
-    const isFolder = node.tipo === "carpeta";
-    const canRenderSelfLink = !isFolder && !!node.route; // ✅ solo tablas/subtablas con ruta
+    const canRenderSelfLink = !isFolder && !!node.route;
 
     return (
       <li className="nav-item">
         <div>
           <button
-            className="btn btn-sm text-start w-100 text-decoration-none d-flex align-items-center justify-content-between"
+            className={`btn btn-sm text-start w-100 text-decoration-none d-flex align-items-center justify-content-between sidebar-folder-btn ${miniMode ? "is-mini" : ""}`}
             style={indent}
             type="button"
             onClick={() => toggleNode(node.id)}
+            title={node.nombre}
           >
-            <span>
-              {node.icon && <i className={"bi " + node.icon + " me-2"} />}
-              {node.nombre}
+            <span className="d-flex align-items-center sidebar-item-main">
+              {icon}
+              {label}
             </span>
-            <i className={`bi ${expanded ? "bi-chevron-down" : "bi-chevron-right"}`} />
+            <i className={`bi ${expanded ? "bi-chevron-down" : "bi-chevron-right"} sidebar-item-chevron ${miniMode ? "is-hidden" : ""}`} />
           </button>
 
           <div className={`sidebarCollapse ${expanded ? "show" : ""}`}>
-            <ul className="nav flex-column ms-1">
-              {/* ✅ Si es carpeta: NO mostrar link a su ruta */}
-              {canRenderSelfLink && (
+            <ul className={`nav flex-column ${miniMode ? "sidebar-subnav-mini" : "ms-1"}`}>
+              {canRenderSelfLink ? (
                 <li className="nav-item">
                   <a
                     href={node.route!}
                     className={itemClass}
                     style={{ paddingLeft: `${(level + 1) * 12}px` }}
+                    title={node.nombre}
+                    onClick={() => onNavigate?.()}
                     {...(offcanvasDismiss ? { "data-bs-dismiss": "offcanvas" as const } : {})}
                   >
-                    {node.icon && <i className={"bi " + node.icon + " me-2"} />}
-                    {node.nombre}
+                    {icon}
+                    {label}
                   </a>
                 </li>
-              )}
+              ) : null}
 
-              {node.hijos!.map((h) => (
+              {node.hijos!.map((child) => (
                 <NavItem
-                  key={h.id}
-                  node={h}
+                  key={child.id}
+                  node={child}
                   openSet={openSet}
                   toggleNode={toggleNode}
                   activeSet={activeSet}
                   offcanvasDismiss={offcanvasDismiss}
                   level={level + 1}
                   canView={canView}
+                  miniMode={miniMode}
+                  onNavigate={onNavigate}
                 />
               ))}
             </ul>
@@ -324,7 +299,6 @@ if (!isFolder) {
     );
   }
 
-  // ✅ HOJA: si por error llega una carpeta sin hijos, no la pintamos.
   if (node.tipo === "carpeta") return null;
 
   return (
@@ -333,39 +307,40 @@ if (!isFolder) {
         href={node.route ?? "#"}
         className={itemClass}
         style={indent}
+        title={node.nombre}
+        onClick={() => onNavigate?.()}
         {...(offcanvasDismiss ? { "data-bs-dismiss": "offcanvas" as const } : {})}
       >
-        {node.icon && <i className={"bi " + node.icon + " me-2"} />}
-        {node.nombre}
+        {icon}
+        {label}
       </a>
     </li>
   );
 }
 
-
-function SidebarUser() {
+function SidebarUser({ miniMode = false }: { miniMode?: boolean }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="border-top p-3 position-relative">
+    <div className={`border-top p-3 position-relative sidebar-user ${miniMode ? "is-mini" : ""}`}>
       <button
         type="button"
-        className="btn w-100 d-flex align-items-center justify-content-between"
-        onClick={() => setOpen((v) => !v)}
+        className={`btn w-100 d-flex align-items-center justify-content-between sidebar-user-btn ${miniMode ? "is-mini" : ""}`}
+        onClick={() => setOpen((value) => !value)}
+        title="Mi cuenta"
       >
         <div className="d-flex align-items-center gap-2">
           <i className="bi bi-person-circle fs-5" />
-          <span className="small">Mi cuenta</span>
+          <span className={`small sidebar-item-label ${miniMode ? "is-hidden" : ""}`}>Mi cuenta</span>
         </div>
-        
       </button>
 
-      {open && (
+      {open ? (
         <div
           className="position-absolute bg-white border rounded shadow-sm"
           style={{
             bottom: "100%",
-            left: 16,
+            left: miniMode ? 8 : 16,
             right: 16,
             marginBottom: 8,
             zIndex: 1000,
@@ -373,28 +348,26 @@ function SidebarUser() {
         >
           <ul className="list-unstyled mb-0">
             <li>
-              <a
-                href="/mi-perfil"
-                className="dropdown-item d-flex align-items-center gap-2"
-              >
+              <a href="/mi-perfil" className="dropdown-item d-flex align-items-center gap-2" title="Mi perfil">
                 <i className="bi bi-person" />
-                Mi perfil
+                <span className={`${miniMode ? "visually-hidden" : ""}`}>Mi perfil</span>
+                {miniMode ? <span className="small">Perfil</span> : null}
               </a>
             </li>
             <li>
-                <form action="/auth/signout" method="post" className="m-0">
-                <button className="dropdown-item d-flex align-items-center gap-2 text-danger" type="submit">
+              <form action="/auth/signout" method="post" className="m-0">
+                <button className="dropdown-item d-flex align-items-center gap-2 text-danger" type="submit" title="Salir">
                   <i className="bi bi-box-arrow-right" />
-                  Salir
+                  <span className={`${miniMode ? "visually-hidden" : ""}`}>Salir</span>
+                  {miniMode ? <span className="small">Salir</span> : null}
                 </button>
               </form>
             </li>
           </ul>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
-
 
 export default Sidebar;

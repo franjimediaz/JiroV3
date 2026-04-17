@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SidebarItem } from "@repo/ui";
 import { SidebarWithPerms } from "./SidebarWithPerms";
+
+const SIDEBAR_MINI_STORAGE_KEY = "jiro.sidebar.mini";
 
 export default function MainShell({
   items,
@@ -12,16 +14,40 @@ export default function MainShell({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarMini, setSidebarMini] = useState(false);
+  const [desktopReady, setDesktopReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(SIDEBAR_MINI_STORAGE_KEY);
+      if (saved === "1") setSidebarMini(true);
+    } catch {
+      // noop
+    } finally {
+      setDesktopReady(true);
+    }
+  }, []);
+
+  const toggleSidebarMini = () => {
+    setSidebarMini((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(SIDEBAR_MINI_STORAGE_KEY, next ? "1" : "0");
+      } catch {
+        // noop
+      }
+      return next;
+    });
+  };
 
   return (
     <>
       <nav className="navbar navbar-dark bg-dark py-0">
         <div className="container-fluid">
-          {/* ✅ ahora abre con React */}
           <button
             className="btn btn-outline-light d-lg-none"
             type="button"
-            aria-label="Abrir menú"
+            aria-label="Abrir menu"
             onClick={() => setSidebarOpen(true)}
           >
             ☰
@@ -40,22 +66,25 @@ export default function MainShell({
       </nav>
 
       <div className="container-fluid layout-min-vh">
-        <div className="row">
-          {/* Desktop */}
-          <div className="col-lg-2 d-none d-lg-block p-0">
-            <SidebarWithPerms items={items} variant="fixed" />
+        <div className="main-shell-layout">
+          <div className={`main-shell-sidebar d-none d-lg-block ${desktopReady && sidebarMini ? "is-mini" : ""}`}>
+            <SidebarWithPerms
+              items={items}
+              variant="fixed"
+              miniMode={desktopReady && sidebarMini}
+              onToggleMini={toggleSidebarMini}
+            />
           </div>
 
-          {/* Móvil Drawer */}
           <SidebarWithPerms
             items={items}
             variant="drawer"
             isOpen={sidebarOpen}
             onClose={() => setSidebarOpen(false)}
-            title="Navegación"
+            title="Navegacion"
           />
 
-          <main className="col-12 col-lg-10 p-3 p-lg-4">
+          <main className="main-shell-content flex-grow-1 p-3 p-lg-4">
             <div className="bg-white rounded shadow-sm p-3 p-lg-4">{children}</div>
             <footer className="text-center mt-4 mb-2 text-muted small">
               © {new Date().getFullYear()} JiRo v2 · Next.js + Supabase

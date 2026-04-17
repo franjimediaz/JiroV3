@@ -15,31 +15,20 @@ export function parseTemplateRow(tplRow: AnyObj) {
   const related = safeJsonParse<any[]>(tplRow.related, []);
   const template = safeJsonParse<any>(
     tplRow.template,
-    { page: { size: "A4", margin: 24 }, theme: {}, blocks: [], lookups: [] }
+    { page: { size: "A4", margin: 24 }, theme: {}, blocks: [], lookups: [], datasets: [], documentType: "generic" }
   );
 
-  // ✅ compat: si falta lookups, crea array vacío
   if (!Array.isArray(template.lookups)) template.lookups = [];
+  if (!Array.isArray(template.datasets)) template.datasets = [];
+  if (!template.documentType) template.documentType = "generic";
 
   return { related, template };
 }
 
-/**
- * Devuelve una lista de "label resolvers" que resolvePdfContext usará para:
- * - convertir UUIDs a labels (campo__label) dentro de record o related[key]
- *
- * Fuentes:
- *  A) template.lookups (nuevo / global / recomendado)
- *  B) budgetPartidas.groupByLookup (legacy / compat)
- */
 export function deriveLabelResolversFromTemplate(template: AnyObj) {
   const blocks = Array.isArray(template?.blocks) ? template.blocks : [];
   const resolvers: any[] = [];
 
-  // -------------------------------
-  // (A) ✅ Lookups globales
-  // template.lookups: [{ in, relatedKey?, field, refTable, refIdField?, refLabelField, outField? }]
-  // -------------------------------
   const lookups = Array.isArray(template?.lookups) ? template.lookups : [];
   for (const lk of lookups) {
     if (!lk || typeof lk !== "object") continue;
@@ -53,7 +42,6 @@ export function deriveLabelResolversFromTemplate(template: AnyObj) {
     const refIdField = lk.refIdField ? String(lk.refIdField).trim() : "id";
     const outField = lk.outField ? String(lk.outField).trim() : (field ? `${field}__label` : "");
 
-    // validaciones mínimas
     if (!field || !refTable || !refLabelField) continue;
     if (where === "related" && !relatedKey) continue;
 
@@ -68,10 +56,6 @@ export function deriveLabelResolversFromTemplate(template: AnyObj) {
     });
   }
 
-  // -------------------------------
-  // (B) ✅ Compat legacy: budgetPartidas.groupByLookup
-  // (se mantiene para no romper plantillas viejas)
-  // -------------------------------
   for (const b of blocks) {
     if (b?.type !== "budgetPartidas") continue;
 
@@ -100,9 +84,6 @@ export function deriveLabelResolversFromTemplate(template: AnyObj) {
     });
   }
 
-  // -------------------------------
-  // Dedupe: evita repetidos
-  // -------------------------------
   const keyOf = (r: any) =>
     `${r.in}|${r.relatedKey || ""}|${r.field}|${r.refTable}|${r.refIdField}|${r.refLabelField}|${r.outField}`;
 

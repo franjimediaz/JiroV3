@@ -8,6 +8,7 @@
 // - bloque budgetPartidas (Partida -> tareas -> materiales)
 // - bindings: {{record.xxx}}, {{branding.xxx}}, {{now}}, {{item.xxx}} en tablas (repeat)
 import sanitizeHtml from "sanitize-html";
+import { advancedBlocksCss, renderAdvancedBlock } from "./renderAdvancedBlocks";
 
 type AnyObj = Record<string, any>;
 const EURO_HTML = "&#8364;";
@@ -1262,6 +1263,14 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
     `;
   }
 
+  const advanced = renderAdvancedBlock(block, ctx, {
+    escHtml,
+    tpl,
+    styleToInline,
+    renderCell,
+  });
+  if (advanced) return advanced;
+
   return `<div class="txt txt-muted">Bloque no soportado: ${escHtml(type)}</div>`;
 }
 
@@ -1618,6 +1627,7 @@ export function renderTemplateToHtml(template: any, ctx: AnyObj) {
   .card-html ul, .card-html ol{ margin: 6px 0 6px 18px; padding: 0; }
 
 
+${advancedBlocksCss}
 </style>
 `;
 

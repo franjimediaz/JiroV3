@@ -1,7 +1,12 @@
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
-import type {Field, FieldType, ListViewProps } from "@repo/types";
+import type {
+  Field,
+  FieldType,
+  ListViewExportPayload,
+  ListViewProps,
+} from "@repo/types";
 import { ActionMenu } from "./ActionMenu";
 import { dataProvider } from "./providers/DataProvider";
 import  SelectorTabla  from "./Selector";
@@ -23,6 +28,8 @@ export default function ListView({
   schema,
   data,
   loading,
+  exportLoading,
+  importLoading,
   onViewRow,
   onEditRow,
   onDeleteRow,
@@ -168,7 +175,14 @@ export default function ListView({
   const icon = schema.ui?.icon;
   const color = schema.ui?.color;
   const tableName = schema.db.table;
-  const tableTitle = schema.db?.name;
+  const exportPayload = useMemo<ListViewExportPayload>(
+    () => ({
+      columns: [],
+      rows: [],
+      rawRows: filteredData,
+    }),
+    [filteredData]
+  );
 
   return (
     <div className="card" style={{ borderColor: "rgb(136, 135, 135)" }}>
@@ -214,7 +228,9 @@ export default function ListView({
             <button
               type="button"
               className="btn btn-sm btn-success"
-              onClick={onExport}
+              onClick={() => void onExport(exportPayload)}
+              disabled={exportLoading}
+              title={exportLoading ? "Exportando" : "Exportar"}
             >
               <i className="bi bi-download" />
               
@@ -225,6 +241,8 @@ export default function ListView({
               type="button"
               className="btn btn-sm btn-success"
               onClick={onImport}
+              disabled={importLoading}
+              title={importLoading ? "Importando" : "Importar"}
             >
               <i className="bi bi-upload" />
               

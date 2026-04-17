@@ -19,6 +19,7 @@ async function buildContext(args: {
     recordId: args.recordId,
     related: Array.isArray(args.related) ? args.related : [],
     labelResolvers,
+    template: args.template,
   });
 }
 

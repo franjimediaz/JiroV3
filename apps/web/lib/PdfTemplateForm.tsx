@@ -5,6 +5,18 @@ import { useEffect, useMemo, useState, useTransition, type ReactNode } from "rea
 import { useRouter } from "next/navigation";
 import { upsertPdfTemplateAction } from "./actions/pdfTemplates";
 import { RichTextEditor} from "@repo/ui";
+import {
+  defaultBusinessColumnsForKind,
+  defaultBusinessMetrics,
+  defaultBusinessRowsForKind,
+  PDF_BUSINESS_BLOCK_KIND_OPTIONS,
+  PDF_DOCUMENT_TYPES,
+  type PdfBusinessBlock,
+  type PdfBusinessBlockKind,
+  type PdfChartBlock,
+  type PdfDatasetDefinition,
+  type PdfDocumentType,
+} from "./pdf/templateExtensions";
 
 
 
@@ -222,6 +234,8 @@ type PdfBlock =
   | BudgetPartidasBlock
   | CardsBlock
   | TotalsBoxBlock
+  | PdfBusinessBlock
+  | PdfChartBlock
   | {
       id: string;
       type: "table";
@@ -244,6 +258,8 @@ type PdfBlock =
       theme: Theme;
       blocks: PdfBlock[];
       lookups?: LookupSpec[];
+      datasets?: PdfDatasetDefinition[];
+      documentType?: PdfDocumentType;
   };
 
 /* ------------------------------------------------------------------ */
@@ -385,6 +401,8 @@ function ensureTemplate(raw: any): Template {
     },
     blocks,
     lookups, // âœ… NUEVO
+    datasets: Array.isArray(t?.datasets) ? t.datasets : [],
+    documentType: t?.documentType || "generic",
   };
 }
 
@@ -593,6 +611,13 @@ export default function PdfTemplateForm({
     const brandingGroup = makeFieldBindingGroup("Branding / empresa", "branding", brandingFields);
     if (brandingGroup) groups.push(brandingGroup);
 
+    const datasetGroup = makeFieldBindingGroup(
+      "Datasets",
+      "datasets",
+      Object.keys((previewCtx as any)?.datasets ?? {}).map((key) => `${key}.summary`)
+    );
+    if (datasetGroup) groups.push(datasetGroup);
+
     groups.push({
       label: "Variables especiales",
       options: [
@@ -750,6 +775,10 @@ function addBlock(type: PdfBlock["type"]) {
             { label: "Total", value: "{{record.total}} €" },
           ],
         }
+      : type === "business"
+      ? createBusinessBlock("documentHeader")
+      : type === "chart"
+      ? createChartBlock()
       : {
           id: uid(),
           type: "table",
@@ -840,6 +869,55 @@ function createDefaultTotalsBoxRow(): TotalsBoxRow {
   return {
     label: "Concepto",
     value: "{{record.total}} €",
+  };
+}
+
+function createDefaultDataset(): PdfDatasetDefinition {
+  return {
+    id: `dataset_${uid()}`,
+    label: "Nuevo dataset",
+    source: "related",
+    relatedKey: relations[0]?.key ?? "",
+    filters: [],
+    sort: [],
+    aggregates: [],
+  };
+}
+
+function createBusinessBlock(kind: PdfBusinessBlockKind): PdfBusinessBlock {
+  return {
+    id: uid(),
+    type: "business",
+    kind,
+    title: PDF_BUSINESS_BLOCK_KIND_OPTIONS.find((option) => option.value === kind)?.label || "Bloque negocio",
+    rows: defaultBusinessRowsForKind(kind),
+    columns: defaultBusinessColumnsForKind(kind),
+    metrics: kind === "kpi" ? defaultBusinessMetrics() : [],
+    datasetId: kind === "lineItems" || kind === "dynamicTable" || kind === "comparison" || kind === "categoryGroup" ? template.datasets?.[0]?.id ?? "" : undefined,
+    repeat: kind === "lineItems" || kind === "dynamicTable" || kind === "comparison" || kind === "categoryGroup"
+      ? relations[0]?.key
+        ? `related.${relations[0].key}`
+        : ""
+      : undefined,
+    emptyText: "Sin datos",
+  };
+}
+
+function createChartBlock(): PdfChartBlock {
+  return {
+    id: uid(),
+    type: "chart",
+    chartType: "bar",
+    title: "Grafico",
+    subtitle: "",
+    datasetId: template.datasets?.[0]?.id ?? "",
+    labelField: "label",
+    valueField: "value",
+    sortDirection: "desc",
+    showLegend: true,
+    showValues: true,
+    colors: ["#2563eb", "#16a34a", "#f59e0b", "#dc2626"],
+    height: 260,
   };
 }
 
@@ -1158,6 +1236,21 @@ function save() {
             <label className="form-label">ID prueba</label>
             <input className="form-control" value={testId} onChange={(e) => setTestId(e.target.value)} />
           </div>
+          <div className="col-md-4">
+            <label className="form-label">Tipo de documento</label>
+            <select
+              className="form-select"
+              value={template.documentType || "generic"}
+              disabled={readOnly}
+              onChange={(e) => updateTemplate({ documentType: e.target.value as PdfDocumentType })}
+            >
+              {PDF_DOCUMENT_TYPES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -1225,6 +1318,12 @@ function save() {
                     </button>
                     <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("totalsBox")}>
                       + Totales
+                    </button>
+                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("business")}>
+                      + Negocio
+                    </button>
+                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("chart")}>
+                      + Grafico
                     </button>
                 </div>
                 )}
@@ -1765,6 +1864,214 @@ function save() {
                     </div>
                     </div>
                 </div>
+            )}
+            {selectedBlock && selectedBlock.type === "business" && (
+              <div className="card">
+                <div className="card-header text-white">Bloque de negocio</div>
+                <div className="card-body">
+                  <div className="row g-3">
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Tipo de bloque</label>
+                      <select
+                        className="form-select"
+                        value={selectedBlock.kind}
+                        disabled={readOnly}
+                        onChange={(e) => {
+                          const kind = e.target.value as PdfBusinessBlockKind;
+                          updateBlock(selectedBlock.id, "business", {
+                            kind,
+                            title: PDF_BUSINESS_BLOCK_KIND_OPTIONS.find((option) => option.value === kind)?.label,
+                            rows: defaultBusinessRowsForKind(kind),
+                            columns: defaultBusinessColumnsForKind(kind),
+                            metrics: kind === "kpi" ? defaultBusinessMetrics() : [],
+                          } as any);
+                        }}
+                      >
+                        {PDF_BUSINESS_BLOCK_KIND_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Dataset</label>
+                      <select
+                        className="form-select"
+                        value={selectedBlock.datasetId ?? ""}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "business", { datasetId: e.target.value } as any)}
+                      >
+                        <option value="">Sin dataset</option>
+                        {(template.datasets ?? []).map((dataset) => (
+                          <option key={dataset.id} value={dataset.id}>
+                            {dataset.label || dataset.id}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Titulo</label>
+                      <input
+                        className="form-control"
+                        value={selectedBlock.title ?? ""}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "business", { title: e.target.value } as any)}
+                      />
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Subtitulo</label>
+                      <input
+                        className="form-control"
+                        value={selectedBlock.subtitle ?? ""}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "business", { subtitle: e.target.value } as any)}
+                      />
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label">Repeat alternativo</label>
+                      <input
+                        className="form-control"
+                        value={selectedBlock.repeat ?? ""}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "business", { repeat: e.target.value } as any)}
+                        placeholder="related.lineas"
+                      />
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label">Filas configurables</label>
+                      <textarea
+                        className="form-control"
+                        rows={8}
+                        value={prettyJson(selectedBlock.rows ?? [])}
+                        disabled={readOnly}
+                        onChange={(e) => {
+                          try {
+                            updateBlock(selectedBlock.id, "business", { rows: JSON.parse(e.target.value) } as any);
+                          } catch {}
+                        }}
+                      />
+                      <div className="form-text">JSON de filas tipo {`[{ "label": "Serie", "value": "{{record.serie}}" }]`}.</div>
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label">Columnas / metricas</label>
+                      <textarea
+                        className="form-control"
+                        rows={8}
+                        value={prettyJson(selectedBlock.kind === "kpi" ? selectedBlock.metrics ?? [] : selectedBlock.columns ?? [])}
+                        disabled={readOnly}
+                        onChange={(e) => {
+                          try {
+                            const parsed = JSON.parse(e.target.value);
+                            if (selectedBlock.kind === "kpi") {
+                              updateBlock(selectedBlock.id, "business", { metrics: parsed } as any);
+                            } else {
+                              updateBlock(selectedBlock.id, "business", { columns: parsed } as any);
+                            }
+                          } catch {}
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {selectedBlock && selectedBlock.type === "chart" && (
+              <div className="card">
+                <div className="card-header text-white">Grafico</div>
+                <div className="card-body">
+                  <div className="row g-3">
+                    <div className="col-12 col-md-4">
+                      <label className="form-label">Tipo</label>
+                      <select
+                        className="form-select"
+                        value={selectedBlock.chartType}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "chart", { chartType: e.target.value as any } as any)}
+                      >
+                        <option value="bar">Barras</option>
+                        <option value="line">Lineas</option>
+                        <option value="pie">Pastel</option>
+                        <option value="donut">Donut</option>
+                      </select>
+                    </div>
+                    <div className="col-12 col-md-4">
+                      <label className="form-label">Dataset</label>
+                      <select
+                        className="form-select"
+                        value={selectedBlock.datasetId ?? ""}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "chart", { datasetId: e.target.value } as any)}
+                      >
+                        <option value="">Selecciona un dataset</option>
+                        {(template.datasets ?? []).map((dataset) => (
+                          <option key={dataset.id} value={dataset.id}>
+                            {dataset.label || dataset.id}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-12 col-md-4">
+                      <label className="form-label">Altura</label>
+                      <input
+                        className="form-control"
+                        type="number"
+                        value={selectedBlock.height ?? 260}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "chart", { height: Number(e.target.value || 260) } as any)}
+                      />
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Titulo</label>
+                      <input
+                        className="form-control"
+                        value={selectedBlock.title ?? ""}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "chart", { title: e.target.value } as any)}
+                      />
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label">Subtitulo</label>
+                      <input
+                        className="form-control"
+                        value={selectedBlock.subtitle ?? ""}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "chart", { subtitle: e.target.value } as any)}
+                      />
+                    </div>
+                    <div className="col-12 col-md-4">
+                      <label className="form-label">Campo etiqueta</label>
+                      <input
+                        className="form-control"
+                        value={selectedBlock.labelField}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "chart", { labelField: e.target.value } as any)}
+                      />
+                    </div>
+                    <div className="col-12 col-md-4">
+                      <label className="form-label">Campo valor</label>
+                      <input
+                        className="form-control"
+                        value={selectedBlock.valueField}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "chart", { valueField: e.target.value } as any)}
+                      />
+                    </div>
+                    <div className="col-12 col-md-4">
+                      <label className="form-label">Orden</label>
+                      <select
+                        className="form-select"
+                        value={selectedBlock.sortDirection ?? "desc"}
+                        disabled={readOnly}
+                        onChange={(e) => updateBlock(selectedBlock.id, "chart", { sortDirection: e.target.value as any } as any)}
+                      >
+                        <option value="desc">Descendente</option>
+                        <option value="asc">Ascendente</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
             {selectedBlock && selectedBlock.type === "budgetPartidas" && (
                     <div className="card">
@@ -3866,6 +4173,153 @@ function save() {
                         </div>
                         <div className="small mt-2">
                           Repite con <code>{`related.${relation.key || "key"}`}</code> y renderiza columnas con <code>{"{{item.campo}}"}</code>.
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="card mb-4 border-0 shadow-sm">
+              <div className="card-body">
+                <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
+                  <div>
+                    <div className="fw-semibold">Datasets</div>
+                    <div className="text-muted small">
+                      Define conjuntos de datos reutilizables para tablas dinamicas, KPIs y graficos.
+                    </div>
+                  </div>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-primary"
+                      onClick={() => updateTemplate({ datasets: [...(template.datasets ?? []), createDefaultDataset()] })}
+                    >
+                      Anadir dataset
+                    </button>
+                  )}
+                </div>
+
+                {(template.datasets ?? []).length === 0 ? (
+                  <div className="text-muted small">No hay datasets definidos.</div>
+                ) : (
+                  <div className="d-flex flex-column gap-3">
+                    {(template.datasets ?? []).map((dataset, idx) => (
+                      <div key={`${dataset.id}-${idx}`} className="border rounded-3 p-3">
+                        <div className="d-flex justify-content-between align-items-center gap-2 mb-3">
+                          <div className="fw-semibold">Dataset #{idx + 1}</div>
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() =>
+                                updateTemplate({
+                                  datasets: (template.datasets ?? []).filter((_, currentIdx) => currentIdx !== idx),
+                                })
+                              }
+                            >
+                              Eliminar
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="row g-3">
+                          <div className="col-12 col-md-3">
+                            <label className="form-label">ID</label>
+                            <input
+                              className="form-control"
+                              value={dataset.id}
+                              disabled={readOnly}
+                              onChange={(e) => {
+                                const next = [...(template.datasets ?? [])];
+                                next[idx] = { ...next[idx], id: e.target.value };
+                                updateTemplate({ datasets: next });
+                              }}
+                            />
+                          </div>
+                          <div className="col-12 col-md-3">
+                            <label className="form-label">Label</label>
+                            <input
+                              className="form-control"
+                              value={dataset.label ?? ""}
+                              disabled={readOnly}
+                              onChange={(e) => {
+                                const next = [...(template.datasets ?? [])];
+                                next[idx] = { ...next[idx], label: e.target.value };
+                                updateTemplate({ datasets: next });
+                              }}
+                            />
+                          </div>
+                          <div className="col-12 col-md-3">
+                            <label className="form-label">Origen</label>
+                            <select
+                              className="form-select"
+                              value={dataset.source}
+                              disabled={readOnly}
+                              onChange={(e) => {
+                                const next = [...(template.datasets ?? [])];
+                                next[idx] = { ...next[idx], source: e.target.value as PdfDatasetDefinition["source"] };
+                                updateTemplate({ datasets: next });
+                              }}
+                            >
+                              <option value="related">Relacion</option>
+                              <option value="table">Tabla</option>
+                              <option value="record">Registro</option>
+                            </select>
+                          </div>
+                          <div className="col-12 col-md-3">
+                            <label className="form-label">{dataset.source === "table" ? "Tabla" : dataset.source === "related" ? "Relacion" : "Path"}</label>
+                            {dataset.source === "table" ? (
+                              <select
+                                className="form-select"
+                                value={dataset.table ?? ""}
+                                disabled={readOnly}
+                                onChange={(e) => {
+                                  const next = [...(template.datasets ?? [])];
+                                  next[idx] = { ...next[idx], table: e.target.value };
+                                  updateTemplate({ datasets: next });
+                                }}
+                              >
+                                <option value="">Selecciona una tabla</option>
+                                {tableOptions.map((table) => (
+                                  <option key={table} value={table}>
+                                    {table}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : dataset.source === "related" ? (
+                              <select
+                                className="form-select"
+                                value={dataset.relatedKey ?? ""}
+                                disabled={readOnly}
+                                onChange={(e) => {
+                                  const next = [...(template.datasets ?? [])];
+                                  next[idx] = { ...next[idx], relatedKey: e.target.value };
+                                  updateTemplate({ datasets: next });
+                                }}
+                              >
+                                <option value="">Selecciona una relacion</option>
+                                {relations.map((relation) => (
+                                  <option key={relation.key} value={relation.key}>
+                                    {relation.key} ({relation.table})
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                className="form-control"
+                                value={dataset.path ?? ""}
+                                disabled={readOnly}
+                                onChange={(e) => {
+                                  const next = [...(template.datasets ?? [])];
+                                  next[idx] = { ...next[idx], path: e.target.value };
+                                  updateTemplate({ datasets: next });
+                                }}
+                                placeholder="record.lineas"
+                              />
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}

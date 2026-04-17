@@ -85,6 +85,7 @@ export async function GET(req: Request) {
       recordId,
       related,
       labelResolvers,
+      template,
     });
 
     // 5) HTML

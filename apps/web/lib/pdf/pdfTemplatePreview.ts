@@ -30,6 +30,7 @@ export async function buildPdfTemplatePreviewContext(args: BuildPdfTemplatePrevi
       related,
       labelResolvers,
       recordOverride: safeRecordData,
+      template,
     });
   }
 
@@ -37,6 +38,7 @@ export async function buildPdfTemplatePreviewContext(args: BuildPdfTemplatePrevi
     record: { ...safeRecordData },
     py: {},
     related: {},
+    datasets: {},
     branding: normalizedBranding,
     empresa: normalizedBranding,
     now: new Date().toISOString(),

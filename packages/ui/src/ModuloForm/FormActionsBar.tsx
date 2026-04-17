@@ -2,6 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import type { ModuleSchema } from "@repo/types";
+import { ActionMenu } from "../ActionMenu";
 import { applyCompute } from "../engines/computeEngine"; // ajusta ruta real si difiere
 import { dataProvider } from "../providers/DataProvider"; // ajusta ruta real si difiere
 
@@ -500,30 +501,26 @@ export default function FormActionsBar(props: {
   if (effectiveActions.length === 0) return null;
 
   return (
-    <div className="d-flex flex-column gap-2">
-      <div className="d-flex flex-wrap gap-2 justify-content-end">
-        {effectiveActions.map((a) => {
-          const variant = a.variant || "secondary";
-          const disabled = isDisabled(a) || busyId !== null; // bloquea mientras hay una acción corriendo
+  <div className="d-flex flex-column gap-2">
+    <div className="d-flex flex-wrap gap-2 justify-content-end">
+      <ActionMenu
+        items={effectiveActions.map((a) => {
+          const disabled = isDisabled(a) || busyId !== null;
           const busy = busyId === a.id;
 
-          return (
-            <button
-              key={a.id}
-              type="button"
-              className={`btn btn-${variant}`}
-              disabled={disabled}
-              onClick={() => handleAction(a)}
-              style={{ borderRadius: 10 }}
-            >
-              {a.icon && <i className={a.icon} style={{ marginRight: 8 }} />}
-              {busy ? "Procesando…" : a.label}
-            </button>
-          );
+          return {
+            label: busy ? "Procesando…" : a.label,
+            icon: a.icon ? (
+              <i className={a.icon} style={{ marginRight: 8 }} />
+            ) : undefined,
+            
+            onClick: () => handleAction(a),
+          };
         })}
-      </div>
-
-      {error && <div className="alert alert-danger py-2 mb-0">{error}</div>}
+      />
     </div>
-  );
+
+    {error && <div className="alert alert-danger py-2 mb-0">{error}</div>}
+  </div>
+);
 }

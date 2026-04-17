@@ -251,13 +251,24 @@ export type ListViewProps = {
   schema: ModuleSchema;
   data: any[];
   loading?: boolean;
+  exportLoading?: boolean;
+  importLoading?: boolean;
 
   onViewRow?: (row: any) => void;
   onEditRow?: (row: any) => void;
   onDeleteRow?: (row: any) => void;
   onCreate?: () => void;
-  onExport?: () => void;
-  onImport?: () => void;
+  onExport?: (payload: ListViewExportPayload) => void | Promise<void>;
+  onImport?: () => void | Promise<void>;
+};
+export type ListViewExportColumn = {
+  name: string;
+  label: string;
+};
+export type ListViewExportPayload = {
+  columns: ListViewExportColumn[];
+  rows: Record<string, string>[];
+  rawRows: any[];
 };
 export type ActionMenuItem = {
   label: string;

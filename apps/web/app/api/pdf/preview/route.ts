@@ -37,6 +37,7 @@ export async function GET(req: Request) {
       recordId: id,
       related,
       labelResolvers,
+      template,
     });
 
     const html = renderTemplateToHtml(template, ctx);

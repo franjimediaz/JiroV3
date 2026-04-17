@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { ModuleSchema } from "@repo/types";
+import { resolvePdfDatasets } from "./resolvePdfDatasets";
 
 type RelatedSpec = {
   key: string;
@@ -29,6 +30,7 @@ type ResolveArgs = {
   related?: RelatedSpec[];
   labelResolvers?: LabelResolver[];
   recordOverride?: Record<string, any> | null;
+  template?: any;
 };
 
 async function addLabelsToRows(args: {
@@ -969,12 +971,25 @@ export async function resolvePdfContext(args: ResolveArgs) {
   const normalizedBranding = normalizeBranding(branding);
   const recordWithClientFields = applyClientCardFields(record, py);
 
-  return {
+  const baseCtx = {
     record: recordWithClientFields,
     py,
     related,
     branding: normalizedBranding,
     empresa: normalizedBranding,
     now: new Date().toISOString(),
+  };
+
+  const datasets = args.template
+    ? await resolvePdfDatasets({
+        supabase,
+        template: args.template,
+        ctx: baseCtx,
+      })
+    : {};
+
+  return {
+    ...baseCtx,
+    datasets,
   };
 }
