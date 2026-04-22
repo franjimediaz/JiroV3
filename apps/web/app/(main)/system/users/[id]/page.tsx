@@ -205,18 +205,55 @@ export default async function EntityPage({
 
   // 5) resuelve sources → slug (por si vienen como nombre de tabla)
   const sourceSlugs = rawSources.map((s) => resolveSourceToSlug(s, slugByTable));
+  const sourceTables = rawSources
+    .map((source) => {
+      const resolvedSlug = resolveSourceToSlug(source, slugByTable);
+      const moduleConfig = modulesBySlug?.[resolvedSlug];
+      return String(moduleConfig?.db?.table || source).trim();
+    })
+    .filter(Boolean);
+  const relatedSourceSlugs = Array.from(
+    new Set(
+      Object.entries(modulesBySlug || {})
+        .filter(([, mod]) => sourceTables.includes(String(mod?.db?.table || "").trim()))
+        .map(([relatedSlug]) => relatedSlug)
+    )
+  );
+  const schemaSlugsToLoad = Array.from(new Set([...sourceSlugs, ...relatedSourceSlugs]));
 
   // 6) carga schemas necesarios para renderización (TreeView necesita fields del source)
-  const schemasBySlug: Record<string, ModuleSchema> = {
-    [CFG.moduleSlug]: schema,
+  const schemasBySlug: Record<string, ModuleSchema> = {};
+  const schemasByTable: Record<string, ModuleSchema> = {};
+  const pickBaseSchema = (
+    currentSchema: ModuleSchema | undefined,
+    nextSchema: ModuleSchema
+  ) => {
+    if (!currentSchema) return nextSchema;
+    const currentFields = Array.isArray(currentSchema.fields)
+      ? currentSchema.fields.length
+      : 0;
+    const nextFields = Array.isArray(nextSchema.fields)
+      ? nextSchema.fields.length
+      : 0;
+    return nextFields > currentFields ? nextSchema : currentSchema;
+  };
+  const registerSchema = (key: string, moduleSchema: ModuleSchema) => {
+    if (!key) return;
+    schemasBySlug[key] = moduleSchema;
+    const tableKey = String(moduleSchema?.db?.table || "").trim();
+    if (tableKey) {
+      schemasByTable[tableKey] = pickBaseSchema(schemasByTable[tableKey], moduleSchema);
+    }
   };
 
-  for (const src of sourceSlugs) {
+  registerSchema(CFG.moduleSlug, schema);
+
+  for (const src of schemaSlugsToLoad) {
     if (!src) continue;
     if (schemasBySlug[src]) continue;
 
     try {
-      schemasBySlug[src] = await fetchSchemaBySlug(src);
+      registerSchema(src, await fetchSchemaBySlug(src));
     } catch (e) {
       // Si falla, no rompas la página: simplemente no habrá renderización avanzada
       console.warn("No pude cargar schema para treeview source:", src, e);
@@ -236,6 +273,7 @@ export default async function EntityPage({
         id={id}
         modulesBySlug={modulesBySlug}
         schemasBySlug={schemasBySlug}
+        schemasByTable={schemasByTable}
       />
     </main>
   );

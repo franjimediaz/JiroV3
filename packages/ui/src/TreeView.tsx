@@ -3,11 +3,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {ActionMenu} from "./ActionMenu";
 import {
+  collectRelationPendingKeys,
   type RelationDisplayStatusMap,
-  getRelationCacheKey,
   getRelationDisplayConfig,
   getRelationDisplayResult,
-  normalizeRelationId,
+  preloadRelationDisplayCache,
   renderRelationDisplay,
   type RelationDisplayEntry,
 } from "./utils/relationDisplay";
@@ -45,6 +45,7 @@ type TreeViewQuery = {
 };
 
 type LookupQuery = {
+  moduleSlug?: string;
   table: string;
   valueField: string;
   ids: string[];
@@ -149,12 +150,16 @@ function percentFmt() {
 }
 function formatDate(value: any, withTime: boolean) {
   if (value === null || value === undefined || value === "") return "—";
-  const d = new Date(value);
+  const raw = String(value).trim();
+  const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const d = dateOnlyMatch
+    ? new Date(Date.UTC(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3])))
+    : new Date(value);
   if (Number.isNaN(d.getTime())) return String(value);
 
   const opts: Intl.DateTimeFormatOptions = withTime
-    ? { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }
-    : { year: "numeric", month: "2-digit", day: "2-digit" };
+    ? { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }
+    : { year: "numeric", month: "2-digit", day: "2-digit", timeZone: "UTC" };
 
   return new Intl.DateTimeFormat("es-ES", opts).format(d);
 }
@@ -254,6 +259,14 @@ function dedupeStrings(arr: string[]) {
   }
   return out;
 }
+
+function normalizeComparableLabel(value: any) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_\-]+/g, "");
+}
+
 function cleanBaseRoute(base: string) {
   if (!base) return "";
   // asegura que empieza con "/"
@@ -349,50 +362,32 @@ export default function TreeView(p: Props) {
   const totals = cfg?.totals || {};
   const currency = totals.currency || "EUR";
   const sumField = totals.sumField;
-  const sourceTable =
+  const sourceRef =
     cfg?.sourceTable ||
     (cfg as any)?.source?.table ||
     (p.config as any)?.sourceTable ||
     (p.config as any)?.source?.table;
 
+const resolvedSource = useMemo(() => {
+  const src = typeof sourceRef === "string" ? sourceRef.trim() : "";
+  if (!src) return null;
+  return resolveTable?.(src) || null;
+}, [resolveTable, sourceRef]);
+
+const sourceTable = resolvedSource?.table || sourceRef;
+
 const baseRoute = useMemo(() => {
   if (!resolveRoute) return null;
-  const src = typeof sourceTable === "string" ? sourceTable.trim() : "";
+  const src = typeof sourceRef === "string" ? sourceRef.trim() : "";
   if (!src) return null;
   const r = resolveRoute(src);
   return r ? cleanBaseRoute(r) : null;
-}, [resolveRoute, sourceTable]);
+}, [resolveRoute, sourceRef]);
 
-const canNavigateByRoute = !!baseRoute;
-const hasActionHandlers = !!onViewRow || !!onEditRow;
 const showActions = true;
-
-
-
-
-
   const isReady = !!sourceTable && !!groupByField;
 
   const fieldsByName = useMemo(() => buildFieldsByName(schemaFields), [schemaFields]);
-  const defaultView = useMemo(() => {
-  if (!baseRoute) return undefined;
-  return (row: any) => {
-    const url = joinRoute(baseRoute, row?.id);
-    if (!url) return;
-    window.location.assign(url);
-  };
-}, [baseRoute]);
-
-const defaultEdit = useMemo(() => {
-  if (!baseRoute) return undefined;
-  return (row: any) => {
-    const url = joinRoute(baseRoute, row?.id);
-    if (!url) return;
-    window.location.assign(`${url}?edit=true`);
-  };
-}, [baseRoute]);
-
-
 const handleView = onViewRow
   ? (row: any) => onViewRow(row)
   : baseRoute
@@ -419,8 +414,17 @@ const handleEdit = onEditRow
   const effectiveColumns: NormalizedColumn[] = useMemo(() => {
     return columns.map((c) => {
       const f = fieldsByName[c.field];
-      const hasRealLabel = !!c.label && c.label.trim() !== "" && c.label !== c.field;
-      const label = hasRealLabel ? c.label : (f?.label || c.field);
+      const configLabel = String(c.label || "").trim();
+      const schemaLabel = String(f?.label || "").trim();
+      const normalizedConfigLabel = normalizeComparableLabel(configLabel);
+      const normalizedFieldName = normalizeComparableLabel(c.field);
+      const normalizedSchemaLabel = normalizeComparableLabel(schemaLabel);
+      const shouldPreferSchemaLabel =
+        !!schemaLabel &&
+        (!configLabel ||
+          normalizedConfigLabel === normalizedFieldName ||
+          normalizedConfigLabel === normalizedSchemaLabel);
+      const label = shouldPreferSchemaLabel ? schemaLabel : configLabel || schemaLabel || c.field;
 
 
       let type = c.type;
@@ -449,69 +453,42 @@ const handleEdit = onEditRow
     return Array.from(s);
   }, [groupByField, effectiveColumns, totals.enabled, sumField]);
 
-  // ---------------- selectorTabla lookups ----------------
-  // ✅ Regla: TODO selectorTabla intentará traer displayField + icon + color (siempre)
-const selectorLookups = useMemo(() => {
-  const out: Array<{
-    field: string;
-    table: string;
-    config: NonNullable<ReturnType<typeof getRelationDisplayConfig>>;
-  }> = [];
-
-  const addLookup = (fieldName: string) => {
-    const f = fieldsByName[fieldName];
-    const config = f ? getRelationDisplayConfig(f) : null;
-    if (!config) return;
-    if (!resolveTable) return;
-
-    const resolved = resolveTable(config.moduleSlug);
-    if (!resolved?.table) return;
-
-    out.push({
-      field: fieldName,
-      table: resolved.table,
-      config: {
-        ...config,
-        valueField: config.valueField || resolved.valueField || "id",
-      },
-    });
+  const getResolvedField = (fieldName: string, fallback?: any) => {
+    const schemaField = fieldsByName[fieldName];
+    if (schemaField) {
+      return fallback ? { ...fallback, ...schemaField, name: schemaField.name || fieldName } : schemaField;
+    }
+    if (!fallback) return null;
+    return { ...fallback, name: fallback.name || fallback.field || fieldName };
   };
 
-  for (const c of effectiveColumns) addLookup(c.field);
-  if (groupByField) addLookup(groupByField);
+  // ---------------- selectorTabla lookups ----------------
+  // ✅ Regla: TODO selectorTabla intentará traer displayField + icon + color (siempre)
+const relationFields = useMemo(() => {
+  const selectedNames = new Set<string>(effectiveColumns.map((column) => column.field));
+  if (groupByField) selectedNames.add(groupByField);
 
-  const by = new Map<string, any>();
-  for (const l of out) by.set(l.field, l);
-  return Array.from(by.values());
-}, [effectiveColumns, groupByField, fieldsByName, resolveTable]);
+  const resolvedFields = Array.from(selectedNames)
+    .map((fieldName) => {
+      const column = effectiveColumns.find((item) => item.field === fieldName);
+      return getResolvedField(fieldName, column ? { ...column, field: column.field } : undefined);
+    })
+    .filter((field): field is any => !!field);
 
-const lookupConfigByField = useMemo(() => {
-  return selectorLookups.reduce<Record<string, NonNullable<ReturnType<typeof getRelationDisplayConfig>>>>(
-    (acc, item) => {
-      acc[item.field] = item.config;
-      return acc;
-    },
-    {}
-  );
-}, [selectorLookups]);
+  return resolvedFields.filter((field): field is any => !!getRelationDisplayConfig(field));
+}, [effectiveColumns, groupByField, fieldsByName]);
 
-const pendingLookupKeys = useMemo(() => {
-  const pending: Record<string, boolean> = {};
-
-  for (const lookup of selectorLookups) {
-    for (const row of rows) {
-      const id = normalizeRelationId(row?.[lookup.field]);
-      if (!id) continue;
-
-      const cacheKey = getRelationCacheKey(lookup.config, id);
-      if (lookupCache[cacheKey]?.label) continue;
-      if (lookupStatusByKey[cacheKey] === "failed") continue;
-      pending[cacheKey] = true;
-    }
-  }
-
-  return pending;
-}, [selectorLookups, rows, lookupCache, lookupStatusByKey]);
+const pendingLookupKeys = useMemo(
+  () =>
+    collectRelationPendingKeys({
+      rows,
+      fields: relationFields,
+      getValue: (row, field) => row?.[field.name],
+      cache: lookupCache,
+      statusByKey: lookupStatusByKey,
+    }),
+  [rows, relationFields, lookupCache, lookupStatusByKey]
+);
 
 
   // ---------------- load rows ----------------
@@ -553,64 +530,6 @@ const pendingLookupKeys = useMemo(() => {
     }
   }
 
-  // ---------------- load lookups ----------------
-  async function loadLookups(list: any[]) {
-    if (!provider?.lookup) return;
-    if (!selectorLookups.length) return;
-
-    try {
-      const next: Record<string, RelationDisplayEntry> = {};
-      const statusPatch: RelationDisplayStatusMap = {};
-
-      for (const lk of selectorLookups) {
-        const ids = dedupeStrings(
-          (list || [])
-            .map((r) => normalizeId(r?.[lk.field]))
-            .filter(Boolean) as string[]
-        );
-        if (!ids.length) continue;
-
-        const baseSelect = [lk.config.valueField, lk.config.displayField];
-        const styleSelect = lk.config.hasStyle
-          ? [lk.config.styleIconField, lk.config.styleColorField].filter(Boolean)
-          : [];
-        const select = dedupeStrings([...baseSelect, ...(styleSelect as string[])]);
-
-        const data = await provider.lookup({
-          table: lk.table,
-          valueField: lk.config.valueField,
-          ids,
-          select,
-        });
-        const resolvedKeys = new Set<string>();
-        for (const item of data || []) {
-          const key = normalizeRelationId(item?.[lk.config.valueField]);
-          if (!key) continue;
-          const cacheKey = getRelationCacheKey(lk.config, key);
-          next[cacheKey] = {
-            label: String(item?.[lk.config.displayField] ?? key),
-            icon: lk.config.hasStyle ? item?.[lk.config.styleIconField] : undefined,
-            color: lk.config.hasStyle ? item?.[lk.config.styleColorField] : undefined,
-          };
-          statusPatch[cacheKey] = "resolved";
-          resolvedKeys.add(cacheKey);
-        }
-
-        for (const id of ids) {
-          const cacheKey = getRelationCacheKey(lk.config, id);
-          if (!resolvedKeys.has(cacheKey) && !next[cacheKey]) {
-            statusPatch[cacheKey] = "failed";
-          }
-        }
-      }
-
-      setLookupCache((prev) => ({ ...prev, ...next }));
-      setLookupStatusByKey((prev) => ({ ...prev, ...statusPatch }));
-    } catch (e: any) {
-      setError((prev) => prev || e?.message || "Error cargando lookups");
-    }
-  }
-
   useEffect(() => {
     loadRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -624,10 +543,42 @@ const pendingLookupKeys = useMemo(() => {
   ]);
 
   useEffect(() => {
-    if (!rows.length) return;
-    loadLookups(rows);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows.length, JSON.stringify(selectorLookups), provider?.lookup]);
+    if (!rows.length || !relationFields.length || !provider) return;
+
+    let cancelled = false;
+
+    void preloadRelationDisplayCache({
+      rows,
+      fields: relationFields,
+      getValue: (row, field) => row?.[field.name],
+      dataProvider: provider,
+      cache: lookupCache,
+      statusByKey: lookupStatusByKey,
+    })
+      .then(({ patch, statusPatch }) => {
+        if (cancelled) return;
+        if (Object.keys(patch).length) {
+          setLookupCache((prev) => ({ ...prev, ...patch }));
+        }
+        if (Object.keys(statusPatch).length) {
+          setLookupStatusByKey((prev) => ({ ...prev, ...statusPatch }));
+        }
+      })
+      .catch((e: any) => {
+        if (cancelled) return;
+        setError((prev) => prev || e?.message || "Error cargando lookups");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    rows,
+    relationFields,
+    lookupCache,
+    lookupStatusByKey,
+    provider,
+  ]);
 
   // ---------------- group ----------------
   const grouped = useMemo(() => {
@@ -645,34 +596,78 @@ const pendingLookupKeys = useMemo(() => {
         totals.enabled && sumField
           ? items.reduce((acc, it) => acc + Number(it?.[sumField] || 0), 0)
           : 0;
-      return { key, items, total };
+      return { key, rawValue: items[0]?.[groupByField!], items, total };
     });
 
-    const headerFieldDef = groupByField ? fieldsByName[groupByField] : null;
+    const headerFieldDef = groupByField ? getResolvedField(groupByField) : null;
     if (headerFieldDef?.type === "selectorTabla") {
       out.sort((a, b) => {
-        const config = lookupConfigByField[groupByField];
-        const la = config ? getRelationDisplayResult({ config, rawValue: a.key, cache: lookupCache, pendingKeys: pendingLookupKeys, statusByKey: lookupStatusByKey }) : null;
-        const lb = config ? getRelationDisplayResult({ config, rawValue: b.key, cache: lookupCache, pendingKeys: pendingLookupKeys, statusByKey: lookupStatusByKey }) : null;
+        const config = getRelationDisplayConfig(headerFieldDef);
+        const la = config ? getRelationDisplayResult({ config, rawValue: a.rawValue, cache: lookupCache, pendingKeys: pendingLookupKeys, statusByKey: lookupStatusByKey }) : null;
+        const lb = config ? getRelationDisplayResult({ config, rawValue: b.rawValue, cache: lookupCache, pendingKeys: pendingLookupKeys, statusByKey: lookupStatusByKey }) : null;
         return String(la?.kind === "resolved" ? la.entry.label : la?.text || a.key).localeCompare(String(lb?.kind === "resolved" ? lb.entry.label : lb?.text || b.key));
       });
+    } else if (headerFieldDef?.type === "date" || headerFieldDef?.type === "datetime") {
+      out.sort((a, b) =>
+        String(formatDate(a.rawValue, headerFieldDef.type === "datetime")).localeCompare(
+          String(formatDate(b.rawValue, headerFieldDef.type === "datetime"))
+        )
+      );
     } else {
       out.sort((a, b) => String(a.key).localeCompare(String(b.key)));
     }
 
     return out;
-  }, [isReady, rows, groupByField, totals.enabled, sumField, fieldsByName, lookupCache, lookupConfigByField, pendingLookupKeys, lookupStatusByKey]);
+  }, [isReady, rows, groupByField, totals.enabled, sumField, fieldsByName, lookupCache, pendingLookupKeys, lookupStatusByKey]);
 
   const grandTotal = useMemo(() => {
     if (!totals.enabled || !sumField) return 0;
     return rows.reduce((acc, r) => acc + Number(r?.[sumField] || 0), 0);
   }, [rows, totals.enabled, sumField]);
 
-  // ---------------- render helpers ----------------
-  const renderGroupHeader = (groupKey: string) => {
-    if (!groupByField) return <div className="fw-bold">{groupKey}</div>;
+  const hasSelectorColumns =
+    effectiveColumns.some((c) => fieldsByName[c.field]?.type === "selectorTabla") ||
+    (groupByField && fieldsByName[groupByField]?.type === "selectorTabla");
 
-    const f = fieldsByName[groupByField];
+  const missingResolve = hasSelectorColumns && !resolveTable;
+  const missingLookup = hasSelectorColumns && !provider?.lookup;
+
+  // ---------------- render helpers ----------------
+  const renderValueForField = (field: any, rawValue: any, fallbackType?: ColumnType) => {
+    
+    if (field?.type === "selectorTabla") {
+      const config = getRelationDisplayConfig(field);
+      if (!config) return <span className="text-muted">{normalizeId(rawValue) || "â€”"}</span>;
+      
+
+      const result = getRelationDisplayResult({
+        config,
+        rawValue,
+        cache: lookupCache,
+        pendingKeys: pendingLookupKeys,
+        statusByKey: lookupStatusByKey,
+      });
+      if (result.kind === "resolved") {
+        return config.hasStyle
+          ? renderRelationDisplay(result.entry.label, result.entry.icon, result.entry.color)
+          : result.entry.label;
+      }
+      
+
+      return <span className="text-muted">{result.text}</span>;
+    
+    }
+
+    return <>{renderPrimitive(rawValue, fallbackType || field?.type || "text", currency)}</>;
+    
+  };
+
+  const renderGroupHeader = (groupKey: any) => {
+    if (!groupByField) return <div className="fw-bold">{String(groupKey || "â€”")}</div>;
+
+    const f = getResolvedField(groupByField);
+    return <div className="fw-bold">{renderValueForField(f, groupKey, f?.type)}</div>;
+    /*
     if (f?.type === "selectorTabla") {
       const config = lookupConfigByField[groupByField];
       const result = config
@@ -688,11 +683,14 @@ const pendingLookupKeys = useMemo(() => {
     }
 
     return <div className="fw-bold">{String(groupKey || "—")}</div>;
+    */
   };
 
   const renderCell = (row: any, col: NormalizedColumn) => {
-    const f = fieldsByName[col.field];
+    const f = getResolvedField(col.field, col);
     const raw = row?.[col.field];
+    return renderValueForField(f, raw, col.type || "text");
+    /*
 
     if (f?.type === "selectorTabla") {
       const config = lookupConfigByField[col.field];
@@ -716,6 +714,7 @@ const pendingLookupKeys = useMemo(() => {
     }
 
     return <>{renderPrimitive(raw, col.type || "text", currency)}</>;
+    */
   };
 
   const renderTable = (items: any[]) => (
@@ -794,14 +793,6 @@ const pendingLookupKeys = useMemo(() => {
     );
   }
 
-  const hasSelectorColumns =
-    effectiveColumns.some((c) => fieldsByName[c.field]?.type === "selectorTabla") ||
-    (groupByField && fieldsByName[groupByField]?.type === "selectorTabla");
-
-  const missingResolve = hasSelectorColumns && !resolveTable;
-  const missingLookup = hasSelectorColumns && !provider.lookup;
-
-
   return (
     <div className="d-flex flex-column gap-3">
       <div className="d-flex align-items-center justify-content-between">
@@ -842,7 +833,7 @@ const pendingLookupKeys = useMemo(() => {
                     onClick={() => setOpenGroupKey((prev) => (prev === g.key ? null : g.key))}
                   >
                     <div className="d-flex w-100 align-items-center justify-content-between">
-                      {renderGroupHeader(g.key)}
+                      {renderGroupHeader(g.rawValue)}
                       <div className="ms-3 d-flex align-items-center gap-2">
                         <span className="badge text-bg-light">{g.items.length}</span>
                         {totals.enabled && totals.showGroupTotals && sumField && (

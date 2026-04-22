@@ -1,4 +1,4 @@
-import type { Field, ModuleSchema } from "@repo/types";
+import type { Field, ModuleSchema, QueryFilter, QuerySort } from "@repo/types";
 import { safeEval } from "./safeEval";
 
 export type AggregateInput = {
@@ -11,8 +11,8 @@ export type ListInput = {
   moduleSlug: string; // o table, pero tú trabajas con módulo
   q?: string;
   limit?: number;
-  filters?: { field: string; op: "=" | "!=" | ">" | "<" | "in"; value: any }[];
-  sort?: { field: string; dir: "asc" | "desc" }[];
+  filters?: QueryFilter[];
+  sort?: Array<QuerySort | { field: string; dir: "asc" | "desc" }>;
   hasStyle?: boolean;
   styleIconField?: string;
   styleColorField?: string;

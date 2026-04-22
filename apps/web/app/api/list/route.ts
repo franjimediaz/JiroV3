@@ -1,20 +1,25 @@
 // app/api/list/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import type { QueryFilter } from "@repo/types";
+import {
+  applyQueryFilters,
+  buildModuleDefaultFilterRuntimeContext,
+  filterRowsWithDefaultFilters,
+  resolveDefaultFiltersForQuery,
+} from "@/lib/moduleDefaultFilters";
 
-type ListFilterOp = "=" | "!=" | ">" | "<" | "in" | "contains";
-type ListFilter = { field: string; op: ListFilterOp; value: any };
+type ListFilter = QueryFilter;
 type ListSort = { field: string; dir: "asc" | "desc" };
 
 type ListBody = {
-  moduleSlug: string; // slug en tabla "modulos"
+  moduleSlug: string;
   filters?: ListFilter[];
   sort?: ListSort[];
   limit?: number;
   offset?: number;
 };
 
-// Si tu tabla modulos guarda props como jsonb o string:
 function parseProps(props: any) {
   if (!props) return null;
   if (typeof props === "string") {
@@ -37,13 +42,9 @@ export async function POST(req: Request) {
     const offsetRaw = body?.offset;
 
     if (!moduleSlug) {
-      return NextResponse.json(
-        { ok: false, detail: "moduleSlug es requerido" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, detail: "moduleSlug es requerido" }, { status: 400 });
     }
 
-    // 1) Resolver módulo → props.db.table
     const { data: modRow, error: modErr } = await supabase
       .from("modulos")
       .select("id, slug, props")
@@ -66,75 +67,41 @@ export async function POST(req: Request) {
     }
 
     const props = parseProps((modRow as any).props);
-    
-    const tableName = String(props?.db?.slug || "").trim() || moduleSlug;
-        console.log("🧱 /api/list tableName =", tableName);
+    const tableName = String(props?.db?.table || "").trim() || moduleSlug;
     if (!tableName) {
-        
       return NextResponse.json(
         { ok: false, detail: `El módulo "${moduleSlug}" no tiene props.db.table` },
         { status: 400 }
-        
       );
-      
     }
-    
 
-    // 2) Construir query base
+    const runtimeContext = await buildModuleDefaultFilterRuntimeContext(supabase);
+    const defaultFilters = resolveDefaultFiltersForQuery(props?.db?.defaultFilters, runtimeContext);
+
     let q = supabase.from(tableName).select("*");
-
-    // 3) Aplicar filtros
-    const filters = Array.isArray(body?.filters) ? body.filters : [];
-    for (const f of filters) {
-      if (!f || typeof f !== "object") continue;
-
-      const field = String((f as any).field || "").trim();
-      const op = (f as any).op as ListFilterOp;
-      const value = (f as any).value;
-
-      if (!field) continue;
-
-      if (op === "=") q = q.eq(field, value);
-      else if (op === "!=") q = q.neq(field, value);
-      else if (op === ">") q = q.gt(field, value);
-      else if (op === "<") q = q.lt(field, value);
-      else if (op === "in") {
-        // Supabase espera array
-        const arr = Array.isArray(value) ? value : [value];
-        q = q.in(field, arr);
-      } else if (op === "contains") {
-        // Para texto: ilike %value%
-        if (value === null || value === undefined) continue;
-        q = q.ilike(field, `%${String(value)}%`);
-      } else {
-        // op desconocido → ignorar
-        continue;
-      }
+    if (defaultFilters.canQueryDirectly) {
+      q = applyQueryFilters(q, defaultFilters.filters as QueryFilter[]);
     }
 
-    // 4) Aplicar sort
+    const bodyFilters = Array.isArray(body?.filters) ? body.filters : [];
+    if (bodyFilters.length > 0) {
+      q = applyQueryFilters(q, bodyFilters);
+    }
+
     const sort = Array.isArray(body?.sort) ? body.sort : [];
     for (const s of sort) {
       if (!s || typeof s !== "object") continue;
       const field = String((s as any).field || "").trim();
-      const dir = (s as any).dir === "desc" ? "desc" : "asc";
+      const dir = (s as any).dir === "desc" || (s as any).direction === "desc" ? "desc" : "asc";
       if (!field) continue;
       q = q.order(field, { ascending: dir === "asc" });
     }
 
-    // 5) Paginación
-    const limit = Number.isFinite(limitRaw as any)
-      ? Math.max(1, Math.min(200, Number(limitRaw)))
-      : 50;
-
+    const limit = Number.isFinite(limitRaw as any) ? Math.max(1, Math.min(200, Number(limitRaw))) : 50;
     const offset = Number.isFinite(offsetRaw as any) ? Math.max(0, Number(offsetRaw)) : 0;
-
-    // Supabase range es inclusivo en ambos extremos
     q = q.range(offset, offset + limit - 1);
 
-    // 6) Ejecutar
     const { data, error } = await q;
-
     if (error) {
       console.error("POST /api/list query error", { tableName, error });
       return NextResponse.json(
@@ -143,17 +110,17 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, data: data ?? [] });
-  } catch (e: any) {
-    console.error("POST /api/list fatal", e);
+    const rows = defaultFilters.canQueryDirectly ? data ?? [] : filterRowsWithDefaultFilters(data ?? [], defaultFilters.group);
+    return NextResponse.json({ ok: true, data: rows });
+  } catch (error: any) {
+    console.error("POST /api/list fatal", error);
     return NextResponse.json(
-      { ok: false, detail: e?.message || "Error inesperado" },
+      { ok: false, detail: error?.message || "Error inesperado" },
       { status: 500 }
     );
   }
 }
 
-// (Opcional) si alguien llama con GET por error
 export async function GET() {
   return NextResponse.json(
     { ok: false, detail: "Usa POST con JSON: { moduleSlug, filters, sort, limit, offset }" },

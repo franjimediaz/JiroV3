@@ -150,6 +150,22 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
   useEffect(() => {
     if (!rows.length || !columnsFull.length) return;
 
+    if (process.env.NODE_ENV !== "production") {
+      const selectorColumns = columnsFull.filter((column) => column.type === "selectorTabla");
+      const sampleRow = rows[0];
+      console.log("ReverseLinkTable preload trace", {
+        relationFields: selectorColumns,
+        selectorFieldsByName: selectorColumns.reduce<Record<string, Field>>((acc, column) => {
+          acc[column.name] = column;
+          return acc;
+        }, {}),
+        sampleRawValues: selectorColumns.reduce<Record<string, any>>((acc, column) => {
+          acc[column.name] = sampleRow?.[column.name];
+          return acc;
+        }, {}),
+      });
+    }
+
     let cancelled = false;
 
     void preloadRelationDisplayCache({
@@ -267,6 +283,14 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
           pendingKeys: pendingRelationKeys,
           statusByKey: relationStatusByKey,
         });
+
+        if (process.env.NODE_ENV !== "production") {
+          console.log("ReverseLinkTable render trace", {
+            fieldName: column.name,
+            rawValue: raw,
+            result,
+          });
+        }
 
         if (result.kind === "resolved") {
           return config.hasStyle

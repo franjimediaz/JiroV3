@@ -2,6 +2,13 @@ import { notFound } from "next/navigation";
 import ListPageClient from "@/lib/ListPageClient";
 import { fetchAllModulesIndex, fetchModuleRowBySlug } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
+import {
+  applyQueryFilters,
+  buildModuleDefaultFilterRuntimeContext,
+  filterRowsWithDefaultFilters,
+  resolveDefaultFiltersForQuery,
+} from "@/lib/moduleDefaultFilters";
+import type { QueryFilter } from "@repo/types";
 
 export const dynamic = "force-dynamic";
 
@@ -25,16 +32,27 @@ export default async function ListPage({
   const { schema, table, route, titleSingular } = await fetchModuleRowBySlug(slug);
   const { modulesBySlug } = await fetchAllModulesIndex();
 
-  // fetch rows (simple por ahora; luego metemos search/paginate/sort declarativo)
   const supabase = await createClient();
-  const { data, error } = await supabase.from(slug).select("*").limit(200);
+  const runtimeContext = await buildModuleDefaultFilterRuntimeContext(supabase);
+  const defaultFilters = resolveDefaultFiltersForQuery(schema?.db?.defaultFilters, runtimeContext);
+
+  let query = supabase.from(table).select("*");
+  if (defaultFilters.canQueryDirectly) {
+    query = applyQueryFilters(query, defaultFilters.filters as QueryFilter[]);
+  }
+  query = query.limit(200);
+
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
+  const rows = defaultFilters.canQueryDirectly
+    ? data || []
+    : filterRowsWithDefaultFilters(data || [], defaultFilters.group);
 
   return (
     <main className="container py-4">
       <ListPageClient
         schema={schema}
-        rows={data || []}
+        rows={rows}
         moduleSlug={slug}
         baseRoute={route || `/${slug}/`}
         titleSingular={titleSingular}

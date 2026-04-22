@@ -58,8 +58,9 @@ type Props = {
   onTreeViewRowView?: (row: any) => void;
   onTreeViewRowEdit?: (row: any) => void;
   confirmTreeViewDelete?: (row: any) => Promise<boolean>;
-  modulesBySlug?: Record<string, { db?: { table?: string; primaryKey?: string } }>;
   schemasBySlug?: Record<string, ModuleSchema>;
+  schemasByTable?: Record<string, ModuleSchema>;
+  modulesBySlug?: Record<string, { db?: { table?: string; primaryKey?: string } }>;
 };
 
 function computeSignature(schema: ModuleSchema, record: FormValues) {
@@ -260,6 +261,7 @@ export default function Form({
   onTreeViewRowEdit,
   confirmTreeViewDelete,
   schemasBySlug,
+  schemasByTable,
   modulesBySlug,
 }: Props) {
   const effectiveMode: Mode = mode || (readOnly ? "view" : "edit");
@@ -827,6 +829,7 @@ export default function Form({
             isDisplayLoading={isDisplayLoading}
             displayIcon={resolvedDisplay?.icon}
             displayColor={resolvedDisplay?.color}
+            formValues={values}
           />
 
           {helpText && <div className="form-text mt-1">{helpText}</div>}
@@ -846,7 +849,20 @@ export default function Form({
 
   const resolveTable = useMemo(() => {
     return (moduleSlug: string) => {
-      const moduleConfig = modulesBySlug?.[moduleSlug];
+      const source = String(moduleSlug || "").trim();
+      if (!source) return null;
+
+      let moduleConfig = modulesBySlug?.[source];
+      if (!moduleConfig && modulesBySlug) {
+        for (const [, mod] of Object.entries(modulesBySlug)) {
+          const table = String((mod as any)?.db?.table || (mod as any)?.table || "").trim();
+          if (table && table === source) {
+            moduleConfig = mod;
+            break;
+          }
+        }
+      }
+
       const tableFromDb = moduleConfig?.db?.table;
       const tableFromRoot = (moduleConfig as any)?.table;
       const finalTable = tableFromDb || tableFromRoot;
@@ -894,11 +910,77 @@ export default function Form({
     (treeViewConfig as any)?.sourceTable ??
     null;
 
+  const treeSourceModuleSlug = useMemo(() => {
+    const source = String(treeSourceSlug || "").trim();
+    if (!source) return null;
+    if (schemasBySlug?.[source]) return source;
+    if (!modulesBySlug) return null;
+
+    for (const [slugKey, mod] of Object.entries(modulesBySlug)) {
+      const table = String((mod as any)?.db?.table || (mod as any)?.table || "").trim();
+      if (table && table === source) return slugKey;
+    }
+
+    return null;
+  }, [modulesBySlug, schemasBySlug, treeSourceSlug]);
+
   const treeSchemaFields = useMemo(() => {
     if (!treeSourceSlug) return schema.fields;
-    const moduleSchema = schemasBySlug?.[treeSourceSlug];
+    const source = String(treeSourceSlug || "").trim();
+    const resolvedSource = resolveTable(source);
+    const resolvedTable = String(resolvedSource?.table || "").trim();
+    const sourceTableKey = resolvedTable || source;
+    const configuredFields = Array.from(
+      new Set(
+        [
+          (treeViewConfig as any)?.grouping?.groupByField,
+          ...((Array.isArray((treeViewConfig as any)?.groupBy) ? (treeViewConfig as any).groupBy : []) as string[]),
+          ...(((treeViewConfig as any)?.columns || []) as any[]).map((column) => column?.field || column?.name),
+          (treeViewConfig as any)?.totals?.sumField,
+        ]
+          .map((field) => String(field || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    const candidates = [
+      sourceTableKey ? schemasByTable?.[sourceTableKey] : undefined,
+      treeSourceModuleSlug ? schemasBySlug?.[treeSourceModuleSlug] : undefined,
+      schemasBySlug?.[source],
+      resolvedTable ? schemasByTable?.[resolvedTable] : undefined,
+      ...Object.values(schemasBySlug || {}).filter((candidate: any) => {
+        const candidateTable = String(candidate?.db?.table || "").trim();
+        return !!candidateTable && candidateTable === sourceTableKey;
+      }),
+      ...Object.values(schemasByTable || {}).filter((candidate: any) => {
+        const candidateTable = String(candidate?.db?.table || "").trim();
+        return !!candidateTable && candidateTable === sourceTableKey;
+      }),
+    ].filter((candidate): candidate is ModuleSchema => !!candidate && Array.isArray(candidate.fields));
+
+    const scoredCandidates = candidates
+      .map((candidate) => {
+        const fieldNames = new Set((candidate.fields || []).map((field: any) => String(field?.name || "").trim()).filter(Boolean));
+        const coverage = configuredFields.reduce((acc, fieldName) => acc + (fieldNames.has(fieldName) ? 1 : 0), 0);
+        return { candidate, coverage, totalFields: candidate.fields.length };
+      })
+      .sort((a, b) => (b.coverage - a.coverage) || (b.totalFields - a.totalFields));
+
+    const moduleSchema = scoredCandidates[0]?.candidate;
+
     return moduleSchema?.fields || schema.fields;
-  }, [schemasBySlug, treeSourceSlug, schema.fields]);
+  }, [
+    resolveTable,
+    schemasBySlug,
+    schemasByTable,
+    treeSourceModuleSlug,
+    treeSourceSlug,
+    schema.fields,
+    (treeViewConfig as any)?.grouping?.groupByField,
+    JSON.stringify((treeViewConfig as any)?.groupBy || []),
+    JSON.stringify((treeViewConfig as any)?.columns || []),
+    (treeViewConfig as any)?.totals?.sumField,
+  ]);
 
   const renderFormContent = () => {
     if (formSections.length > 0) {

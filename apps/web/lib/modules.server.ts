@@ -15,7 +15,10 @@ export async function fetchModuleRowBySlug(slug: string) {
   const props = typeof (data as any).props === "string" ? JSON.parse((data as any).props) : (data as any).props || {};
   const schema = props as ModuleSchema;
 
-  const table = schema?.db?.table || slug;
+  const table = String(schema?.db?.table || "").trim();
+  if (!table) {
+    throw new Error(`El módulo slug="${slug}" no tiene props.db.table`);
+  }
   const primaryKey = schema?.db?.primaryKey || "id";
   const route = (props?.route ?? props?.ui?.route ?? (data as any).route ?? `/${slug}/`) as string;
 

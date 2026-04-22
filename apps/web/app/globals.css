@@ -988,3 +988,22 @@ input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+.date-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.date-input {
+  padding-right: 2.5rem;
+}
+
+.date-input-icon {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  transform: translateY(-50%);
+  color: #6b7280;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}

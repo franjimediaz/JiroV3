@@ -38,6 +38,7 @@ export default function ListPageClient({
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const table = String(schema.db.table || "").trim();
   const primaryKey = schema.db.primaryKey || "id";
 
   const handleDelete = async (row: any) => {
@@ -62,8 +63,19 @@ export default function ListPageClient({
     });
     if (!ok) return;
 
+    if (!table) {
+      await inform({
+        title: "Configuracion incompleta",
+        message: `El modulo ${titleSingular} no tiene db.table configurado.`,
+        details: [{ label: "Modulo", value: moduleSlug }],
+        mode: "info",
+        confirmText: "Aceptar",
+      });
+      return;
+    }
+
     const supabase = createClient();
-    const { error } = await supabase.from(moduleSlug).delete().eq(primaryKey, row?.[primaryKey]);
+    const { error } = await supabase.from(table).delete().eq(primaryKey, row?.[primaryKey]);
     if (error) {
       alert(`No se pudo eliminar: ${error.message}`);
       return;
@@ -223,7 +235,7 @@ export default function ListPageClient({
       if (!preview.payloads.length) {
         await inform({
           title: "Sin filas para importar",
-          message: "El archivo no contiene registros validos para insertar.",
+          message: "El archivo no contiene registros validos para importar.",
           details: [{ label: "Archivo", value: file.name }],
           mode: "info",
           confirmText: "Aceptar",
@@ -231,18 +243,41 @@ export default function ListPageClient({
         return;
       }
 
+      if (!table) {
+        throw new Error(`El modulo ${moduleSlug} no tiene db.table configurado.`);
+      }
+
       const supabase = createClient();
-      for (const batch of chunk(preview.payloads, 100)) {
-        const { error } = await supabase.from(moduleSlug).insert(batch);
+      const rowsToUpdate = preview.payloads.filter((row) => {
+        const value = row?.[primaryKey];
+        return value !== null && value !== undefined && String(value).trim() !== "";
+      });
+      const rowsToInsert = preview.payloads.filter((row) => {
+        const value = row?.[primaryKey];
+        return value === null || value === undefined || String(value).trim() === "";
+      });
+
+      for (const row of rowsToUpdate) {
+        const recordId = row[primaryKey];
+        const payload = { ...row };
+        delete payload[primaryKey];
+        const { error } = await supabase.from(table).update(payload).eq(primaryKey, recordId);
+        if (error) throw error;
+      }
+
+      for (const batch of chunk(rowsToInsert, 100)) {
+        const { error } = await supabase.from(table).insert(batch);
         if (error) throw error;
       }
 
       await inform({
         title: "Importacion completada",
-        message: `Se importaron ${preview.payloads.length} registros correctamente.`,
+        message: `Se procesaron ${preview.payloads.length} registros correctamente.`,
         details: [
           { label: "Archivo", value: file.name },
           { label: "Modulo", value: titleSingular },
+          { label: "Actualizados", value: rowsToUpdate.length },
+          { label: "Creados", value: rowsToInsert.length },
         ],
         mode: "info",
         confirmText: "Aceptar",

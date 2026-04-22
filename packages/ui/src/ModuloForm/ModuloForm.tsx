@@ -5,9 +5,10 @@ import styles from "./modulo-detalle.module.css";
 import  Selector from "../Selector";
 import {IconPicker} from "@repo/ui";
 import type { CalendarSpecialViewConfig, CalendarViewMode, Field as FieldSchema, ModuleSchema, Field, FormPreviewTab, FormSection, SpecialViewConfig, UiTab} from "@repo/types";
-import {VALID_FIELD_TYPES} from "@repo/types";
+import { normalizeModuleDefaultFilters, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
 import {FieldRow} from "./FieldRow"
+import ModuleDefaultFiltersBuilder from "./ModuleDefaultFiltersBuilder";
 import UiFormActionsEditor, { type UiFormAction } from "./UiFormActionsEditor";
 import { useSearchParams, useRouter } from "next/dist/client/components/navigation";
 
@@ -44,6 +45,11 @@ function validatePropsClient(props: any): string | null {
   
   if (!props.db.table || typeof props.db.table !== "string")
     return "props.db.table (string) es requerido";
+  try {
+    normalizeModuleDefaultFilters(props.db.defaultFilters);
+  } catch {
+    return "props.db.defaultFilters inválido";
+  }
   if (!Array.isArray(props.fields)) return "props.fields debe ser un array";
   for (let i = 0; i < props.fields.length; i++) {
     const f = props.fields[i];
@@ -69,6 +75,12 @@ function validatePropsClient(props: any): string | null {
 
       if (r.multiple !== undefined && typeof r.multiple !== "boolean") {
         return `fields[${i}].ref.multiple debe ser boolean`;
+      }
+
+      try {
+        normalizeSelectorTableFilters(r.filters);
+      } catch {
+        return `fields[${i}].ref.filters inválido para selectorTabla`;
       }
     }
     if (f.type === "ReverseLink") {
@@ -815,6 +827,18 @@ const editorTabs = [
           />
         </div>
       </div>
+
+      <ModuleDefaultFiltersBuilder
+        value={propsObj.db.defaultFilters}
+        fields={propsObj.fields}
+        readOnly={readOnly}
+        onChange={(defaultFilters) => {
+          const db = { ...propsObj.db, defaultFilters };
+          const next = { ...propsObj, db };
+          setPropsObj(next);
+          setRawText(JSON.stringify(next, null, 2));
+        }}
+      />
     </Section>
   )}
 
@@ -924,6 +948,7 @@ const editorTabs = [
                   fieldsByTable={fieldsByTable}
                   loadingByTable={loadingByTable}
                   ensureFieldsLoaded={ensureFieldsLoaded}
+                  currentFields={propsObj.fields}
                 />
               </div>
             </details>
@@ -1256,6 +1281,7 @@ const editorTabs = [
                                         fieldsByTable={fieldsByTable}
                                         loadingByTable={loadingByTable}
                                         ensureFieldsLoaded={ensureFieldsLoaded}
+                                        currentFields={propsObj.fields}
                                       />
                                     </div>
                                   </details>
@@ -1331,6 +1357,7 @@ const editorTabs = [
                                   fieldsByTable={fieldsByTable}
                                   loadingByTable={loadingByTable}
                                   ensureFieldsLoaded={ensureFieldsLoaded}
+                                  currentFields={propsObj.fields}
                                 />
                               </div>
                             </details>

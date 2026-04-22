@@ -140,6 +140,7 @@ export default function FormClient({
   // Opcionales para resolución avanzada (treeview, rutas, etc.)
   modulesBySlug,
   schemasBySlug,
+  schemasByTable,
 }: {
   schema: ModuleSchema;
   initialData: any;
@@ -150,6 +151,7 @@ export default function FormClient({
 
   modulesBySlug?: ModulesBySlug;
   schemasBySlug?: Record<string, ModuleSchema>;
+  schemasByTable?: Record<string, ModuleSchema>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -190,7 +192,7 @@ export default function FormClient({
           if (!id) throw new Error("Falta el ID para editar");
 
           const { error } = await supabase
-            .from(resolved.slug)
+            .from(resolved.table)
             .update(payload)
             .eq(resolved.primaryKey, id);
 
@@ -208,7 +210,7 @@ export default function FormClient({
           // insert y volver al detalle
           // Nota: si tu PK es uuid autogenerado, necesitarás .select() para obtenerlo
           const { data, error } = await supabase
-            .from(resolved.slug)
+            .from(resolved.table)
             .insert(payload)
             .select("*")
             .maybeSingle();
@@ -260,6 +262,7 @@ export default function FormClient({
           // treeview
           modulesBySlug={modulesBySlug}
           schemasBySlug={schemasBySlug}
+          schemasByTable={schemasByTable}
           treeViewProvider={treeViewProvider}
           treeViewParentRecord={initialData}
         />

@@ -4,6 +4,7 @@ import  Selector from "../Selector";
 import type { Field as FieldSchema, FieldType,Field, Appareance, Compute} from "@repo/types";
 import {VALID_FIELD_TYPES,Appareance_Valid_Types} from "@repo/types";
 import { FieldPickerModal} from "../modals/FieldPickerModal";
+import SelectorTableFiltersBuilder from "./SelectorTableFiltersBuilder";
 
 type RefPickCtx = null | { kind: "refDisplayField" };
 
@@ -166,6 +167,7 @@ export function FieldRow({
   fieldsByTable,
   loadingByTable,
   ensureFieldsLoaded,
+  currentFields,
 }: {
   field: FieldSchema;
   onChange: (f: FieldSchema) => void;
@@ -178,6 +180,7 @@ export function FieldRow({
   fieldsByTable: Record<string, { name: string; label?: string }[]>;
   loadingByTable: Record<string, boolean>;
   ensureFieldsLoaded: (tableSlug: string) => void;
+  currentFields: Array<{ name: string; label?: string; type?: string }>;
 }) {
   
   const [open, setOpen] = useState(false);
@@ -187,6 +190,7 @@ export function FieldRow({
   const summaryType = field.type || "text";
   const summaryCompute = getComputeKind(field);
   const [refPickCtx, setRefPickCtx] = useState<RefPickCtx>(null);
+  const selectorModuleSlug = field.type === "selectorTabla" ? field.ref?.moduleSlug || "" : "";
   
   
 
@@ -212,6 +216,12 @@ useEffect(() => {
   setWhereErr(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [field.name, field.compute?.type]);
+
+useEffect(() => {
+  if (!open) return;
+  if (!selectorModuleSlug) return;
+  ensureFieldsLoaded(selectorModuleSlug);
+}, [open, selectorModuleSlug, ensureFieldsLoaded]);
 
 const commitWhereIfValid = (text: string) => {
   try {
@@ -752,6 +762,69 @@ const commitWhereIfValid = (text: string) => {
                       disabled={!!readOnly}
                     />
                   </div>
+                </div>
+
+                <SelectorTableFiltersBuilder
+                  value={field.ref?.filters}
+                  readOnly={readOnly}
+                  targetModuleSlug={field.ref?.moduleSlug || ""}
+                  targetFields={fieldsByTable[field.ref?.moduleSlug || ""] || []}
+                  currentFields={currentFields}
+                  targetLoading={!!loadingByTable[field.ref?.moduleSlug || ""]}
+                  onRequestTargetFields={() => {
+                    const slug = field.ref?.moduleSlug || "";
+                    if (slug) ensureFieldsLoaded(slug);
+                  }}
+                  onChange={(filters) =>
+                    onChange({
+                      ...field,
+                      ref: { ...(field.ref || {}), filters },
+                    })
+                  }
+                />
+
+                <div className={styles.card} style={{ marginTop: 12 }}>
+                  <label className={styles.label}>ref.filters avanzado (JSON)</label>
+                  <textarea
+                    className={styles.textarea}
+                    rows={6}
+                    value={JSON.stringify(field.ref?.filters || { kind: "group", logic: "AND", items: [] }, null, 2)}
+                    onChange={(e) => {
+                      try {
+                        const filters = JSON.parse(e.target.value || "{}");
+                        onChange({
+                          ...field,
+                          ref: { ...(field.ref || {}), filters },
+                        });
+                      } catch {}
+                    }}
+                    spellCheck={false}
+                    disabled={!!readOnly}
+                  />
+                  <div className={styles.hint}>
+                    Modo avanzado. Tambien acepta arrays legacy como <code>[{"{"}"field":"activo","op":"=","value":true{"}"}]</code>.
+                  </div>
+                </div>
+
+                <div className={styles.card} style={{ marginTop: 12 }}>
+                  <label className={styles.label}>ref.sort (JSON)</label>
+                  <textarea
+                    className={styles.textarea}
+                    rows={3}
+                    value={JSON.stringify(field.ref?.sort || [], null, 2)}
+                    onChange={(e) => {
+                      try {
+                        const sort = JSON.parse(e.target.value || "[]");
+                        onChange({
+                          ...field,
+                          ref: { ...(field.ref || {}), sort },
+                        });
+                      } catch {}
+                    }}
+                    spellCheck={false}
+                    disabled={!!readOnly}
+                  />
+                  <div className={styles.hint}>Ej: [{"{"}"field":"created_at","direction":"desc"{""}{"}"}]</div>
                 </div>
               </div>
             )}

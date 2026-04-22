@@ -65,6 +65,7 @@ export default function FormClient({
   id,
   modulesBySlug,
   schemasBySlug,
+  schemasByTable,
   
 }: {
   schema: ModuleSchema;
@@ -75,6 +76,7 @@ export default function FormClient({
   id: string;
   modulesBySlug?: Record<string, { db?: { table?: string; primaryKey?: string } }>;
   schemasBySlug?: Record<string, ModuleSchema>;
+  schemasByTable?: Record<string, ModuleSchema>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -128,6 +130,7 @@ export default function FormClient({
               onTreeViewRowView={(row) => router.push(`${row.id}`)}
               onTreeViewRowEdit={(row) => router.push(`${row.id}?edit=true`)}
               schemasBySlug={schemasBySlug}
+              schemasByTable={schemasByTable}
             />
           )}
         </div>

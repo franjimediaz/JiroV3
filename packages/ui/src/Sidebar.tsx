@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { SidebarItem } from "./types";
 import { isActive, isBranchActive, isExactActive } from "./utils";
@@ -28,6 +28,7 @@ export function Sidebar({
   canView?: (slug: string) => boolean;
 }) {
   const pathname = usePathname();
+  const previousPathnameRef = useRef(pathname);
 
   useEffect(() => {
     if (variant !== "drawer" || !isOpen) return;
@@ -41,7 +42,13 @@ export function Sidebar({
   }, [variant, isOpen, onClose]);
 
   useEffect(() => {
-    if (variant === "drawer" && isOpen) onClose?.();
+    const previousPathname = previousPathnameRef.current;
+    previousPathnameRef.current = pathname;
+
+    if (variant !== "drawer" || !isOpen) return;
+    if (previousPathname === pathname) return;
+
+    onClose?.();
   }, [variant, isOpen, onClose, pathname]);
 
   const activeSet = useMemo(() => {

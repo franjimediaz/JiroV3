@@ -72,7 +72,7 @@ export default async function EntityPage({
   const baseRoute = mod.route || `/${slug}/`;
 
   // 2) fila
-  const row = await fetchRowById(slug, primaryKey, id);
+  const row = await fetchRowById(table, primaryKey, id);
   if (!row) notFound();
 
   // 3) índices auxiliares (para treeview + resolve de rutas)
@@ -81,12 +81,52 @@ export default async function EntityPage({
   // 4) cargar schemas extra que necesite treeview
   const rawSources = extractTreeviewSourcesFromSchema(schema);
   const sourceSlugs = rawSources.map((s) => slugByTable[s] || s);
+  const sourceTables = rawSources
+    .map((source) => {
+      const resolvedSlug = slugByTable[source] || source;
+      const moduleConfig = modulesBySlug?.[resolvedSlug];
+      return String(moduleConfig?.db?.table || source).trim();
+    })
+    .filter(Boolean);
+  const relatedSourceSlugs = Array.from(
+    new Set(
+      Object.entries(modulesBySlug || {})
+        .filter(([, mod]) => sourceTables.includes(String(mod?.db?.table || "").trim()))
+        .map(([relatedSlug]) => relatedSlug)
+    )
+  );
+  const schemaSlugsToLoad = Array.from(new Set([...sourceSlugs, ...relatedSourceSlugs]));
 
-  const schemasBySlug: Record<string, ModuleSchema> = { [slug]: schema };
-  for (const src of sourceSlugs) {
+  const schemasBySlug: Record<string, ModuleSchema> = {};
+  const schemasByTable: Record<string, ModuleSchema> = {};
+  const pickBaseSchema = (
+    currentSchema: ModuleSchema | undefined,
+    nextSchema: ModuleSchema
+  ) => {
+    if (!currentSchema) return nextSchema;
+    const currentFields = Array.isArray(currentSchema.fields)
+      ? currentSchema.fields.length
+      : 0;
+    const nextFields = Array.isArray(nextSchema.fields)
+      ? nextSchema.fields.length
+      : 0;
+    return nextFields > currentFields ? nextSchema : currentSchema;
+  };
+  const registerSchema = (key: string, moduleSchema: ModuleSchema) => {
+    if (!key) return;
+    schemasBySlug[key] = moduleSchema;
+    const tableKey = String(moduleSchema?.db?.table || "").trim();
+    if (tableKey) {
+      schemasByTable[tableKey] = pickBaseSchema(schemasByTable[tableKey], moduleSchema);
+    }
+  };
+
+  registerSchema(slug, schema);
+  for (const src of schemaSlugsToLoad) {
     if (!src || schemasBySlug[src]) continue;
     try {
-      schemasBySlug[src] = (await fetchModuleRowBySlug(src)).schema;
+      const sourceModule = await fetchModuleRowBySlug(src);
+      registerSchema(src, sourceModule.schema);
     } catch {
       // no rompas la página
     }
@@ -102,6 +142,7 @@ export default async function EntityPage({
         baseRoute={baseRoute}
         modulesBySlug={modulesBySlug}
         schemasBySlug={schemasBySlug}
+        schemasByTable={schemasByTable}
       />
     </main>
   );

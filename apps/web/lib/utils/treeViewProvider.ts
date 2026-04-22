@@ -14,6 +14,7 @@ type TreeViewQuery = {
 };
 
 type LookupQuery = {
+  moduleSlug?: string;
   table: string;
   valueField: string;
   ids: string[];
@@ -70,18 +71,44 @@ export function createSupabaseTreeViewProvider(): TreeViewDataProvider {
     },
 
     // ---------------- lookup ----------------
-    async lookup({ table, valueField, ids, select }) {
+    async lookup({ moduleSlug, table, valueField, ids, select }) {
       if (!ids?.length) return [];
 
-      // Importante: ids como string; si tu id es uuid funciona perfecto
-      const q = supabase
-        .from(table)
-        .select(safeParseSelect(select))
-        .in(valueField, ids);
+      // Primero intentamos lookup directo contra la tabla real para no heredar
+      // defaultFilters del módulo relacionado al resolver labels/estilos.
+      const canQueryTableDirectly = !!table;
+      const direct = canQueryTableDirectly
+        ? await supabase
+            .from(table)
+            .select(safeParseSelect(select))
+            .in(valueField, ids)
+        : { data: null, error: null };
 
-      const { data, error } = await q;
-      if (error) throw error;
-      return data || [];
+      if (!direct.error && Array.isArray(direct.data) && direct.data.length > 0) {
+        return direct.data;
+      }
+
+      if (moduleSlug) {
+        const r = await fetch("/api/list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            moduleSlug,
+            select,
+            filters: [{ field: valueField, op: "in", value: ids }],
+            limit: Math.min(ids.length, 500),
+          }),
+        });
+
+        const json = await r.json().catch(() => null);
+        if (r.ok && json?.ok) {
+          return Array.isArray(json.data) ? json.data : [];
+        }
+      }
+
+      if (direct.error) throw direct.error;
+      return Array.isArray(direct.data) ? direct.data : [];
     },
 
     // ---------------- remove ----------------

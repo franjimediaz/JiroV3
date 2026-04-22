@@ -1,3 +1,6 @@
+import type { ModuleDefaultFilterGroup, ModuleDefaultQueryFilterLike } from "./moduleDefaultFilters";
+import type { SelectorTableFilterGroup, SelectorTableFilterOperator } from "./selectorTableFilters";
+
 export type Compute =
   | { type: "none" }
   | {
@@ -91,7 +94,7 @@ export type SelectorTablaRef = {
   hasStyle?: boolean;
   styleIconField?: string;  
   styleColorField?: string;
-  filters?: QueryFilter[];
+  filters?: QueryFilter[] | SelectorTableFilterGroup;
   sort?: QuerySort[];
 };
 
@@ -222,6 +225,7 @@ export type ModuleSchema = {
     table: string;
     softDelete?: boolean;
     primaryKey?: string;
+    defaultFilters?: ModuleDefaultQueryFilterLike[] | ModuleDefaultFilterGroup;
   };
   fields: Field[]; // ← aquí se usa el array de Field
   ui?: ModuleUiSchema;
@@ -302,12 +306,12 @@ export type SeedNode = {
   formSections?: FormSection[];
  
 };
-export type FilterOp = "=" | "!=" | ">" | ">=" | "<" | "<=" | "in" | "contains";
+export type FilterOp = SelectorTableFilterOperator;
 
 export type QueryFilter = {
   field: string;
   op: FilterOp;
-  value: any;
+  value?: any;
 };
 
 export type QuerySort = {

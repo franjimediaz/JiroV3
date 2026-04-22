@@ -16,6 +16,7 @@ type Props = {
   isDisplayLoading?: boolean;
   displayIcon?: string;
   displayColor?: string;
+  formValues?: Record<string, any>;
 };
 type UploadedFileValue = {
   bucket: string;
@@ -498,6 +499,7 @@ export default function FieldInput({
   isDisplayLoading,
   displayIcon,
   displayColor,
+  formValues,
 }: Props) {
   const type = field.type as FieldType;
 
@@ -566,13 +568,19 @@ if (type === "number" || type === "money" || type === "percent") {
     const inputValue = type === "date" ? toInputDate(value) : toInputDateTimeLocal(value);
 
     return (
+      <div className="date-input-wrapper">
       <input
         type={type === "datetime" ? "datetime-local" : "date"}
-        className="form-control"
+        className="form-control date-input"
+        
         value={inputValue}
         onChange={(e) => onChange(e.target.value)}
         disabled={readOnly}
       />
+      <span className="date-input-icon">
+        <i className="bi bi-calendar3"></i>
+      </span>
+    </div>
     );
   }
 
@@ -679,6 +687,7 @@ if (type === "number" || type === "money" || type === "percent") {
         isDisplayLoading={isDisplayLoading}
         displayIcon={displayIcon}
         displayColor={displayColor}
+        filterContext={{ record: formValues, values: formValues }}
       />
     );
   }

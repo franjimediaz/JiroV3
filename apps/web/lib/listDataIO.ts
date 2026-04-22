@@ -49,13 +49,17 @@ export async function readTextFile(file: File) {
   return file.text();
 }
 
-export function getImportableFields(schema: ModuleSchema) {
+export function getImportableFields(
+  schema: ModuleSchema,
+  options?: { includePrimaryKey?: boolean }
+) {
   const primaryKey = schema.db.primaryKey || "id";
+  const includePrimaryKey = options?.includePrimaryKey === true;
 
   return (schema.fields || []).filter((field) => {
     if (field.virtual === true) return false;
     if (field.readOnly) return false;
-    if (field.name === primaryKey) return false;
+    if (field.name === primaryKey && !includePrimaryKey) return false;
     if (field.name === "created_at" || field.name === "updated_at") return false;
     if (NON_IMPORTABLE_FIELD_TYPES.has(field.type)) return false;
     if (field.compute && (field.compute as any).persist === "none") return false;
@@ -129,7 +133,7 @@ export function buildImportPreview(args: {
   headers: string[];
   rows: string[][];
 }): ImportPreview {
-  const importableFields = getImportableFields(args.schema);
+  const importableFields = getImportableFields(args.schema, { includePrimaryKey: true });
   const fieldsByHeader = new Map<string, Field>();
 
   for (const field of importableFields) {

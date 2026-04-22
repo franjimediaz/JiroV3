@@ -32,7 +32,15 @@ export function getRelationDisplayConfig(field: Field): RelationDisplayConfig | 
   if (field.type !== "selectorTabla") return null;
 
   const ref = (field as any).ref;
-  const moduleSlug = ref?.moduleSlug ? String(ref.moduleSlug) : "";
+  const moduleSlug = ref?.moduleSlug
+    ? String(ref.moduleSlug)
+    : ref?.slug
+    ? String(ref.slug)
+    : ref?.table
+    ? String(ref.table)
+    : ref?.module
+    ? String(ref.module)
+    : "";
   if (!moduleSlug) return null;
 
   return {
@@ -195,7 +203,6 @@ export function getRelationDisplayResult(params: {
     const key = getRelationCacheKey(config, id);
     return { id, key, entry: cache[key], status: statusByKey?.[key] };
   });
-
   const isLoading = entries.some(({ key, entry, status }) => !entry && status !== "failed" && !!pendingKeys?.[key]);
   if (isLoading) return { kind: "loading" as const, text: "Cargando..." };
 
@@ -209,7 +216,7 @@ export function getRelationDisplayResult(params: {
   if (resolvedEntries.length) {
     const text = entries.map((item) => item.entry?.label ?? item.id).join(", ");
     const first = resolvedEntries[0]?.entry;
-    return {
+    const result = {
       kind: "resolved" as const,
       entry: {
         label: text,
@@ -217,6 +224,7 @@ export function getRelationDisplayResult(params: {
         color: ids.length === 1 ? first?.color : undefined,
       },
     };
+    return result;
   }
 
   return {
@@ -229,7 +237,7 @@ export async function preloadRelationDisplayCache(params: {
   rows: any[];
   fields: Field[];
   getValue: (row: any, field: Field) => any;
-  dataProvider: { list?: (input: any) => Promise<any> };
+  dataProvider: { list?: (input: any) => Promise<any>; lookup?: (input: any) => Promise<any> };
   cache: Record<string, RelationDisplayEntry>;
   statusByKey?: RelationDisplayStatusMap;
 }) {
@@ -261,7 +269,7 @@ export async function preloadRelationDisplayCache(params: {
   }
 
   const patch: Record<string, RelationDisplayEntry> = {};
-  if (typeof dataProvider?.list !== "function") {
+  if (typeof dataProvider?.lookup !== "function" && typeof dataProvider?.list !== "function") {
     for (const cacheKey of Object.keys(pendingKeys)) {
       statusPatch[cacheKey] = "failed";
     }
@@ -273,16 +281,31 @@ export async function preloadRelationDisplayCache(params: {
     if (!ids.length) continue;
 
     try {
-      const result = await dataProvider.list({
-        moduleSlug: bucket.config.moduleSlug,
-        filters: [{ field: bucket.config.valueField, op: "in", value: ids }],
-        limit: Math.min(ids.length, 500),
-        hasStyle: bucket.config.hasStyle,
-        styleIconField: bucket.config.styleIconField,
-        styleColorField: bucket.config.styleColorField,
-      });
+      const select = [
+        bucket.config.valueField,
+        bucket.config.displayField,
+        ...(bucket.config.hasStyle ? [bucket.config.styleIconField, bucket.config.styleColorField] : []),
+      ].filter((value, index, arr) => !!value && arr.indexOf(value) === index);
 
-      const rowsResult = Array.isArray((result as any)?.data) ? (result as any).data : [];
+      const result =
+        typeof dataProvider.lookup === "function"
+          ? await dataProvider.lookup({
+              moduleSlug: bucket.config.moduleSlug,
+              table: bucket.config.moduleSlug,
+              valueField: bucket.config.valueField,
+              ids,
+              select,
+            })
+          : await dataProvider.list?.({
+              moduleSlug: bucket.config.moduleSlug,
+              filters: [{ field: bucket.config.valueField, op: "in", value: ids }],
+              limit: Math.min(ids.length, 500),
+              hasStyle: bucket.config.hasStyle,
+              styleIconField: bucket.config.styleIconField,
+              styleColorField: bucket.config.styleColorField,
+            });
+
+      const rowsResult = Array.isArray(result) ? result : Array.isArray((result as any)?.data) ? (result as any).data : [];
       const resolvedKeys = new Set<string>();
 
       for (const row of rowsResult) {

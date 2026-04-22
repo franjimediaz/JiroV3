@@ -3,9 +3,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { dataProvider } from "./providers/DataProvider";
 import { PopupSelector } from "./modals/PopUpSelector";
-
-type RefFilter = { field: string; op: string; value: any };
-type RefSort = { field: string; direction: "asc" | "desc" };
+import {
+  matchesSelectorTableFilterGroup,
+  resolveSelectorTableFiltersToQuery,
+  type QueryFilter,
+  type QuerySort,
+  type SelectorTableFilterResolutionContext,
+  type SelectorTableFiltersInput,
+} from "@repo/types";
 
 type PopupItem = { value: string; label: string; raw?: any };
 type CacheEntry = { label: string; icon?: string; color?: string };
@@ -14,8 +19,8 @@ type Props = {
   moduleSlug: string;
   displayField: string;
   valueField?: string;
-  filters?: RefFilter[];
-  sort?: RefSort[];
+  filters?: SelectorTableFiltersInput;
+  sort?: QuerySort[];
   value: any;
   onChange: (v: any) => void;
   readOnly?: boolean;
@@ -30,6 +35,7 @@ type Props = {
   isDisplayLoading?: boolean;
   displayIcon?: string;
   displayColor?: string;
+  filterContext?: SelectorTableFilterResolutionContext;
 };
 
 function ensureList() {
@@ -74,6 +80,7 @@ export default function SelectorTabla({
   isDisplayLoading = false,
   displayIcon,
   displayColor,
+  filterContext,
 }: Props) {
   const [popupOpen, setPopupOpen] = useState(false);
   const [popupItems, setPopupItems] = useState<PopupItem[]>([]);
@@ -84,6 +91,11 @@ export default function SelectorTabla({
     if (multiple) return Array.isArray(value) ? value.map(toStr) : [];
     return value ? toStr(value) : "";
   }, [value, multiple]);
+
+  const resolvedFilters = useMemo(
+    () => resolveSelectorTableFiltersToQuery(filters, filterContext),
+    [filters, filterContext]
+  );
 
   useEffect(() => {
     if (isDisplayLoading) return;
@@ -164,7 +176,11 @@ export default function SelectorTabla({
       setPopupLoading(true);
 
       try {
-        const nextFilters: RefFilter[] = [...filters];
+        const nextFilters: QueryFilter[] = (resolvedFilters.filters || []).map((filter) => ({
+          field: filter.field,
+          op: filter.op as QueryFilter["op"],
+          value: filter.value,
+        }));
         const term = (searchText || "").trim();
 
         if (term) {
@@ -175,17 +191,21 @@ export default function SelectorTabla({
           });
         }
 
+        const requestedLimit = resolvedFilters.canQueryDirectly ? limit : Math.max(limit, 200);
         const res = await list({
           moduleSlug,
           filters: nextFilters,
           sort,
-          limit,
+          limit: requestedLimit,
           hasStyle,
           styleIconField,
           styleColorField,
         } as any);
 
-        const rows = Array.isArray(res?.data) ? res.data : [];
+        const rawRows = Array.isArray(res?.data) ? res.data : [];
+        const rows = resolvedFilters.canQueryDirectly
+          ? rawRows
+          : rawRows.filter((row: any) => matchesSelectorTableFilterGroup(row, resolvedFilters.group));
         const items: PopupItem[] = rows.map((row: any) => ({
           value: toStr(row[valueField]),
           label: toStr(row[displayField]) || toStr(row[valueField]),
@@ -208,7 +228,17 @@ export default function SelectorTabla({
         setPopupLoading(false);
       }
     },
-    [moduleSlug, displayField, valueField, filters, sort, limit, hasStyle, styleIconField, styleColorField]
+    [
+      moduleSlug,
+      displayField,
+      valueField,
+      resolvedFilters,
+      sort,
+      limit,
+      hasStyle,
+      styleIconField,
+      styleColorField,
+    ]
   );
 
   useEffect(() => {
