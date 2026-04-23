@@ -1,5 +1,6 @@
 // app/api/pdf/generate/route.ts
 import { NextResponse } from "next/server";
+import { performance } from "node:perf_hooks";
 import { createClient } from "@/lib/supabase/server";
 import { resolvePdfContext } from "@/lib/pdf/resolvePdfContext";
 import { renderTemplateToHtml } from "@/lib/pdf/renderTemplateToHtml";
@@ -11,6 +12,15 @@ import {
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+function shouldLogPdfTimings() {
+  return process.env.PDF_TIMING_LOGS === "1";
+}
+
+function logPdfTiming(label: string, startedAt: number) {
+  if (!shouldLogPdfTimings()) return;
+  console.info(`[pdf] ${label}: ${Math.round(performance.now() - startedAt)}ms`);
+}
 
 async function readErrorPayload(response: Response) {
   const contentType = response.headers.get("content-type") || "";
@@ -81,6 +91,7 @@ export async function GET(req: Request) {
     const labelResolvers = deriveLabelResolversFromTemplate(template);
 
     // 4) Resolver contexto completo (record + related + lookups/labels)
+    const resolveStartedAt = performance.now();
     const ctx = await resolvePdfContext({
       sourceTable: tplRow.source_table,
       recordId,
@@ -88,9 +99,12 @@ export async function GET(req: Request) {
       labelResolvers,
       template,
     });
+    logPdfTiming("resolvePdfContext", resolveStartedAt);
 
     // 5) HTML
+    const renderStartedAt = performance.now();
     const html = renderTemplateToHtml(template, ctx);
+    logPdfTiming("renderTemplateToHtml", renderStartedAt);
 
     // 6) PDF
     const serviceUrl = process.env.PDF_SERVICE_URL;

@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState, useTransition, type ReactNode } from "rea
 import { useRouter } from "next/navigation";
 import { upsertPdfTemplateAction } from "./actions/pdfTemplates";
 import { RichTextEditor} from "@repo/ui";
+import PdfTemplateSidebar from "./pdf-template/PdfTemplateSidebar";
+import PdfTemplateCanvas from "./pdf-template/PdfTemplateCanvas";
 import {
   defaultBusinessColumnsForKind,
   defaultBusinessMetrics,
@@ -579,6 +581,9 @@ export default function PdfTemplateForm({
   const [previewCtx, setPreviewCtx] = useState<PreviewContext | null>(null);
   const [previewCtxError, setPreviewCtxError] = useState<string | null>(null);
   const [configModal, setConfigModal] = useState<null | "related" | "lookups">(null);
+  const [showAdvancedJson, setShowAdvancedJson] = useState(false);
+  const [advancedJson, setAdvancedJson] = useState("");
+  const [advancedJsonError, setAdvancedJsonError] = useState<string | null>(null);
 
   const selectedBlock = useMemo(
     () => template.blocks.find((b) => b.id === selectedBlockId),
@@ -675,6 +680,11 @@ export default function PdfTemplateForm({
 
     return () => ac.abort();
   }, [slug, testId, previewTick, sourceTable, relations, template]);
+
+  useEffect(() => {
+    if (!showAdvancedJson) return;
+    setAdvancedJson(prettyJson(template));
+  }, [showAdvancedJson, template]);
 
   /* ------------------------------------------------------------------ */
   /* ----------------------------- ACTIONS ----------------------------- */
@@ -1161,8 +1171,245 @@ function moveBlockDown(id: string) {
   });
 }
 
+function addBlockWithValue(block: PdfBlock) {
+  setTemplate((current) => ({ ...current, blocks: [...current.blocks, block] }));
+  setSelectedBlockId(block.id);
+}
+
+function createTextPresetBlock(preset: {
+  kind: "normal" | "variable" | "header" | "footer";
+  token?: string;
+}) {
+  if (preset.kind === "header") {
+    addBlockWithValue({
+      id: uid(),
+      type: "header",
+      title: "Título del documento",
+      subtitle: preset.token || "{{record.numero}}",
+      rightText: "{{now}}",
+    });
+    return;
+  }
+
+  if (preset.kind === "footer") {
+    addBlockWithValue({
+      id: uid(),
+      type: "text",
+      variant: "muted",
+      value: "<p style=\"text-align:center\">{{branding.nombre}} · {{branding.website}}</p>",
+    });
+    return;
+  }
+
+  addBlockWithValue({
+    id: uid(),
+    type: "text",
+    variant: preset.kind === "variable" ? "normal" : "richtext",
+    value:
+      preset.kind === "variable"
+        ? `<p>Valor dinámico: ${preset.token || "{{record.id}}"}</p>`
+        : "<p>Escribe aquí tu contenido.</p>",
+  });
+}
+
+function createResultAssistantBlock(config: {
+  label: string;
+  source: "related" | "table";
+  relatedKey?: string;
+  table?: string;
+  field?: string;
+  operation: "sum" | "avg" | "count" | "min" | "max";
+  format: "currency" | "percent" | "number";
+  filterField?: string;
+  filterValue?: string;
+}) {
+  const datasetId = `dataset_${uid()}`;
+  const aggregateKey = "value";
+  const blockId = uid();
+  const valueExpr =
+    config.format === "currency"
+      ? `{{datasets.${datasetId}.summary.${aggregateKey}}} €`
+      : config.format === "percent"
+      ? `{{datasets.${datasetId}.summary.${aggregateKey}}} %`
+      : `{{datasets.${datasetId}.summary.${aggregateKey}}}`;
+
+  const nextDataset: PdfDatasetDefinition = {
+    id: datasetId,
+    label: config.label,
+    source: config.source,
+    relatedKey: config.source === "related" ? config.relatedKey : undefined,
+    table: config.source === "table" ? config.table : undefined,
+    filters:
+      config.filterField && config.filterValue
+        ? [{ field: config.filterField, op: "eq", value: config.filterValue }]
+        : [],
+    aggregates: [
+      {
+        op: config.operation,
+        field: config.operation === "count" ? undefined : config.field,
+        as: aggregateKey,
+      },
+    ],
+  };
+
+  setTemplate((current) => ({
+    ...current,
+    datasets: [...(current.datasets ?? []), nextDataset],
+    blocks: [
+      ...current.blocks,
+      {
+        id: blockId,
+        type: "totalsBox",
+        rows: [{ label: config.label, value: valueExpr }],
+      },
+    ],
+  }));
+  setSelectedBlockId(blockId);
+}
+
+function createRelationAssistantBlock(config: {
+  relationKey: string;
+  fields: string[];
+  mode: "table" | "cards" | "summary";
+}) {
+  if (config.mode === "cards") {
+    addBlockWithValue({
+      id: uid(),
+      type: "cards",
+      title: `Tarjetas de ${config.relationKey}`,
+      layout: { cols: 2, gap: 12 },
+      repeat: `related.${config.relationKey}`,
+      cardStyle: {
+        background: "#ffffff",
+        borderColor: "#e5e7eb",
+        borderWidth: 1,
+        borderStyle: "solid",
+        borderRadius: 14,
+        padding: 12,
+        shadow: "none",
+      },
+      card: {
+        title: `{{item.${config.fields[0]}}}`,
+        subtitle: config.fields[1] ? `{{item.${config.fields[1]}}}` : "",
+        blocks: config.fields.slice(2).map((field) => ({
+          id: uid(),
+          type: "text",
+          variant: "normal",
+          value: `${field}: {{item.${field}}}`,
+        })),
+      },
+    } as any);
+    return;
+  }
+
+  if (config.mode === "summary") {
+    addBlockWithValue({
+      id: uid(),
+      type: "business",
+      kind: "dynamicTable",
+      title: `Resumen de ${config.relationKey}`,
+      repeat: `related.${config.relationKey}`,
+      columns: config.fields.map((field) => ({
+        label: field,
+        value: `{{item.${field}}}`,
+      })),
+      emptyText: "Sin datos",
+    } as any);
+    return;
+  }
+
+  addBlockWithValue({
+    id: uid(),
+    type: "table",
+    title: `Tabla de ${config.relationKey}`,
+    repeat: `related.${config.relationKey}`,
+    tableStyle: { zebra: true, dense: false },
+    layout: { widthPct: 100, align: "left" },
+    columns: config.fields.map((field) => ({
+      label: field,
+      value: `{{item.${field}}}`,
+      align: "left",
+    })),
+  });
+}
+
+function createTableAssistantBlock(config: {
+  relationKey: string;
+  columns: string[];
+  totalField?: string;
+  zebra: boolean;
+  dense: boolean;
+}) {
+  const tableBlock: Extract<PdfBlock, { type: "table" }> = {
+    id: uid(),
+    type: "table",
+    title: `Tabla de ${config.relationKey}`,
+    repeat: `related.${config.relationKey}`,
+    tableStyle: { zebra: config.zebra, dense: config.dense },
+    layout: { widthPct: 100, align: "left" },
+    columns: config.columns.map((field) => ({
+      label: field,
+      value: `{{item.${field}}}`,
+      align: "left",
+    })),
+  };
+
+  if (config.totalField) {
+    tableBlock.rows = [
+      {
+        values: config.columns.map((field, index) =>
+          field === config.totalField
+            ? `{{record.${config.totalField}}}`
+            : index === 0
+            ? "Total"
+            : "",
+        ),
+      },
+    ];
+  }
+
+  addBlockWithValue(tableBlock);
+}
+
+function validateTemplateBeforeSave() {
+  const errors: string[] = [];
+
+  if (!name.trim()) errors.push("El nombre es obligatorio.");
+  if (!slug.trim()) errors.push("El slug es obligatorio.");
+  if (!sourceTable.trim()) errors.push("La tabla origen es obligatoria.");
+  if (!Array.isArray(template.blocks)) errors.push("La plantilla debe contener un array de bloques.");
+
+  const ids = new Set<string>();
+  for (const block of template.blocks || []) {
+    if (!block?.id) {
+      errors.push("Todos los bloques deben tener un id.");
+      continue;
+    }
+    if (ids.has(block.id)) errors.push(`Hay bloques duplicados con id "${block.id}".`);
+    ids.add(block.id);
+  }
+
+  return errors;
+}
+
+function applyAdvancedJson() {
+  try {
+    const parsed = JSON.parse(advancedJson);
+    setTemplate(ensureTemplate(parsed));
+    setAdvancedJsonError(null);
+  } catch (error: any) {
+    setAdvancedJsonError(error?.message || "JSON inválido.");
+  }
+}
+
 function save() {
     start(async () => {
+      const validationErrors = validateTemplateBeforeSave();
+      if (validationErrors.length) {
+        alert(validationErrors.join("\n"));
+        return;
+      }
+
       const fd = new FormData();
       if (initialData?.id) fd.set("id", initialData.id);
 
@@ -1281,94 +1528,79 @@ function save() {
       {/* BUILDER */}
       {tab === "builder" && (
         <div className="row g-3">
-          <div className="col-md-4">
-            <div className="card mb-4">
-              <div className="card-header text-white">Bloques</div>
-              <div className="list-group list-group-flush">
-                {template.blocks.map((b) => (
-                  <button
-                    type="button"
-                    key={b.id}
-                    className={`list-group-item list-group-item-action ${b.id === selectedBlockId ? "active" : ""}`}
-                    onClick={() => setSelectedBlockId(b.id)}
-                  >
-                    {b.type}
-                  </button>
-                ))}
-              </div>
-              {!readOnly && (
-                <div className="card-footer d-flex flex-wrap gap-2">
-                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("header")}>
-                    + Header
-                    </button>
-                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("text")}>
-                    + Texto
-                    </button>
-                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("divider")}>
-                    + Divider
-                    </button>
-                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("table")}>
-                    + Tabla
-                    </button>
-                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("budgetPartidas")}>
-                      + Partidas
-                    </button>
-                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("cards")}>
-                      + Tarjetas
-                    </button>
-                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("totalsBox")}>
-                      + Totales
-                    </button>
-                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("business")}>
-                      + Negocio
-                    </button>
-                    <button type="button" className="btn btn-sm btn-outline-primary" onClick={() => addBlock("chart")}>
-                      + Grafico
-                    </button>
-                </div>
-                )}
-            
-            </div>
+          <div className="col-12 col-xl-3">
+            <PdfTemplateSidebar
+              readOnly={readOnly}
+              bindingGroups={commonBindingGroups}
+              relationDetails={relationDetails}
+              tableOptions={tableOptions}
+              fieldsByTable={fieldsByTable}
+              onAddBlock={addBlock}
+              onCreateTextPreset={createTextPresetBlock}
+              onCreateResultBlock={createResultAssistantBlock}
+              onCreateRelationBlock={createRelationAssistantBlock}
+              onCreateTableBlock={createTableAssistantBlock}
+            />
+
             {!readOnly && selectedBlock && (
-                <div className="mt-3 d-flex gap-2">
-                    <button
-                    type="button"
-                    className="btn btn-outline-secondary btn-sm"
-                    onClick={() => moveBlockUp(selectedBlock.id)}
-                    title="Subir bloque"
-                    >
-                   Subir
-                    </button>
+              <div className="mt-3 d-flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={() => moveBlockUp(selectedBlock.id)}
+                  title="Subir bloque"
+                >
+                  Subir
+                </button>
 
-                    <button
-                    type="button"
-                    className="btn btn-outline-secondary btn-sm"
-                    onClick={() => moveBlockDown(selectedBlock.id)}
-                    title="Bajar bloque"
-                    >
-                   Bajar
-                    </button>
+                <button
+                  type="button"
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={() => moveBlockDown(selectedBlock.id)}
+                  title="Bajar bloque"
+                >
+                  Bajar
+                </button>
 
-                    <button
-                    type="button"
-                    className="btn btn-outline-danger btn-sm ms-auto"
-                    onClick={() => {
-                        if (confirm("¿Eliminar este bloque?")) {
-                        deleteBlock(selectedBlock.id);
-                        }
-                    }}
-                    title="Eliminar bloque"
-                    >
-                    Eliminar
-                    </button>
-                </div>
-          )}
-          
-
-
+                <button
+                  type="button"
+                  className="btn btn-outline-danger btn-sm ms-xl-auto"
+                  onClick={() => {
+                    if (confirm("¿Eliminar este bloque?")) {
+                      deleteBlock(selectedBlock.id);
+                    }
+                  }}
+                  title="Eliminar bloque"
+                >
+                  Eliminar
+                </button>
+              </div>
+            )}
           </div>
 
-          <div className="col-md-8">
+          <div className="col-12 col-xl-4">
+            <PdfTemplateCanvas
+              blocks={template.blocks as any}
+              selectedBlockId={selectedBlockId}
+              onSelectBlock={setSelectedBlockId}
+            />
+          </div>
+
+          <div className="col-12 col-xl-5">
+            <div className="card border-0 shadow-sm mb-3">
+              <div className="card-body">
+                <div className="fw-semibold">Panel de configuración</div>
+                <div className="text-muted small">
+                  Ajusta el bloque seleccionado. El panel central te sirve como preview estructural y selector rápido.
+                </div>
+              </div>
+            </div>
+
+            {!selectedBlock && (
+              <div className="alert alert-secondary">
+                Selecciona un bloque desde la estructura central o crea uno nuevo desde el panel izquierdo.
+              </div>
+            )}
 
             {selectedBlock && selectedBlock.type === "text" && (
               <div className="card">
@@ -4363,6 +4595,72 @@ function save() {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="card mb-4 border-0 shadow-sm">
+              <div className="card-body">
+                <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
+                  <div>
+                    <div className="fw-semibold">Modo avanzado</div>
+                    <div className="text-muted small">
+                      El editor JSON sigue disponible, pero queda oculto por defecto para no interferir con el flujo visual.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-secondary"
+                    onClick={() => {
+                      const next = !showAdvancedJson;
+                      setShowAdvancedJson(next);
+                      if (next) {
+                        setAdvancedJson(prettyJson(template));
+                        setAdvancedJsonError(null);
+                      }
+                    }}
+                  >
+                    {showAdvancedJson ? "Ocultar JSON" : "Mostrar JSON"}
+                  </button>
+                </div>
+
+                {showAdvancedJson ? (
+                  <>
+                    <textarea
+                      className="form-control font-monospace"
+                      rows={16}
+                      value={advancedJson}
+                      disabled={readOnly}
+                      onChange={(e) => setAdvancedJson(e.target.value)}
+                    />
+                    {advancedJsonError ? (
+                      <div className="alert alert-danger py-2 mt-3 mb-0">{advancedJsonError}</div>
+                    ) : null}
+                    <div className="d-flex justify-content-end gap-2 mt-3">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary"
+                        onClick={() => {
+                          setAdvancedJson(prettyJson(template));
+                          setAdvancedJsonError(null);
+                        }}
+                      >
+                        Restaurar desde estado actual
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        disabled={readOnly}
+                        onClick={applyAdvancedJson}
+                      >
+                        Aplicar JSON
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-muted small">
+                    Actívalo solo cuando necesites revisar o pegar una plantilla completa en bruto.
                   </div>
                 )}
               </div>

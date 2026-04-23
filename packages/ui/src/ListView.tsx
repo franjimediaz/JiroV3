@@ -319,7 +319,9 @@ export default function ListView({
                 <th className="text-start text-nowrap" style={{ background: color || "#5374a1ff" }}></th>
               )}
               {listFields.map((f) => (
-                <th key={f.name} className="text-nowrap" style={{ background: color || "#5374a1ff" }}>
+                <th key={f.name} className="text-center" style={{ 
+                  background: color || "#5374a1ff",
+                  borderRight: "1px solid rgb(0, 0, 0)" }}>
                   {f.label}
                 </th>
               ))}
@@ -328,8 +330,8 @@ export default function ListView({
           </thead>
           <tbody>
             {filteredData.length === 0 ? (
-              <tr>
-                <td
+              <tr >
+                <td 
                   colSpan={
                     listFields.length +
                     (onViewRow || onEditRow || onDeleteRow ? 1 : 0)
@@ -344,7 +346,7 @@ export default function ListView({
                 
                 <tr key={row[primaryKey] ?? idx}>
                   {(onViewRow || onEditRow || onDeleteRow) && (
-                    <td className="text-start text-nowrap">
+                    <td className="text-start text-nowrap" >
                       <ActionMenu
                         items={[
                           onViewRow && {
@@ -369,7 +371,7 @@ export default function ListView({
 
                   )}
                   {listFields.map((f) => (
-                    <td key={f.name} className="text-nowrap hover-cell">
+                    <td key={f.name} className="text-center hover-cell" style={{borderRight: "1px solid rgb(0, 0, 0)"}}>
                       {renderCell(row[f.name], f, labelCache, pendingRelationKeys, relationStatusByKey)}
                     </td>
                   ))}
@@ -481,7 +483,7 @@ function renderCell(
       return value ? (
         <span className="badge bg-success-subtle text-success">Sí</span>
       ) : (
-        <span className="badge bg-secondary-subtle text-muted">No</span>
+        <span className="badge bg-secondary-subtle text-muted ">No</span>
       );
 
     case "date":

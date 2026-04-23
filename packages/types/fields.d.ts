@@ -58,7 +58,7 @@ export type Field = {
     ui?: {
         icon?: string;
         color?: string;
-        width?: "1/1" | "1/2" | "1/3" | "2/3";
+        width?: "1/1" | "1/2" | "1/3"|"1/4" | "2/3";
         variant?: "input" | "textarea" | "currency" | "percent";
         placeholder?: string;
         help?: string;

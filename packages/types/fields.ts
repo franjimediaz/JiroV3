@@ -135,7 +135,7 @@ export type BaseField = {
   ui?: {
     icon?: string;
     color?: string;
-    width?: "1/1" | "1/2" | "1/3" | "2/3";
+    width?: "1/1" | "1/2" | "1/3"|"1/4" | "2/3";
     variant?: "input" | "textarea" | "currency" | "percent" | "richtext";
     placeholder?: string;
     help?: string;

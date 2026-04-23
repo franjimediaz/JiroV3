@@ -725,7 +725,7 @@ const pendingLookupKeys = useMemo(
             {(effectiveColumns || []).map((c, idx) => (
               <th key={`${c.field}__${idx}`} style={{
                           ...(c.width ? { width: c.width } : {}),
-                          background: "linear-gradient(90deg, #0d275a, #0d275a, #0d275a)",
+                          background: "linear-gradient(90deg, #13367c, #13367c, #13367c)",
                           color:"white",
                           borderRight: "1px solid rgb(0, 0, 0)"
 
@@ -736,7 +736,7 @@ const pendingLookupKeys = useMemo(
             {showActions && (
               <th className="text-end" style={{
                  width: "1%",
-                  background: "linear-gradient(90deg, #0d275a, #0d275a, #0d275a)",
+                  background: "linear-gradient(90deg, #13367c, #13367c, #13367c)",
                   color:"white",
                   borderRight: "1px solid rgb(0, 0, 0)"}}>
                 

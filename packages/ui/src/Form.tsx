@@ -208,6 +208,9 @@ function getColumnClass(field: Field): string {
       return "col-12 col-md-4";
     case "2/3":
       return "col-12 col-md-8";
+    case "1/4":
+      return "col-12 col-md-2";
+
     case "1/1":
     default:
       return "col-12";
@@ -1128,7 +1131,11 @@ export default function Form({
   return (
     <form className="d-flex flex-column gap-4" onSubmit={handleSubmit}>
       {showMainTabs && (
-        <div className="d-flex gap-4 mb-3 border-bottom" style={{ borderColor: "#e5e7eb" }}>
+        <div className="d-flex gap-4 mb-3 border-bottom" style={{ 
+        overflowX: "auto",
+        overflowY: "hidden",
+        WebkitOverflowScrolling: "touch",
+        borderBottom: "1px solid #e5e7eb",}}>
           {runtimeTabs.map((tab) => {
             const isActive = activeTab?.id === tab.id;
 
