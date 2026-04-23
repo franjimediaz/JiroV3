@@ -725,16 +725,21 @@ const pendingLookupKeys = useMemo(
             {(effectiveColumns || []).map((c, idx) => (
               <th key={`${c.field}__${idx}`} style={{
                           ...(c.width ? { width: c.width } : {}),
-                          background: "linear-gradient(90deg, #0d275a, #11294ec4, #4d648a96)",
-                          color:"white"
+                          background: "linear-gradient(90deg, #0d275a, #0d275a, #0d275a)",
+                          color:"white",
+                          borderRight: "1px solid rgb(0, 0, 0)"
 
                         }}>
                 {c.label}
               </th>
             ))}
             {showActions && (
-              <th className="text-end" style={{ width: "1%", background: "linear-gradient(90deg, #0d275a, #11294ec4, #4d648a96)",color:"white"}}>
-                Acciones
+              <th className="text-end" style={{
+                 width: "1%",
+                  background: "linear-gradient(90deg, #0d275a, #0d275a, #0d275a)",
+                  color:"white",
+                  borderRight: "1px solid rgb(0, 0, 0)"}}>
+                
               </th>
             )}
           </tr>
@@ -744,7 +749,9 @@ const pendingLookupKeys = useMemo(
           {items.map((r, ridx) => (
             <tr key={normalizeId(r?.id) || String(ridx)}>
               {(effectiveColumns || []).map((c, idx) => (
-                <td key={`${c.field}__${idx}`} className="fw-semibold">
+                <td key={`${c.field}__${idx}`} className="fw-semibold" style={{
+                  borderRight: "1px solid rgb(0, 0, 0)"
+                }}>
                   {renderCell(r, c)}
                 </td>
               ))}

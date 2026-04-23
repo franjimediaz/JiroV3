@@ -14,6 +14,7 @@ export { default as Form } from "./Form";
 export { default as PdfTemplatePreview } from "./PdfTemplatePreview";
 export { default as ModuleCalendarView } from "./ModuleCalendarView";
 export { default as FieldInput } from "./FieldInput";
+export * from "./pdf";
 export * from "./engines/safeEval";
 export * from "./engines/computeEngine";
 export * from "./providers/DataProvider";

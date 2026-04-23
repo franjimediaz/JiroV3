@@ -5,6 +5,7 @@ import type { ModuleSchema } from "@repo/types";
 import { ActionMenu } from "../ActionMenu";
 import { applyCompute } from "../engines/computeEngine"; // ajusta ruta real si difiere
 import { dataProvider } from "../providers/DataProvider"; // ajusta ruta real si difiere
+import { downloadPdf, openPdfInNewTab, openPdfInSameTab } from "../pdf";
 
 type Mode = "view" | "edit" | "create";
 
@@ -91,9 +92,9 @@ export type ExternalAction = BaseAction & {
   kind: "pdf" | "email" | "print" | "custom";
   endpoint: string;
   open?: "tab" | "same";
-
   params?: Record<string, any>;
 };
+
 export type WorkflowAction = BaseAction & {
   type: "workflow";
   workflowKey: string;
@@ -131,26 +132,14 @@ function deepTpl(obj: any, ctx: any): any {
   return tplString(obj, ctx);
 }
 
-async function readPdfError(response: Response) {
-  const contentType = response.headers.get("content-type") || "";
-
-  if (contentType.includes("application/json")) {
-    const json = await response.json().catch(() => null);
-    const upstreamStatus = json?.details?.upstreamStatus;
-    const upstreamError = json?.details?.upstreamError;
-    const pieces = [
-      `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}`,
-      json?.error || "No se pudo generar el PDF",
-      upstreamStatus ? `Upstream ${upstreamStatus}` : "",
-      upstreamError || "",
-    ].filter(Boolean);
-    return pieces.join(" | ");
+function isTruthyValue(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "yes";
   }
-
-  const text = await response.text().catch(() => "");
-  return `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}: ${
-    text || "No se pudo generar el PDF"
-  }`;
+  return false;
 }
 
 /** ---------------- Component Props ---------------- */
@@ -164,12 +153,9 @@ export default function FormActionsBar(props: {
   setValues?: (next: any) => void;
   /** helper para navegar (si no pasas, usa window.location) */
   navigate?: (href: string) => void;
-
   resolveRoute?: (source: string) => string | null;
-
   /** acciones configuradas desde schema.ui.formActions */
   actions?: FormAction[];
-
   /** contexto opcional */
   context?: {
     /** tabla actual (origen) */
@@ -234,7 +220,7 @@ export default function FormActionsBar(props: {
     return false;
   };
 
-  const confirmIfNeeded = async (a: FormAction) => {
+  const confirmIfNeeded = (a: FormAction) => {
     if (!a.confirm?.text) return true;
     const title = a.confirm.title || "Confirmación";
     return window.confirm(`${title}\n\n${a.confirm.text}`);
@@ -259,13 +245,12 @@ export default function FormActionsBar(props: {
     setError(null);
     if (isDisabled(a)) return;
 
-    const ok = await confirmIfNeeded(a);
+    const ok = confirmIfNeeded(a);
     if (!ok) return;
 
     setBusyId(a.id);
     try {
       if (a.type === "recalculate") {
-        // Fuerza applyCompute ahora mismo (útil para "Calcular totales")
         const computed = await applyCompute({
           schema: schema as any,
           record: values,
@@ -283,12 +268,10 @@ export default function FormActionsBar(props: {
       }
 
       if (a.type === "createRelated") {
-        // 1) construir payload destino con defaults + fieldMap
         const payload: Record<string, any> = {
           ...(a.defaults || {}),
         };
 
-        // mapeo: { destino: "origen" }
         if (a.fieldMap) {
           for (const [destField, srcFieldPath] of Object.entries(a.fieldMap)) {
             const srcVal = getByPath(values, srcFieldPath);
@@ -296,9 +279,6 @@ export default function FormActionsBar(props: {
           }
         }
 
-        // 2) crear registro en tabla destino
-        // OJO: asumo dataProvider.create({ table, data })
-        // Si tu provider no tiene create todavía, lo implementamos en el siguiente paso.
         const created = await (dataProvider as any).create?.({
           table: a.target.table,
           data: payload,
@@ -310,7 +290,6 @@ export default function FormActionsBar(props: {
           );
         }
 
-        // 3) post-create navegación
         const createdId =
           created?.id ?? created?.data?.id ?? created?.record?.id;
         const after = a.afterCreate || { navigateTo: "record", openEdit: true };
@@ -329,43 +308,39 @@ export default function FormActionsBar(props: {
         }
 
         if (after.navigateTo === "record") {
-          // aquí depende de tu routing real; dejamos una ruta genérica por tabla
-          const edit = after.openEdit ? "?edit=true" : "";
           go(buildRecordHref(source, String(createdId), after.openEdit));
           return;
         }
 
-        // list
         go(buildListHref(source));
         return;
       }
 
       if (a.type === "duplicate") {
-        // duplicado simple: copia values, omite campos, crea en misma tabla
-        // (para hijos lo dejamos para la fase 2, pero ya está el flag)
         const omit = new Set([...(a.omitFields || []), "id"]);
         const clone: Record<string, any> = {};
         Object.keys(values || {}).forEach((k) => {
           if (omit.has(k)) return;
-          // evita clonar meta interna si existe
           if (k === "meta") return;
           clone[k] = values[k];
         });
 
         const table = (schema as any)?.db?.table;
-        if (!table)
+        if (!table) {
           throw new Error(
             "schema.db.table no está definido, no sé dónde duplicar.",
           );
+        }
 
         const created = await (dataProvider as any).create?.({
           table,
           data: clone,
         });
-        if (!created)
+        if (!created) {
           throw new Error(
             "No se pudo duplicar: dataProvider.create no devolvió resultado.",
           );
+        }
 
         const createdId =
           created?.id ?? created?.data?.id ?? created?.record?.id;
@@ -385,82 +360,68 @@ export default function FormActionsBar(props: {
         go(`/${table}`);
         return;
       }
+
       if (a.type === "external") {
-        // ✅ compat: acepta config antigua (a.kind) y nueva (a.external.kind)
         const ext = ((a as any).external ?? a) as any;
         const kind = ext.kind as string | undefined;
-
-        // params pueden venir en a.params (como en tu log) o en ext.params
         const paramsObj = (a as any).params ?? ext.params ?? {};
         const endpoint =
           ext.endpoint || (a as any).endpoint || "/api/pdf/generate";
         const open = ext.open || (a as any).open || "tab";
 
-        if (a.confirm?.text) {
-          const ok = window.confirm(a.confirm.text);
-          if (!ok) return;
-        }
-
         if (kind === "pdf") {
           const ctx = { ...values, id: values?.id };
-          const params = deepTpl(paramsObj, ctx);
+          const params = deepTpl(
+            {
+              template: ext.pdf?.templateSlug,
+              id: ext.pdf?.recordIdTemplate,
+              ...paramsObj,
+            },
+            ctx,
+          ) as Record<string, unknown>;
+          const template = String(params.template || "").trim();
+          const recordId = String(params.id || "").trim();
 
-          const url = new URL(endpoint, window.location.origin);
-          for (const [k, v] of Object.entries(params)) {
-            if (v === undefined || v === null || v === "") continue;
-            url.searchParams.set(k, String(v));
-          }
-
-          const res = await fetch(url.toString(), {
-            method: "GET",
-            credentials: "include",
-          });
-
-          if (!res.ok) {
-            throw new Error(await readPdfError(res));
-          }
-
-          const blob = await res.blob();
-          if (blob.type !== "application/pdf") {
+          if (!template || !recordId) {
             throw new Error(
-              "La respuesta del generador PDF no devolvió un application/pdf válido.",
+              "La acción PDF requiere params.template y params.id para construir la URL.",
             );
           }
 
-          const blobUrl = window.URL.createObjectURL(blob);
-          if (open === "same") {
-            window.location.href = blobUrl;
-          } else {
-            const win = window.open(blobUrl, "_blank", "noopener,noreferrer");
-            if (!win) {
-              window.URL.revokeObjectURL(blobUrl);
-              throw new Error(
-                "El navegador bloqueó la apertura de la pestaña del PDF.",
-              );
-            }
+          if (isTruthyValue(params.download)) {
+            downloadPdf(template, recordId, endpoint, params);
+            return;
           }
+
+          if (open === "same") {
+            openPdfInSameTab(template, recordId, endpoint, params);
+            return;
+          }
+
+          openPdfInNewTab(template, recordId, endpoint, params);
           return;
         }
 
-        // otros kinds (email/print/custom) por ahora no hacen nada
         return;
       }
 
       if (a.type === "workflow") {
         const recordId = String(values?.id || "");
-        if (!recordId)
+        if (!recordId) {
           throw new Error(
             "No hay id del registro. Esta acción requiere un registro ya guardado.",
           );
+        }
 
-        if (!a.workflowKey)
+        if (!a.workflowKey) {
           throw new Error("workflowKey requerido en la acción workflow.");
+        }
 
         const payload = {
           workflowKey: a.workflowKey,
           context: {
             recordId,
-            tableSlug: (schema as any)?.slug || (schema as any)?.db?.table, // si tienes slug úsalo; si no, fallback
+            tableSlug: (schema as any)?.slug || (schema as any)?.db?.table,
           },
           input: a.input || {},
         };
@@ -478,7 +439,6 @@ export default function FormActionsBar(props: {
           throw new Error(json?.error || `Workflow error (${res.status})`);
         }
 
-        // after.navigateTo (template)
         const tpl = (a as any).after?.navigateTo;
         if (tpl) {
           const href = resolveTemplate(String(tpl), {
@@ -501,26 +461,24 @@ export default function FormActionsBar(props: {
   if (effectiveActions.length === 0) return null;
 
   return (
-  <div className="d-flex flex-column gap-2">
-    <div className="d-flex flex-wrap gap-2 justify-content-end">
-      <ActionMenu
-        items={effectiveActions.map((a) => {
-          const disabled = isDisabled(a) || busyId !== null;
-          const busy = busyId === a.id;
+    <div className="d-flex flex-column gap-2">
+      <div className="d-flex flex-wrap gap-2 justify-content-end">
+        <ActionMenu
+          items={effectiveActions.map((a) => {
+            const busy = busyId === a.id;
 
-          return {
-            label: busy ? "Procesando…" : a.label,
-            icon: a.icon ? (
-              <i className={a.icon} style={{ marginRight: 8 }} />
-            ) : undefined,
-            
-            onClick: () => handleAction(a),
-          };
-        })}
-      />
+            return {
+              label: busy ? "Procesando..." : a.label,
+              icon: a.icon ? (
+                <i className={a.icon} style={{ marginRight: 8 }} />
+              ) : undefined,
+              onClick: () => handleAction(a),
+            };
+          })}
+        />
+      </div>
+
+      {error && <div className="alert alert-danger py-2 mb-0">{error}</div>}
     </div>
-
-    {error && <div className="alert alert-danger py-2 mb-0">{error}</div>}
-  </div>
-);
+  );
 }
