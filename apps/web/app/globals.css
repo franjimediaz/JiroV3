@@ -54,6 +54,10 @@ body {
   padding: 0;
 }
 
+body.sidebar-drawer-open {
+  overflow: hidden;
+}
+
 * {
   box-sizing: border-box;
   padding: 0;
@@ -643,10 +647,11 @@ a {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,.35);
-  z-index: 1040;
+  z-index: 2000;
   opacity: 0;
   pointer-events: none;
   transition: opacity 220ms ease;
+  touch-action: none;
 }
 .sidebarOverlay.show {
   opacity: 1;
@@ -661,12 +666,14 @@ a {
   height: 100dvh;
   width: min(86vw, 320px);
   background: #c5c5c5e8;
-  z-index: 1050;
+  z-index: 2010;
   transform: translateX(-102%);
   transition: transform 220ms ease;
   display: flex;
   flex-direction: column;
   box-shadow: 0 8px 30px rgba(0,0,0,.18);
+  pointer-events: auto;
+  will-change: transform;
 }
 .sidebarDrawer.open {
   transform: translateX(0);

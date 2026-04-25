@@ -4,6 +4,7 @@ type AnyObj = Record<string, any>;
 
 type RenderHelpers = {
   escHtml: (value: any) => string;
+  renderHtml: (value: any, ctx: AnyObj) => string;
   tpl: (value: any, ctx: AnyObj) => any;
   styleToInline: (style?: Record<string, any>) => string;
   renderCell: (value: any, ctx: AnyObj) => string;
@@ -34,7 +35,7 @@ function renderBusinessRows(block: PdfBusinessBlock, ctx: AnyObj, helpers: Rende
 
   return `<div class="pdf-business-rows">${rows
     .map((row: AnyObj) => {
-      const label = helpers.escHtml(helpers.tpl(row.label ?? "", ctx));
+      const label = helpers.renderHtml(row.label ?? "", ctx);
       const value = helpers.renderCell(row.value ?? "", ctx);
       const cls =
         row.emphasis === "strong" ? "is-strong" : row.emphasis === "muted" ? "is-muted" : "is-normal";
@@ -49,10 +50,10 @@ function renderBusinessMetrics(block: PdfBusinessBlock, ctx: AnyObj, helpers: Re
 
   return `<div class="pdf-kpi-grid">${metrics
     .map((metric) => {
-      const label = helpers.escHtml(helpers.tpl(metric.label ?? "", ctx));
+      const label = helpers.renderHtml(metric.label ?? "", ctx);
       const value = helpers.renderCell(metric.value ?? "", ctx);
       const accent = metric.accent ? ` style="border-top:3px solid ${helpers.escHtml(metric.accent)}"` : "";
-      const help = metric.help ? `<div class="pdf-kpi-help">${helpers.escHtml(helpers.tpl(metric.help, ctx))}</div>` : "";
+      const help = metric.help ? `<div class="pdf-kpi-help">${helpers.renderHtml(metric.help, ctx)}</div>` : "";
       return `<div class="pdf-kpi-card"${accent}><div class="pdf-kpi-label">${label}</div><div class="pdf-kpi-value">${value}</div>${help}</div>`;
     })
     .join("")}</div>`;
@@ -63,9 +64,9 @@ function renderBusinessTable(block: PdfBusinessBlock, ctx: AnyObj, helpers: Rend
   const rows = resolveRows(ctx, block.datasetId, block.repeat);
 
   if (!columns.length) return "";
-  if (!rows.length) return `<div class="pdf-empty">${helpers.escHtml(block.emptyText || "Sin datos.")}</div>`;
+  if (!rows.length) return `<div class="pdf-empty">${helpers.renderHtml(block.emptyText || "Sin datos.", ctx)}</div>`;
 
-  const thead = columns.map((column) => `<th>${helpers.escHtml(column.label)}</th>`).join("");
+  const thead = columns.map((column) => `<th>${helpers.renderHtml(column.label, ctx)}</th>`).join("");
   const tbody = rows
     .map((row) => {
       const rowCtx = { ...ctx, item: row };
@@ -84,7 +85,7 @@ function renderBusinessTable(block: PdfBusinessBlock, ctx: AnyObj, helpers: Rend
 function renderCategoryGroup(block: PdfBusinessBlock, ctx: AnyObj, helpers: RenderHelpers) {
   const rows = resolveRows(ctx, block.datasetId, block.repeat);
   const groupByField = block.groupByField || "";
-  if (!groupByField || !rows.length) return `<div class="pdf-empty">${helpers.escHtml(block.emptyText || "Sin agrupaciones.")}</div>`;
+  if (!groupByField || !rows.length) return `<div class="pdf-empty">${helpers.renderHtml(block.emptyText || "Sin agrupaciones.", ctx)}</div>`;
 
   const grouped = new Map<string, AnyObj[]>();
   for (const row of rows) {
@@ -97,7 +98,7 @@ function renderCategoryGroup(block: PdfBusinessBlock, ctx: AnyObj, helpers: Rend
   return `<div class="pdf-category-groups">${Array.from(grouped.entries())
     .map(([key, items]) => {
       const summary = items.length === 1 ? "1 elemento" : `${items.length} elementos`;
-      return `<div class="pdf-category-group"><div class="pdf-category-title">${helpers.escHtml(key || "Sin categoria")}</div><div class="pdf-category-count">${helpers.escHtml(summary)}</div></div>`;
+      return `<div class="pdf-category-group"><div class="pdf-category-title">${helpers.renderHtml(key || "Sin categoria", ctx)}</div><div class="pdf-category-count">${helpers.renderHtml(summary, ctx)}</div></div>`;
     })
     .join("")}</div>`;
 }
@@ -106,12 +107,12 @@ function renderComparison(block: PdfBusinessBlock, ctx: AnyObj, helpers: RenderH
   const rows = resolveRows(ctx, block.datasetId, block.repeat);
   const labelField = block.compareLabelField || "label";
   const valueField = block.compareValueField || "value";
-  if (!rows.length) return `<div class="pdf-empty">${helpers.escHtml(block.emptyText || "Sin comparativas.")}</div>`;
+  if (!rows.length) return `<div class="pdf-empty">${helpers.renderHtml(block.emptyText || "Sin comparativas.", ctx)}</div>`;
 
   return `<div class="pdf-business-rows">${rows
     .map((row: AnyObj) => {
-      const label = helpers.escHtml(row?.[labelField] ?? "");
-      const value = helpers.escHtml(row?.[valueField] ?? "");
+      const label = helpers.renderHtml(row?.[labelField] ?? "", ctx);
+      const value = helpers.renderHtml(row?.[valueField] ?? "", ctx);
       return `<div class="pdf-business-row is-normal"><span class="pdf-business-label">${label}</span><span class="pdf-business-value">${value}</span></div>`;
     })
     .join("")}</div>`;
@@ -250,8 +251,8 @@ function describeDonutArc(cx: number, cy: number, outerRadius: number, innerRadi
 export function renderAdvancedBlock(block: any, ctx: AnyObj, helpers: RenderHelpers) {
   if (block?.type === "business") {
     const typedBlock = block as PdfBusinessBlock;
-    const title = typedBlock.title ? `<div class="pdf-block-title">${helpers.escHtml(helpers.tpl(typedBlock.title, ctx))}</div>` : "";
-    const subtitle = typedBlock.subtitle ? `<div class="pdf-block-subtitle">${helpers.escHtml(helpers.tpl(typedBlock.subtitle, ctx))}</div>` : "";
+    const title = typedBlock.title ? `<div class="pdf-block-title">${helpers.renderHtml(typedBlock.title, ctx)}</div>` : "";
+    const subtitle = typedBlock.subtitle ? `<div class="pdf-block-subtitle">${helpers.renderHtml(typedBlock.subtitle, ctx)}</div>` : "";
     let body = "";
 
     if (typedBlock.kind === "kpi") body = renderBusinessMetrics(typedBlock, ctx, helpers);
@@ -275,8 +276,8 @@ export function renderAdvancedBlock(block: any, ctx: AnyObj, helpers: RenderHelp
           return l > r ? 1 : -1;
         })
       : rows;
-    const title = typedBlock.title ? `<div class="pdf-block-title">${helpers.escHtml(helpers.tpl(typedBlock.title, ctx))}</div>` : "";
-    const subtitle = typedBlock.subtitle ? `<div class="pdf-block-subtitle">${helpers.escHtml(helpers.tpl(typedBlock.subtitle, ctx))}</div>` : "";
+    const title = typedBlock.title ? `<div class="pdf-block-title">${helpers.renderHtml(typedBlock.title, ctx)}</div>` : "";
+    const subtitle = typedBlock.subtitle ? `<div class="pdf-block-subtitle">${helpers.renderHtml(typedBlock.subtitle, ctx)}</div>` : "";
     const body =
       typedBlock.chartType === "pie" || typedBlock.chartType === "donut"
         ? renderPieChart(typedBlock, sortedRows, helpers)

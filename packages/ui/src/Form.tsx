@@ -14,6 +14,7 @@ import type {
 import { normalizeCalendarConfig, normalizeModuleSchema } from "@repo/types";
 import { applyCompute } from "./engines/computeEngine";
 import type { DataProvider } from "./engines/computeEngine";
+import { evaluateFieldVisibility } from "./engines/visibilityEngine";
 import { dataProvider as defaultDataProvider } from "./providers/DataProvider";
 import ReverseLinkTable from "./ReverseLinkTable";
 import TreeView from "./TreeView";
@@ -352,6 +353,7 @@ export default function Form({
   const [activeReverseLink, setActiveReverseLink] = useState<string | null>(null);
   const [resolvedDisplayValues, setResolvedDisplayValues] = useState<ResolvedDisplayState>({});
   const [displayLoadingFields, setDisplayLoadingFields] = useState<Record<string, boolean>>({});
+  const [relatedRecordsByField, setRelatedRecordsByField] = useState<Record<string, any>>({});
 
   const syncedInitialValues = useMemo(() => buildInitialValues(normalizedSchema as ModuleSchema, initialData), [normalizedSchema, initialData]);
   const [values, setValues] = useState<FormValues>(syncedInitialValues);
@@ -361,6 +363,44 @@ export default function Form({
   const lastComputedSigRef = useRef<string>(computeSignature(normalizedSchema as ModuleSchema, syncedInitialValues));
   const displayCacheRef = useRef<ResolvedDisplayState>({});
   const displayRequestRef = useRef<Record<string, number>>({});
+
+  const visibilityRelationFields = useMemo(() => {
+    const relationFields = new Map<string, string>();
+
+    for (const field of normalizedSchema.fields || []) {
+      const visibility = field.visibility;
+      if (!visibility?.enabled || !Array.isArray(visibility.rules)) continue;
+
+      for (const rule of visibility.rules) {
+        if (rule?.source !== "relatedRecord") continue;
+        const relationField = String(rule.relationField || "").trim();
+        if (relationField && !relationFields.has(relationField)) {
+          relationFields.set(relationField, String(rule.relatedModuleSlug || "").trim());
+        }
+      }
+    }
+
+    return Array.from(relationFields.entries()).map(([relationField, configuredModuleSlug]) => {
+      const field = (normalizedSchema.fields || []).find((candidate) => candidate.name === relationField);
+      return {
+        relationField,
+        moduleSlug: configuredModuleSlug || String((field as any)?.ref?.moduleSlug || "").trim(),
+        valueField: String((field as any)?.ref?.valueField || "id").trim() || "id",
+      };
+    });
+  }, [normalizedSchema.fields]);
+
+  const visibilityRelationValuesKey = useMemo(
+    () =>
+      visibilityRelationFields
+        .map(({ relationField }) => {
+          const raw = values?.[relationField];
+          const value = Array.isArray(raw) ? raw.join(",") : String(raw ?? "");
+          return `${relationField}:${value}`;
+        })
+        .join("|"),
+    [visibilityRelationFields, values]
+  );
 
   useEffect(() => {
     if (!runtimeTabs.length) {
@@ -387,6 +427,53 @@ export default function Form({
     setValues(syncedInitialValues);
     lastComputedSigRef.current = computeSignature(normalizedSchema as ModuleSchema, syncedInitialValues);
   }, [normalizedSchema, syncedInitialValues]);
+
+  useEffect(() => {
+    if (visibilityRelationFields.length === 0) {
+      setRelatedRecordsByField({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadRelatedRecords = async () => {
+      const nextRecords: Record<string, any> = {};
+
+      await Promise.all(
+        visibilityRelationFields.map(async ({ relationField, moduleSlug, valueField }) => {
+          const rawValue = valuesRef.current?.[relationField];
+          const selectedId = Array.isArray(rawValue) ? rawValue[0] : rawValue;
+          if (selectedId === null || selectedId === undefined || selectedId === "" || !moduleSlug) return;
+
+          try {
+            let record: any | null = null;
+            if (typeof dataProvider.getOne === "function" && valueField === "id") {
+              record = await dataProvider.getOne(moduleSlug, String(selectedId));
+            } else if (typeof dataProvider.list === "function") {
+              const result = await dataProvider.list({
+                moduleSlug,
+                filters: [{ field: valueField, op: "=", value: selectedId }],
+                limit: 1,
+              });
+              record = Array.isArray(result?.data) ? result.data[0] ?? null : null;
+            }
+
+            if (record) nextRecords[relationField] = record;
+          } catch {
+            // Visibility rules are non-critical: missing related data simply makes those rules false.
+          }
+        })
+      );
+
+      if (!cancelled) setRelatedRecordsByField(nextRecords);
+    };
+
+    void loadRelatedRecords();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visibilityRelationFields, visibilityRelationValuesKey, dataProvider]);
 
   useEffect(() => {
     let cancelled = false;
@@ -755,6 +842,17 @@ export default function Form({
 
   const renderField = (field: Field) => {
     if (!isFieldVisibleInMode(field, effectiveMode)) return null;
+    if (
+      !evaluateFieldVisibility({
+        field,
+        values,
+        schema: normalizedSchema as ModuleSchema,
+        relatedRecordsByField,
+      })
+    ) {
+      // Hidden fields keep their current value; visibility is a rendering concern, not data mutation.
+      return null;
+    }
     if (field.type === "ReverseLink") return null;
 
     const value = values[field.name] ?? "";

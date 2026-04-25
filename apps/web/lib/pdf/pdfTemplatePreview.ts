@@ -41,6 +41,7 @@ export async function buildPdfTemplatePreviewContext(args: BuildPdfTemplatePrevi
     datasets: {},
     branding: normalizedBranding,
     empresa: normalizedBranding,
+    firmaUrl: normalizedBranding.firmaUrl || "",
     now: new Date().toISOString(),
   };
 }

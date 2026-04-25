@@ -609,6 +609,8 @@ export default function PdfTemplateForm({
 
     const brandingFields = Array.from(
       new Set([
+        "logoUrl",
+        "firmaUrl",
         ...Object.keys((previewCtx as any)?.branding ?? {}),
         ...Object.keys((previewCtx as any)?.empresa ?? {}),
       ])
@@ -628,6 +630,8 @@ export default function PdfTemplateForm({
       options: [
         { label: "Fecha actual", token: "{{now}}" },
         { label: "Logo branding", token: "{{branding.logoUrl}}" },
+        { label: "Firma branding", token: "{{branding.firmaUrl}}" },
+        { label: "Firma URL directa", token: "{{firmaUrl}}" },
       ],
     });
 
@@ -2779,8 +2783,8 @@ function save() {
                               </div>
 
                               <div className="alert alert-light small mt-3 mb-0">
-                                Tip: puedes usar <code>{"{{branding.logoUrl}}"}</code> en bloques de texto o richtext, por ejemplo con
-                                <code>{" <img src=\"{{branding.logoUrl}}\" alt=\"Logo\" style=\"max-width:140px;\" />"}</code>.
+                                Tip: puedes usar <code>{"{{branding.logoUrl}}"}</code> o <code>{"{{branding.firmaUrl}}"}</code> en bloques de texto o richtext, por ejemplo con
+                                <code>{" <img src=\"{{branding.firmaUrl}}\" alt=\"Firma\" style=\"max-width:140px;\" />"}</code>.
                               </div>
                             </div>
                           )}

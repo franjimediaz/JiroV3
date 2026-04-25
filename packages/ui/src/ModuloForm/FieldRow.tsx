@@ -1,13 +1,72 @@
 import { useState, useEffect } from "react";
 import styles from "./modulo-detalle.module.css";
 import  Selector from "../Selector";
-import type { Field as FieldSchema, FieldType,Field, Appareance, Compute} from "@repo/types";
+import type {
+  Field as FieldSchema,
+  FieldType,
+  Field,
+  Appareance,
+  Compute,
+  VisibilityConfig,
+  VisibilityOperator,
+  VisibilityRule,
+} from "@repo/types";
 import {VALID_FIELD_TYPES,Appareance_Valid_Types} from "@repo/types";
 import { FieldPickerModal} from "../modals/FieldPickerModal";
 import SelectorTableFiltersBuilder from "./SelectorTableFiltersBuilder";
 
 type RefPickCtx = null | { kind: "refDisplayField" };
 
+const visibilityOperators: VisibilityOperator[] = [
+  "=",
+  "!=",
+  ">",
+  ">=",
+  "<",
+  "<=",
+  "contains",
+  "notContains",
+  "empty",
+  "notEmpty",
+];
+
+const emptyVisibilityRule: VisibilityRule = {
+  source: "currentRecord",
+  field: "",
+  op: "=",
+  value: "",
+};
+
+function ensureVisibilityConfig(field: FieldSchema): VisibilityConfig {
+  const current = (field as any).visibility;
+  return {
+    enabled: !!current?.enabled,
+    mode: current?.mode === "hide" ? "hide" : "show",
+    logic: current?.logic === "OR" ? "OR" : "AND",
+    rules: Array.isArray(current?.rules) ? current.rules : [],
+  };
+}
+
+function parseRuleValue(raw: string): any {
+  const trimmed = raw.trim();
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (trimmed === "null") return null;
+  if (trimmed !== "" && !Number.isNaN(Number(trimmed))) return Number(trimmed);
+  return raw;
+}
+
+function formatRuleValue(value: any): string {
+  if (value === undefined || value === null) return value === null ? "null" : "";
+  if (typeof value === "string") return value;
+  return String(value);
+}
+
+function getRelatedModuleSlug(rule: VisibilityRule, fields: Array<{ name: string; type?: string; ref?: any }>) {
+  if (rule.relatedModuleSlug) return rule.relatedModuleSlug;
+  const relationField = fields.find((candidate) => candidate.name === rule.relationField);
+  return relationField?.ref?.moduleSlug || "";
+}
 
 
 const defaultFormula: Extract<Compute, { type: "formula" }> = {
@@ -122,6 +181,313 @@ function ArrayChips({
   );
 }
 
+function VisibilityConfigEditor({
+  field,
+  allFields,
+  fieldsByTable,
+  loadingByTable,
+  ensureFieldsLoaded,
+  readOnly,
+  onChange,
+}: {
+  field: FieldSchema;
+  allFields: FieldSchema[];
+  fieldsByTable: Record<string, { name: string; label?: string }[]>;
+  loadingByTable: Record<string, boolean>;
+  ensureFieldsLoaded: (tableSlug: string) => void;
+  readOnly?: boolean;
+  onChange: (field: FieldSchema) => void;
+}) {
+  const visibility = ensureVisibilityConfig(field);
+  const relationFields = allFields.filter((candidate) => candidate.type === "selectorTabla");
+
+  const updateVisibility = (next: VisibilityConfig) => {
+    onChange({ ...field, visibility: next });
+  };
+
+  const updateRule = (index: number, nextRule: VisibilityRule) => {
+    updateVisibility({
+      ...visibility,
+      rules: visibility.rules.map((rule, ruleIndex) => (ruleIndex === index ? nextRule : rule)),
+    });
+  };
+
+  const removeRule = (index: number) => {
+    updateVisibility({
+      ...visibility,
+      rules: visibility.rules.filter((_, ruleIndex) => ruleIndex !== index),
+    });
+  };
+
+  return (
+    <div className={styles.card} style={{ marginTop: 12 }}>
+      <h4 style={{ marginTop: 0 }}>Visibilidad condicional</h4>
+
+      <div className={styles.grid}>
+        <div className={styles.switchRow}>
+          <label className={styles.label}>Activar reglas</label>
+          <input
+            type="checkbox"
+            checked={visibility.enabled}
+            onChange={(event) => updateVisibility({ ...visibility, enabled: event.target.checked })}
+            disabled={readOnly}
+          />
+        </div>
+
+        <div>
+          <label className={styles.label}>Modo</label>
+          <select
+            className={styles.input}
+            value={visibility.mode || "show"}
+            onChange={(event) => updateVisibility({ ...visibility, mode: event.target.value as "show" | "hide" })}
+            disabled={readOnly || !visibility.enabled}
+          >
+            <option value="show">Mostrar campo cuando se cumplan reglas</option>
+            <option value="hide">Ocultar campo cuando se cumplan reglas</option>
+          </select>
+        </div>
+
+        <div>
+          <label className={styles.label}>Lógica</label>
+          <select
+            className={styles.input}
+            value={visibility.logic || "AND"}
+            onChange={(event) => updateVisibility({ ...visibility, logic: event.target.value as "AND" | "OR" })}
+            disabled={readOnly || !visibility.enabled}
+          >
+            <option value="AND">Todas las condiciones (AND)</option>
+            <option value="OR">Cualquier condición (OR)</option>
+          </select>
+        </div>
+      </div>
+
+      {visibility.enabled && (
+        <div className="d-flex flex-column gap-2">
+          {visibility.rules.map((rule, index) => (
+            <VisibilityRuleEditor
+              key={index}
+              rule={rule}
+              allFields={allFields}
+              relationFields={relationFields}
+              fieldsByTable={fieldsByTable}
+              loadingByTable={loadingByTable}
+              ensureFieldsLoaded={ensureFieldsLoaded}
+              readOnly={readOnly}
+              onChange={(nextRule) => updateRule(index, nextRule)}
+              onRemove={() => removeRule(index)}
+            />
+          ))}
+
+          <button
+            type="button"
+            className={styles.btnAdd}
+            onClick={() => updateVisibility({ ...visibility, rules: [...visibility.rules, { ...emptyVisibilityRule }] })}
+            disabled={readOnly}
+          >
+            Añadir regla
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VisibilityRuleEditor({
+  rule,
+  allFields,
+  relationFields,
+  fieldsByTable,
+  loadingByTable,
+  ensureFieldsLoaded,
+  readOnly,
+  onChange,
+  onRemove,
+}: {
+  rule: VisibilityRule;
+  allFields: FieldSchema[];
+  relationFields: FieldSchema[];
+  fieldsByTable: Record<string, { name: string; label?: string }[]>;
+  loadingByTable: Record<string, boolean>;
+  ensureFieldsLoaded: (tableSlug: string) => void;
+  readOnly?: boolean;
+  onChange: (rule: VisibilityRule) => void;
+  onRemove: () => void;
+}) {
+  const relatedModuleSlug = getRelatedModuleSlug(rule, allFields as any);
+  const relatedFields = relatedModuleSlug ? fieldsByTable[relatedModuleSlug] || [] : [];
+
+  useEffect(() => {
+    if (rule.source !== "relatedRecord" || !relatedModuleSlug) return;
+    ensureFieldsLoaded(relatedModuleSlug);
+  }, [rule.source, relatedModuleSlug, ensureFieldsLoaded]);
+
+  const setSource = (source: VisibilityRule["source"]) => {
+    if (source === "currentRecord") {
+      onChange({
+        source,
+        field: rule.field || "",
+        op: rule.op || "=",
+        value: rule.value ?? "",
+      });
+      return;
+    }
+
+    const relationField = rule.relationField || relationFields[0]?.name || "";
+    const moduleSlug = getRelatedModuleSlug({ ...rule, relationField }, allFields as any);
+    onChange({
+      source,
+      field: "",
+      relationField,
+      relatedModuleSlug: rule.relatedModuleSlug || moduleSlug || undefined,
+      relatedField: rule.relatedField || "",
+      op: rule.op || "=",
+      value: rule.value ?? "",
+    });
+  };
+
+  return (
+    <div className={styles.card}>
+      <div className={styles.grid}>
+        <div>
+          <label className={styles.label}>Origen</label>
+          <select
+            className={styles.input}
+            value={rule.source}
+            onChange={(event) => setSource(event.target.value as VisibilityRule["source"])}
+            disabled={readOnly}
+          >
+            <option value="currentRecord">Campo del formulario actual</option>
+            <option value="relatedRecord">Registro relacionado</option>
+          </select>
+        </div>
+
+        {rule.source === "currentRecord" ? (
+          <div>
+            <label className={styles.label}>Campo</label>
+            <select
+              className={styles.input}
+              value={rule.field || ""}
+              onChange={(event) => onChange({ ...rule, field: event.target.value })}
+              disabled={readOnly}
+            >
+              <option value="">Seleccionar campo</option>
+              {allFields.map((candidate) => (
+                <option key={candidate.name} value={candidate.name}>
+                  {candidate.label || candidate.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <>
+            <div>
+              <label className={styles.label}>Campo relación</label>
+              <select
+                className={styles.input}
+                value={rule.relationField || ""}
+                onChange={(event) => {
+                  const relationField = event.target.value;
+                  const nextModuleSlug = getRelatedModuleSlug({ ...rule, relationField }, allFields as any);
+                  onChange({
+                    ...rule,
+                    relationField,
+                    relatedModuleSlug: nextModuleSlug || undefined,
+                    relatedField: "",
+                  });
+                }}
+                disabled={readOnly}
+              >
+                <option value="">Seleccionar relación</option>
+                {relationFields.map((candidate) => (
+                  <option key={candidate.name} value={candidate.name}>
+                    {candidate.label || candidate.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className={styles.label}>Módulo relacionado</label>
+              <input
+                className={styles.input}
+                value={rule.relatedModuleSlug || relatedModuleSlug}
+                onChange={(event) => onChange({ ...rule, relatedModuleSlug: event.target.value || undefined })}
+                placeholder="Deducido desde ref.moduleSlug"
+                disabled={readOnly}
+              />
+              {relatedModuleSlug && !rule.relatedModuleSlug && (
+                <div className={styles.hint} style={{ marginTop: 4 }}>
+                  Deducido desde el selector: {relatedModuleSlug}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className={styles.label}>Campo relacionado</label>
+              {relatedFields.length > 0 ? (
+                <select
+                  className={styles.input}
+                  value={rule.relatedField || ""}
+                  onChange={(event) => onChange({ ...rule, relatedField: event.target.value })}
+                  disabled={readOnly}
+                >
+                  <option value="">Seleccionar campo</option>
+                  {relatedFields.map((candidate) => (
+                    <option key={candidate.name} value={candidate.name}>
+                      {candidate.label || candidate.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className={styles.input}
+                  value={rule.relatedField || ""}
+                  onChange={(event) => onChange({ ...rule, relatedField: event.target.value })}
+                  placeholder={loadingByTable[relatedModuleSlug] ? "Cargando campos..." : "Ej: tipoCliente"}
+                  disabled={readOnly}
+                />
+              )}
+            </div>
+          </>
+        )}
+
+        <div>
+          <label className={styles.label}>Operador</label>
+          <select
+            className={styles.input}
+            value={rule.op}
+            onChange={(event) => onChange({ ...rule, op: event.target.value as VisibilityOperator })}
+            disabled={readOnly}
+          >
+            {visibilityOperators.map((operator) => (
+              <option key={operator} value={operator}>
+                {operator}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className={styles.label}>Valor</label>
+          <input
+            className={styles.input}
+            value={formatRuleValue(rule.value)}
+            onChange={(event) => onChange({ ...rule, value: parseRuleValue(event.target.value) })}
+            disabled={readOnly || rule.op === "empty" || rule.op === "notEmpty"}
+            placeholder={rule.op === "empty" || rule.op === "notEmpty" ? "No aplica" : "true, empresa, 10..."}
+          />
+        </div>
+
+        <div className={styles.switchRow}>
+          <button type="button" className={styles.btnDel} onClick={onRemove} disabled={readOnly}>
+            Eliminar regla
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 // Aseguradores
 function ensureFormula(field: FieldSchema): Extract<Compute, { type: "formula" }> {
@@ -180,7 +546,7 @@ export function FieldRow({
   fieldsByTable: Record<string, { name: string; label?: string }[]>;
   loadingByTable: Record<string, boolean>;
   ensureFieldsLoaded: (tableSlug: string) => void;
-  currentFields: Array<{ name: string; label?: string; type?: string }>;
+  currentFields: FieldSchema[];
 }) {
   
   const [open, setOpen] = useState(false);
@@ -540,6 +906,15 @@ const commitWhereIfValid = (text: string) => {
 
             </div>
           </div>
+          <VisibilityConfigEditor
+            field={field}
+            allFields={currentFields as FieldSchema[]}
+            fieldsByTable={fieldsByTable}
+            loadingByTable={loadingByTable}
+            ensureFieldsLoaded={ensureFieldsLoaded}
+            readOnly={readOnly}
+            onChange={onChange}
+          />
           {/* OPCIONES UI */}
           <div className={styles.card} style={{ marginTop: 12 }}>
             <h4 style={{ marginTop: 0 }}>Opciones UI</h4>

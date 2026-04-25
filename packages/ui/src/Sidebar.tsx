@@ -105,9 +105,21 @@ export function Sidebar({
   if (variant === "drawer") {
     return (
       <>
-        <div className={`sidebarOverlay ${isOpen ? "show" : ""}`} onClick={() => onClose?.()} />
+        <div
+          className={`sidebarOverlay ${isOpen ? "show" : ""}`}
+          onClick={() => onClose?.()}
+          aria-hidden="true"
+        />
 
-        <aside className={`sidebarDrawer ${isOpen ? "open" : ""}`}>
+        <aside
+          id="mobile-sidebar-drawer"
+          className={`sidebarDrawer ${isOpen ? "open" : ""}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+          aria-hidden={!isOpen}
+          onClick={(event) => event.stopPropagation()}
+        >
           <div className="sidebarDrawerHeader">
             <h5 className="m-0">{title}</h5>
             <button type="button" className="btnClose" onClick={() => onClose?.()} aria-label="Cerrar">

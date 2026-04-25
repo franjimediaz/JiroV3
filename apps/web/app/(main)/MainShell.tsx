@@ -28,6 +28,11 @@ export default function MainShell({
     }
   }, []);
 
+  useEffect(() => {
+    document.body.classList.toggle("sidebar-drawer-open", sidebarOpen);
+    return () => document.body.classList.remove("sidebar-drawer-open");
+  }, [sidebarOpen]);
+
   const toggleSidebarMini = () => {
     setSidebarMini((current) => {
       const next = !current;
@@ -48,7 +53,12 @@ export default function MainShell({
             className="btn btn-outline-light d-lg-none"
             type="button"
             aria-label="Abrir menu"
-            onClick={() => setSidebarOpen(true)}
+            aria-expanded={sidebarOpen}
+            aria-controls="mobile-sidebar-drawer"
+            onClick={(event) => {
+              event.stopPropagation();
+              setSidebarOpen(true);
+            }}
           >
             ☰
           </button>

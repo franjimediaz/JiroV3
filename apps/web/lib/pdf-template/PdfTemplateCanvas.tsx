@@ -80,36 +80,66 @@ export default function PdfTemplateCanvas({
             No hay bloques todavía. Usa el panel izquierdo para empezar con un texto, una tabla o un bloque de resultados.
           </div>
         ) : (
+          
           blocks.map((block, index) => {
-            const isSelected = selectedBlockId === block.id;
-            const isDynamic =
-              hasDynamicValue(block.title) ||
-              hasDynamicValue(block.subtitle) ||
-              hasDynamicValue(block.value) ||
-              Boolean(block.rows?.some((row) => hasDynamicValue(row.value))) ||
-              Boolean(block.columns?.some((column) => hasDynamicValue(column.value)));
+  const isSelected = selectedBlockId === block.id;
 
-            return (
-              <button
-                key={block.id}
-                type="button"
-                className={`text-start border rounded-4 p-3 bg-white ${isSelected ? "border-primary shadow-sm" : "border-light-subtle"}`}
-                onClick={() => onSelectBlock(block.id)}
-              >
-                <div className="d-flex justify-content-between align-items-start gap-3">
-                  <div>
-                    <div className="small text-muted">Bloque {index + 1}</div>
-                    <div className="fw-semibold text-dark">{block.type}</div>
-                  </div>
-                  <div className="d-flex gap-2 flex-wrap justify-content-end">
-                    {isDynamic && <span className="badge text-bg-primary">Dinámico</span>}
-                    {block.repeat && <span className="badge text-bg-light border">{block.repeat}</span>}
-                  </div>
-                </div>
-                <div className="mt-2 text-dark">{summarizeBlock(block)}</div>
-              </button>
-            );
-          })
+  const isDynamic =
+    hasDynamicValue(block.title) ||
+    hasDynamicValue(block.subtitle) ||
+    hasDynamicValue(block.value) ||
+    Boolean(block.rows?.some((row) => hasDynamicValue(row.value))) ||
+    Boolean(block.columns?.some((column) => hasDynamicValue(column.value)));
+
+  return (
+    <button
+      key={block.id}
+      type="button"
+      className={`w-100 text-start border-0 border-bottom bg-white px-3 py-2 ${
+        isSelected ? "bg-primary-subtle" : ""
+      }`}
+      onClick={() => onSelectBlock(block.id)}
+      style={{
+        cursor: "pointer",
+        borderLeft: isSelected
+          ? "4px solid #0d6efd"
+          : "4px solid transparent",
+      }}
+    >
+      <div className="d-flex align-items-center justify-content-between gap-3">
+        <div className="d-flex align-items-center gap-3 min-w-0">
+          <span className="small text-muted flex-shrink-0">
+            #{index + 1}
+          </span>
+
+          <div className="min-w-0">
+            <div className="d-flex align-items-center gap-2">
+              <span className="fw-semibold text-dark text-truncate">
+                {block.type}
+              </span>
+
+              {isDynamic && (
+                <span className="badge text-bg-primary flex-shrink-0">
+                  Dinámico
+                </span>
+              )}
+
+              {block.repeat && (
+                <span className="badge text-bg-light border flex-shrink-0">
+                  {block.repeat}
+                </span>
+              )}
+            </div>
+
+            <div className="small text-muted text-truncate">
+              {summarizeBlock(block)}
+            </div>
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+})
         )}
       </div>
     </div>

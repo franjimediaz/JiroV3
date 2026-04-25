@@ -174,11 +174,17 @@ function extractAssetUrl(raw: any, depth = 0): string {
       parsed.signed_url,
       parsed.logoUrl,
       parsed.logo_url,
+      parsed.firmaUrl,
+      parsed.firma_url,
+      parsed.signatureUrl,
+      parsed.signature_url,
       parsed.imageUrl,
       parsed.image_url,
       parsed.src,
       parsed.href,
       parsed.logo,
+      parsed.firma,
+      parsed.signature,
       parsed.file,
       parsed.asset,
       parsed.value,
@@ -264,6 +270,27 @@ export function normalizeBranding(raw: any) {
       branding.image_url,
       branding.imagen,
     );
+  const firmaUrl =
+    extractAssetUrl(
+      branding.firmaUrl ||
+        branding.firma ||
+        branding.firma_url ||
+        branding.signatureUrl ||
+        branding.signature_url ||
+        branding.signature ||
+        branding.signatureFile ||
+        branding.signature_file ||
+        branding.firmaFile ||
+        branding.firma_file,
+    ) ||
+    firstNonEmptyString(
+      branding.firmaUrl,
+      branding.firma,
+      branding.firma_url,
+      branding.signatureUrl,
+      branding.signature_url,
+      branding.signature,
+    );
   const website = firstNonEmptyString(
     branding.website,
     branding.web,
@@ -292,6 +319,9 @@ export function normalizeBranding(raw: any) {
     website,
     logo: logoUrl,
     logoUrl,
+    firma: firmaUrl,
+    firmaUrl,
+    signatureUrl: firstNonEmptyString(branding.signatureUrl, firmaUrl),
     primaryColor,
     colorPrincipal: firstNonEmptyString(branding.colorPrincipal, primaryColor),
   };
@@ -987,6 +1017,7 @@ export async function resolvePdfContext(args: ResolveArgs) {
     related,
     branding: normalizedBranding,
     empresa: normalizedBranding,
+    firmaUrl: normalizedBranding.firmaUrl || "",
     now: new Date().toISOString(),
   };
 

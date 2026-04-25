@@ -17,5 +17,6 @@ export { default as FieldInput } from "./FieldInput";
 export * from "./pdf";
 export * from "./engines/safeEval";
 export * from "./engines/computeEngine";
+export * from "./engines/visibilityEngine";
 export * from "./providers/DataProvider";
 export { default as ListView } from "./ListView";

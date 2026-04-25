@@ -7,9 +7,9 @@
 // - estilos por columna (align, width, color, bold, background, fontSize)
 // - bloque budgetPartidas (Partida -> tareas -> materiales)
 // - bindings: {{record.xxx}}, {{branding.xxx}}, {{now}}, {{item.xxx}} en tablas (repeat)
-import sanitizeHtml from "sanitize-html";
 import { advancedBlocksCss, renderAdvancedBlock } from "./renderAdvancedBlocks";
 import { normalizePdfTemplate } from "./normalizePdfTemplate";
+import { resolveAndSanitizePdfHtml } from "./pdfHtml";
 
 type AnyObj = Record<string, any>;
 const EURO_HTML = "&#8364;";
@@ -141,15 +141,6 @@ function groupBy<T = any>(rows: T[], keyFn: (row: T) => string) {
   }
   return map;
 }
-function unescapeHtml(s: string) {
-  return s
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&amp;", "&")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#039;", "'");
-}
-
 type BlockStyle = {
   fontSize?: number; // px
   color?: string;
@@ -194,50 +185,16 @@ function tplRaw(input: any, ctx: AnyObj) {
   }));
 }
 
-function safeHtml(html: any) {
-  return sanitizeHtml(String(html ?? ""), {
-    allowedTags: [
-      "p", "br", "strong", "b", "em", "i", "u", "s",
-      "ul", "ol", "li",
-      "h1", "h2", "h3", "h4",
-      "blockquote",
-      "a",
-      "img",
-      "table", "thead", "tbody", "tr", "th", "td",
-      "span", "div"
-    ],
-    allowedAttributes: {
-      a: ["href", "target", "rel"],
-      img: ["src", "alt", "width", "height", "style"],
-      "*": ["style"],
-    },
-    allowedSchemes: ["http", "https", "data"],
-    allowedStyles: {
-      "*": {
-        color: [/^.*$/],
-        "font-weight": [/^.*$/],
-        "text-align": [/^.*$/],
-      },
-      img: {
-        width: [/^.*$/],
-        height: [/^.*$/],
-        "max-width": [/^.*$/],
-        "object-fit": [/^.*$/],
-        display: [/^.*$/],
-      },
-    },
-    // opcional, recomendado:
-    transformTags: {
-      a: sanitizeHtml.simpleTransform("a", { target: "_blank", rel: "noopener noreferrer" }),
-    },
+function renderPdfHtml(input: any, ctx: AnyObj) {
+  return resolveAndSanitizePdfHtml({
+    input: tplRaw(input ?? "", ctx),
+    ctx,
+    resolveTemplate: tpl,
   });
 }
 
 function renderCell(cellTpl: any, ctx: AnyObj) {
-
-  const resolved = tpl(tplRaw(cellTpl ?? "", ctx), ctx);
-  const raw = unescapeHtml(String(resolved ?? ""));
-  return safeHtml(raw);
+  return renderPdfHtml(cellTpl, ctx);
 }
 
 
@@ -563,7 +520,7 @@ function normalizeBudgetTableMode(block: any) {
 }
 
 function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof normalizeTheme>) {
-  const title = escHtml(tpl(block.title ?? "", ctx));
+  const title = renderPdfHtml(block.title ?? "", ctx);
 
   const tareasKey = String(block.tareasKey || "tareas");
   const groupByField = String(block.groupByField || "service");
@@ -614,7 +571,7 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
       const titleTpl = typeof level?.titleTpl === "string" ? level.titleTpl : "";
       const emptyText = String(level?.emptyText || "Sin datos");
       const hasCounter = tableMode.counter.enabled;
-      const counterLabel = escHtml(tableMode.counter.columnLabel);
+      const counterLabel = renderPdfHtml(tableMode.counter.columnLabel, baseCtx);
       const counterPosition = tableMode.counter.position;
       const colCount = columns.length + (hasCounter ? 1 : 0);
 
@@ -622,8 +579,8 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
         if (level?.showWhenEmpty === true) {
           return `
             <div class="bp-level">
-              ${titleTpl ? `<div class="bp-level-title">${escHtml(tpl(titleTpl, baseCtx))}</div>` : ""}
-              <div class="bp-empty">${escHtml(emptyText)}</div>
+              ${titleTpl ? `<div class="bp-level-title">${renderPdfHtml(titleTpl, baseCtx)}</div>` : ""}
+              <div class="bp-empty">${renderPdfHtml(emptyText, baseCtx)}</div>
             </div>
           `;
         }
@@ -637,7 +594,7 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
           if (column?.align) css.push(`text-align:${column.align}`);
           if (column?.width) css.push(`width:${column.width}`);
           const inline = css.length ? ` style="${css.join(";")}"` : "";
-          return `<th${inline}>${escHtml(tpl(column?.label ?? "", baseCtx))}</th>`;
+          return `<th${inline}>${renderPdfHtml(column?.label ?? "", baseCtx)}</th>`;
         }),
         hasCounter && counterPosition === "last" ? `<th class="bp-col-counter">${counterLabel}</th>` : "",
       ]
@@ -666,7 +623,7 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
                 column?.value ?? column?.tpl ?? "",
                 rowCtx,
               );
-              const fallback = column?.emptyFallback ? escHtml(String(column.emptyFallback)) : "";
+              const fallback = column?.emptyFallback ? renderPdfHtml(String(column.emptyFallback), rowCtx) : "";
               return `<td${inline}>${rendered || fallback}</td>`;
             }),
             hasCounter && counterPosition === "last"
@@ -708,7 +665,7 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
 
       return `
         <div class="bp-level">
-          ${titleTpl ? `<div class="bp-level-title">${escHtml(tpl(titleTpl, baseCtx))}</div>` : ""}
+          ${titleTpl ? `<div class="bp-level-title">${renderPdfHtml(titleTpl, baseCtx)}</div>` : ""}
           <table class="bp-table">
             <thead><tr>${theadCells}</tr></thead>
             <tbody>${tbody}</tbody>
@@ -740,7 +697,7 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
             tareas: groupTasks,
           },
         };
-        const chapterTitle = escHtml(tpl(groupTitleTpl, groupCtx));
+        const chapterTitle = renderPdfHtml(groupTitleTpl, groupCtx);
         const groupCounter = [groupIndex + 1];
 
         const groupLevel = tableMode.levels.find((level: any) => level?.source === "group");
@@ -858,13 +815,13 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
         : groupValue;
 
       const groupCtx = { ...ctx, groupValue, groupLabel };
-      const chapterTitle = escHtml(tpl(groupTitleTpl, groupCtx));
+      const chapterTitle = renderPdfHtml(groupTitleTpl, groupCtx);
 
       const tareasHtml = groupTasks
         .map((t: any) => {
           const tId = String(t?.id ?? "");
           const tCtx = { ...ctx, item: t };
-          const tTitle = escHtml(tpl(tareaTitleTpl, tCtx));
+          const tTitle = renderPdfHtml(tareaTitleTpl, tCtx);
 
           const mats = materialesByTarea.get(tId) || [];
           const matsHtml = mats.length
@@ -872,7 +829,7 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
                 ${mats
                   .map((m: any) => {
                     const mCtx = { ...ctx, item: m };
-                    const line = escHtml(tpl(materialLineTpl, mCtx));
+                    const line = renderPdfHtml(materialLineTpl, mCtx);
                     return `<div class="bp-mat">${line}</div>`;
                   })
                   .join("")}
@@ -978,33 +935,13 @@ function renderBudgetPartidas(block: any, ctx: AnyObj, theme: ReturnType<typeof 
   `;
 }
 
-function safeInlineRich(html: any) {
-  // permite negrita/italica/saltos, pero sin romper layout
-  // Si quieres mÃ¡s tags, amplÃ­a aquÃ­.
-  const clean = sanitizeHtml(String(html ?? ""), {
-    allowedTags: ["b", "strong", "i", "em", "u", "br", "span"],
-    allowedAttributes: {
-      span: ["style"],
-    },
-    allowedStyles: {
-      span: {
-        color: [/^#([0-9a-f]{3}|[0-9a-f]{6})$/i],
-        "font-weight": [/^\d+$/],
-      },
-    },
-  });
-
-  return clean;
-}
-
-
 function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalizeTheme>): string {
   const type = block?.type;
 
   if (type === "header") {
-    const title = escHtml(tpl(block.title ?? "", ctx));
-    const subtitle = escHtml(tpl(block.subtitle ?? "", ctx));
-    const rightText = escHtml(tpl(block.rightText ?? "", ctx));
+    const title = renderPdfHtml(block.title ?? "", ctx);
+    const subtitle = renderPdfHtml(block.subtitle ?? "", ctx);
+    const rightText = renderPdfHtml(block.rightText ?? "", ctx);
     
 
     return `
@@ -1019,33 +956,15 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
   }
 
   if (type === "text") {
-  const isRich =
-    block.ui?.variant === "richtext" ||
-    block.variant === "richtext" ||
-    block.richtext === true;
-
-  const resolved = tpl(tplRaw(block.value ?? "", ctx), ctx);
-
-  if (isRich) {
-    return `
-      <div class="txt txt-rich"${styleToInline(block.style)}>
-        <div class="rte">
-          ${safeHtml(resolved)}
-        </div>
-      </div>
-    `;
-  }
-
-  // TEXTO NORMAL (aquÃ­ sÃ­ es texto)
-  const value = escHtml(resolved);
+  const value = renderPdfHtml(block.value ?? "", ctx);
   return `
-    <div class="txt txt-normal"${styleToInline(block.style)}>
+    <div class="txt txt-normal txt-rich"${styleToInline(block.style)}>
       ${value}
     </div>
   `;
 }
   if (type === "cards") {
-    const title = escHtml(tpl(block.title ?? "", ctx));
+    const title = renderPdfHtml(block.title ?? "", ctx);
 
     const layout = block.layout && typeof block.layout === "object" ? block.layout : {};
     const colsRaw = layout.cols;
@@ -1060,8 +979,8 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
     const staticCards = Array.isArray(block.cards) ? block.cards : [];
 
     const renderCard = (card: any, cardCtx: AnyObj) => {
-      const cTitle = escHtml(tpl(card?.title ?? "", cardCtx));
-      const cSubtitle = escHtml(tpl(card?.subtitle ?? "", cardCtx));
+      const cTitle = renderPdfHtml(card?.title ?? "", cardCtx);
+      const cSubtitle = renderPdfHtml(card?.subtitle ?? "", cardCtx);
       const cStyle = {
         ...baseCardStyle,
         ...(card?.style && typeof card.style === "object" ? card.style : {}),
@@ -1074,17 +993,11 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
       } else if (Array.isArray(card?.lines) && card.lines.length) {
         content = card.lines
           .map((line: any) => {
-            const resolved = tpl(tplRaw(line ?? "", cardCtx), cardCtx);
-            return `<div class="card-line">${safeInlineRich(resolved)}</div>`;
+            return `<div class="card-line">${renderPdfHtml(line ?? "", cardCtx)}</div>`;
           })
           .join("");
       } else if (typeof card?.html === "string" && card.html.trim()) {
-        const resolved = tpl(tplRaw(card.html ?? "", cardCtx), cardCtx);
-        const clean = sanitizeHtml(String(resolved ?? ""), {
-          allowedTags: ["p", "br", "b", "strong", "i", "em", "u", "ul", "ol", "li", "span"],
-          allowedAttributes: { span: ["style"] },
-        });
-        content = `<div class="card-html">${clean}</div>`;
+        content = `<div class="card-html">${renderPdfHtml(card.html ?? "", cardCtx)}</div>`;
       } else {
         content = `<div class="card-empty">Sin contenido</div>`;
       }
@@ -1123,7 +1036,7 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
   }
 
   if (type === "section") {
-    const title = escHtml(tpl(block.title ?? "", ctx));
+    const title = renderPdfHtml(block.title ?? "", ctx);
     const children = Array.isArray(block.blocks) ? block.blocks : [];
     return `
       <div class="sec"${styleToInline(block.style)}>
@@ -1136,7 +1049,7 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
   }
 
     if (type === "table") {
-    const title = escHtml(tpl(block.title ?? "", ctx));
+    const title = renderPdfHtml(block.title ?? "", ctx);
     const repeatPath = String(block.repeat || "");
     const repeatRows = (getByPath(ctx, repeatPath) as any[]) || [];
     const cols = Array.isArray(block.columns) ? block.columns : [];
@@ -1181,7 +1094,7 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
           background: colStyle.background ?? headerBg,
           color: colStyle.color ?? headerText,
         });
-        const label = escHtml(tpl(c.label ?? "", ctx));
+        const label = renderPdfHtml(c.label ?? "", ctx);
         return `<th${thInline}>${label}</th>`;
       })
       .join("");
@@ -1255,8 +1168,8 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
       <div class="totals"${styleToInline(block.style)}>
         ${rows
           .map((r: any) => {
-            const label = escHtml(tpl(r.label ?? "", ctx));
-            const value = escHtml(tpl(r.value ?? "", ctx));
+            const label = renderPdfHtml(r.label ?? "", ctx);
+            const value = renderPdfHtml(r.value ?? "", ctx);
             return `<div class="totals-row"><span>${label}</span><strong>${value}</strong></div>`;
           })
           .join("")}
@@ -1266,6 +1179,7 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
 
   const advanced = renderAdvancedBlock(block, ctx, {
     escHtml,
+    renderHtml: renderPdfHtml,
     tpl,
     styleToInline,
     renderCell,
@@ -1368,6 +1282,7 @@ export function renderTemplateToHtml(template: any, ctx: AnyObj) {
   .txt-rich table { width: 100%; border-collapse: collapse; margin: 8px 0; }
   .txt-rich th, .txt-rich td { border: 1px solid var(--tbl-border); padding: 6px; }
   .txt-rich th { background: var(--tbl-headbg); color: var(--tbl-headfg); }
+  .txt-rich img, .rte img, .card-html img, .hdr img { max-width: 100%; height: auto; }
 
   /* Section */
   .sec { margin-top: 14px; }
@@ -1626,6 +1541,8 @@ export function renderTemplateToHtml(template: any, ctx: AnyObj) {
   /* si usas html dentro */
   .card-html p{ margin: 0 0 8px; }
   .card-html ul, .card-html ol{ margin: 6px 0 6px 18px; padding: 0; }
+  .card-html table{ width: 100%; border-collapse: collapse; margin: 8px 0; }
+  .card-html th, .card-html td{ border: 1px solid var(--tbl-border); padding: 6px; }
 
 
 ${advancedBlocksCss}

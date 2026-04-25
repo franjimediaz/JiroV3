@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type BindingGroup = {
   label: string;
@@ -50,6 +50,31 @@ type BlockKind =
   | "chart"
   | "budgetPartidas";
 
+type AssistantType = "text" | "result" | "relation" | "table" | null;
+
+const assistantMeta: Record<Exclude<AssistantType, null>, { title: string; description: string; action: string }> = {
+  text: {
+    title: "Asistente de textos",
+    description: "Cabeceras, pies y bloques con variables.",
+    action: "Añadir bloque de texto",
+  },
+  result: {
+    title: "Asistente de resultados",
+    description: "Sumas, medias, conteos y totales.",
+    action: "Crear resultado",
+  },
+  relation: {
+    title: "Asistente de relaciones",
+    description: "Tablas, tarjetas o resúmenes relacionados.",
+    action: "Insertar relación",
+  },
+  table: {
+    title: "Asistente de tablas",
+    description: "Columnas, estilos y fila de total.",
+    action: "Crear tabla",
+  },
+};
+
 export default function PdfTemplateSidebar({
   readOnly,
   bindingGroups,
@@ -76,6 +101,8 @@ export default function PdfTemplateSidebar({
   onCreateRelationBlock: (config: RelationAssistantConfig) => void;
   onCreateTableBlock: (config: TableAssistantConfig) => void;
 }) {
+  const [activeAssistant, setActiveAssistant] = useState<AssistantType>(null);
+
   const [textKind, setTextKind] = useState<"normal" | "variable" | "header" | "footer">("normal");
   const [textToken, setTextToken] = useState("");
 
@@ -111,6 +138,31 @@ export default function PdfTemplateSidebar({
   const selectedTableRelationFields =
     relationDetails.find((relation) => relation.key === tableRelationKey)?.fields ?? [];
 
+  const textDisabled = readOnly || (textKind === "variable" && !textToken);
+  const resultDisabled =
+    readOnly ||
+    !resultLabel.trim() ||
+    (resultSource === "related" && !resultRelatedKey) ||
+    (resultSource === "table" && !resultTable) ||
+    (resultOperation !== "count" && !resultField);
+  const relationDisabled = readOnly || !relationKey || relationFields.length === 0;
+  const tableDisabled = readOnly || !tableRelationKey || tableColumns.length === 0;
+
+  useEffect(() => {
+    if (!activeAssistant) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActiveAssistant(null);
+    };
+
+    document.body.classList.add("modal-open");
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.classList.remove("modal-open");
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [activeAssistant]);
+
   const toggleField = (
     current: string[],
     field: string,
@@ -123,44 +175,70 @@ export default function PdfTemplateSidebar({
     onChange([...current, field]);
   };
 
-  return (
-    <div className="d-flex flex-column gap-3">
-      <div className="card border-0 shadow-sm">
-        <div className="card-body">
-          <div className="fw-semibold mb-2">Elementos disponibles</div>
-          <div className="d-flex flex-wrap gap-2">
-            {[
-              ["header", "Cabecera"],
-              ["text", "Texto"],
-              ["divider", "Separador"],
-              ["table", "Tabla"],
-              ["cards", "Tarjetas"],
-              ["totalsBox", "Resultados"],
-              ["business", "Negocio"],
-              ["chart", "Gráfico"],
-              ["budgetPartidas", "Partidas"],
-            ].map(([type, label]) => (
-              <button
-                key={type}
-                type="button"
-                className="btn btn-sm btn-outline-primary"
-                disabled={readOnly}
-                onClick={() => onAddBlock(type as BlockKind)}
-              >
-                + {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+  const closeAssistant = () => setActiveAssistant(null);
 
-      <div className="card border-0 shadow-sm">
-        <div className="card-body">
-          <div className="fw-semibold">Asistente de textos</div>
-          <div className="text-muted small mb-3">
-            Crea cabeceras, textos estáticos y bloques con variables sin tocar JSON.
-          </div>
+  const handleAssistantAction = () => {
+    if (readOnly || !activeAssistant) return;
 
+    if (activeAssistant === "text") {
+      if (textDisabled) return;
+      onCreateTextPreset({ kind: textKind, token: textToken || variableOptions[0]?.token });
+      closeAssistant();
+      return;
+    }
+
+    if (activeAssistant === "result") {
+      if (resultDisabled) return;
+      onCreateResultBlock({
+        label: resultLabel,
+        source: resultSource,
+        relatedKey: resultRelatedKey,
+        table: resultTable,
+        field: resultField,
+        operation: resultOperation,
+        format: resultFormat,
+        filterField: resultFilterField,
+        filterValue: resultFilterValue,
+      });
+      closeAssistant();
+      return;
+    }
+
+    if (activeAssistant === "relation") {
+      if (relationDisabled) return;
+      onCreateRelationBlock({
+        relationKey,
+        fields: relationFields,
+        mode: relationMode,
+      });
+      closeAssistant();
+      return;
+    }
+
+    if (activeAssistant === "table") {
+      if (tableDisabled) return;
+      onCreateTableBlock({
+        relationKey: tableRelationKey,
+        columns: tableColumns,
+        totalField: tableTotalField,
+        zebra: tableZebra,
+        dense: tableDense,
+      });
+      closeAssistant();
+    }
+  };
+
+  const actionDisabled =
+    activeAssistant === "text" ? textDisabled :
+    activeAssistant === "result" ? resultDisabled :
+    activeAssistant === "relation" ? relationDisabled :
+    activeAssistant === "table" ? tableDisabled :
+    true;
+
+  const renderAssistantContent = () => {
+    if (activeAssistant === "text") {
+      return (
+        <>
           <div className="mb-2">
             <label className="form-label">Tipo</label>
             <select
@@ -198,196 +276,152 @@ export default function PdfTemplateSidebar({
               </select>
             </div>
           )}
+        </>
+      );
+    }
 
-          <button
-            type="button"
-            className="btn btn-primary w-100"
-            disabled={readOnly || (textKind === "variable" && !textToken)}
-            onClick={() => onCreateTextPreset({ kind: textKind, token: textToken || variableOptions[0]?.token })}
-          >
-            Añadir bloque de texto
-          </button>
-        </div>
-      </div>
-
-      <div className="card border-0 shadow-sm">
-        <div className="card-body">
-          <div className="fw-semibold">Asistente de resultados</div>
-          <div className="text-muted small mb-3">
-            Genera sumas, medias, conteos o totales usando datasets y un bloque listo para imprimir.
+    if (activeAssistant === "result") {
+      return (
+        <div className="row g-2">
+          <div className="col-12">
+            <label className="form-label">Etiqueta visible</label>
+            <input
+              className="form-control"
+              value={resultLabel}
+              disabled={readOnly}
+              onChange={(e) => setResultLabel(e.target.value)}
+            />
           </div>
-
-          <div className="row g-2">
-            <div className="col-12">
-              <label className="form-label">Etiqueta visible</label>
-              <input
-                className="form-control"
-                value={resultLabel}
-                disabled={readOnly}
-                onChange={(e) => setResultLabel(e.target.value)}
-              />
-            </div>
-            <div className="col-6">
-              <label className="form-label">Origen</label>
+          <div className="col-6">
+            <label className="form-label">Origen</label>
+            <select
+              className="form-select"
+              value={resultSource}
+              disabled={readOnly}
+              onChange={(e) => {
+                const next = e.target.value as "related" | "table";
+                setResultSource(next);
+                setResultField("");
+              }}
+            >
+              <option value="related">Relación</option>
+              <option value="table">Tabla</option>
+            </select>
+          </div>
+          <div className="col-6">
+            <label className="form-label">{resultSource === "table" ? "Tabla" : "Relación"}</label>
+            {resultSource === "table" ? (
               <select
                 className="form-select"
-                value={resultSource}
+                value={resultTable}
                 disabled={readOnly}
                 onChange={(e) => {
-                  const next = e.target.value as "related" | "table";
-                  setResultSource(next);
+                  setResultTable(e.target.value);
                   setResultField("");
                 }}
               >
-                <option value="related">Relación</option>
-                <option value="table">Tabla</option>
-              </select>
-            </div>
-            <div className="col-6">
-              <label className="form-label">{resultSource === "table" ? "Tabla" : "Relación"}</label>
-              {resultSource === "table" ? (
-                <select
-                  className="form-select"
-                  value={resultTable}
-                  disabled={readOnly}
-                  onChange={(e) => {
-                    setResultTable(e.target.value);
-                    setResultField("");
-                  }}
-                >
-                  <option value="">Selecciona una tabla</option>
-                  {tableOptions.map((table) => (
-                    <option key={table} value={table}>
-                      {table}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <select
-                  className="form-select"
-                  value={resultRelatedKey}
-                  disabled={readOnly}
-                  onChange={(e) => {
-                    setResultRelatedKey(e.target.value);
-                    setResultField("");
-                  }}
-                >
-                  <option value="">Selecciona una relación</option>
-                  {relationDetails.map((relation) => (
-                    <option key={relation.key} value={relation.key}>
-                      {relation.key} ({relation.table})
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-            <div className="col-6">
-              <label className="form-label">Operación</label>
-              <select
-                className="form-select"
-                value={resultOperation}
-                disabled={readOnly}
-                onChange={(e) => setResultOperation(e.target.value as ResultAssistantConfig["operation"])}
-              >
-                <option value="sum">Suma</option>
-                <option value="avg">Media</option>
-                <option value="count">Conteo</option>
-                <option value="min">Mínimo</option>
-                <option value="max">Máximo</option>
-              </select>
-            </div>
-            <div className="col-6">
-              <label className="form-label">Formato</label>
-              <select
-                className="form-select"
-                value={resultFormat}
-                disabled={readOnly}
-                onChange={(e) => setResultFormat(e.target.value as ResultAssistantConfig["format"])}
-              >
-                <option value="currency">Moneda</option>
-                <option value="number">Número</option>
-                <option value="percent">Porcentaje</option>
-              </select>
-            </div>
-            <div className="col-12">
-              <label className="form-label">Campo numérico</label>
-              <select
-                className="form-select"
-                value={resultField}
-                disabled={readOnly || resultOperation === "count"}
-                onChange={(e) => setResultField(e.target.value)}
-              >
-                <option value="">{resultOperation === "count" ? "No necesario para conteo" : "Selecciona un campo"}</option>
-                {resultFields.map((field) => (
-                  <option key={field} value={field}>
-                    {field}
+                <option value="">Selecciona una tabla</option>
+                {tableOptions.map((table) => (
+                  <option key={table} value={table}>
+                    {table}
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="col-6">
-              <label className="form-label">Filtro opcional</label>
+            ) : (
               <select
                 className="form-select"
-                value={resultFilterField}
+                value={resultRelatedKey}
                 disabled={readOnly}
-                onChange={(e) => setResultFilterField(e.target.value)}
+                onChange={(e) => {
+                  setResultRelatedKey(e.target.value);
+                  setResultField("");
+                }}
               >
-                <option value="">Sin filtro</option>
-                {resultFields.map((field) => (
-                  <option key={field} value={field}>
-                    {field}
+                <option value="">Selecciona una relación</option>
+                {relationDetails.map((relation) => (
+                  <option key={relation.key} value={relation.key}>
+                    {relation.key} ({relation.table})
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="col-6">
-              <label className="form-label">Valor filtro</label>
-              <input
-                className="form-control"
-                value={resultFilterValue}
-                disabled={readOnly || !resultFilterField}
-                onChange={(e) => setResultFilterValue(e.target.value)}
-              />
-            </div>
+            )}
           </div>
-
-          <button
-            type="button"
-            className="btn btn-primary w-100 mt-3"
-            disabled={
-              readOnly ||
-              !resultLabel.trim() ||
-              (resultSource === "related" && !resultRelatedKey) ||
-              (resultSource === "table" && !resultTable) ||
-              (resultOperation !== "count" && !resultField)
-            }
-            onClick={() =>
-              onCreateResultBlock({
-                label: resultLabel,
-                source: resultSource,
-                relatedKey: resultRelatedKey,
-                table: resultTable,
-                field: resultField,
-                operation: resultOperation,
-                format: resultFormat,
-                filterField: resultFilterField,
-                filterValue: resultFilterValue,
-              })
-            }
-          >
-            Crear resultado
-          </button>
+          <div className="col-6">
+            <label className="form-label">Operación</label>
+            <select
+              className="form-select"
+              value={resultOperation}
+              disabled={readOnly}
+              onChange={(e) => setResultOperation(e.target.value as ResultAssistantConfig["operation"])}
+            >
+              <option value="sum">Suma</option>
+              <option value="avg">Media</option>
+              <option value="count">Conteo</option>
+              <option value="min">Mínimo</option>
+              <option value="max">Máximo</option>
+            </select>
+          </div>
+          <div className="col-6">
+            <label className="form-label">Formato</label>
+            <select
+              className="form-select"
+              value={resultFormat}
+              disabled={readOnly}
+              onChange={(e) => setResultFormat(e.target.value as ResultAssistantConfig["format"])}
+            >
+              <option value="currency">Moneda</option>
+              <option value="number">Número</option>
+              <option value="percent">Porcentaje</option>
+            </select>
+          </div>
+          <div className="col-12">
+            <label className="form-label">Campo numérico</label>
+            <select
+              className="form-select"
+              value={resultField}
+              disabled={readOnly || resultOperation === "count"}
+              onChange={(e) => setResultField(e.target.value)}
+            >
+              <option value="">{resultOperation === "count" ? "No necesario para conteo" : "Selecciona un campo"}</option>
+              {resultFields.map((field) => (
+                <option key={field} value={field}>
+                  {field}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-6">
+            <label className="form-label">Filtro opcional</label>
+            <select
+              className="form-select"
+              value={resultFilterField}
+              disabled={readOnly}
+              onChange={(e) => setResultFilterField(e.target.value)}
+            >
+              <option value="">Sin filtro</option>
+              {resultFields.map((field) => (
+                <option key={field} value={field}>
+                  {field}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-6">
+            <label className="form-label">Valor filtro</label>
+            <input
+              className="form-control"
+              value={resultFilterValue}
+              disabled={readOnly || !resultFilterField}
+              onChange={(e) => setResultFilterValue(e.target.value)}
+            />
+          </div>
         </div>
-      </div>
+      );
+    }
 
-      <div className="card border-0 shadow-sm">
-        <div className="card-body">
-          <div className="fw-semibold">Asistente de relaciones</div>
-          <div className="text-muted small mb-3">
-            Inserta datos relacionados como tabla, tarjetas o resumen.
-          </div>
-
+    if (activeAssistant === "relation") {
+      return (
+        <>
           <div className="mb-2">
             <label className="form-label">Relación</label>
             <select
@@ -438,31 +472,13 @@ export default function PdfTemplateSidebar({
               ))}
             </div>
           </div>
+        </>
+      );
+    }
 
-          <button
-            type="button"
-            className="btn btn-primary w-100"
-            disabled={readOnly || !relationKey || relationFields.length === 0}
-            onClick={() =>
-              onCreateRelationBlock({
-                relationKey,
-                fields: relationFields,
-                mode: relationMode,
-              })
-            }
-          >
-            Insertar relación
-          </button>
-        </div>
-      </div>
-
-      <div className="card border-0 shadow-sm">
-        <div className="card-body">
-          <div className="fw-semibold">Asistente de tablas</div>
-          <div className="text-muted small mb-3">
-            Crea una tabla lista para PDF con columnas, estilo y fila de total opcional.
-          </div>
-
+    if (activeAssistant === "table") {
+      return (
+        <>
           <div className="mb-2">
             <label className="form-label">Relación</label>
             <select
@@ -540,25 +556,119 @@ export default function PdfTemplateSidebar({
               <label className="form-check-label">Dense</label>
             </div>
           </div>
+        </>
+      );
+    }
 
-          <button
-            type="button"
-            className="btn btn-primary w-100 mt-3"
-            disabled={readOnly || !tableRelationKey || tableColumns.length === 0}
-            onClick={() =>
-              onCreateTableBlock({
-                relationKey: tableRelationKey,
-                columns: tableColumns,
-                totalField: tableTotalField,
-                zebra: tableZebra,
-                dense: tableDense,
-              })
-            }
-          >
-            Crear tabla
-          </button>
+    return null;
+  };
+
+  const activeMeta = activeAssistant ? assistantMeta[activeAssistant] : null;
+
+  return (
+    <div className="d-flex flex-column gap-3">
+      <div className="card border-0 shadow-sm">
+        <div className="card-body">
+          <div className="fw-semibold mb-2">Elementos disponibles</div>
+          <div className="d-flex flex-wrap gap-2">
+            {[
+              ["header", "Cabecera"],
+              ["text", "Texto"],
+              ["divider", "Separador"],
+              ["table", "Tabla"],
+              ["cards", "Tarjetas"],
+              ["totalsBox", "Resultados"],
+              ["business", "Negocio"],
+              ["chart", "Gráfico"],
+              ["budgetPartidas", "Partidas"],
+            ].map(([type, label]) => (
+              <button
+                key={type}
+                type="button"
+                className="btn btn-sm btn-outline-primary"
+                disabled={readOnly}
+                onClick={() => onAddBlock(type as BlockKind)}
+              >
+                + {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+
+      <div className="card border-0 shadow-sm">
+        <div className="card-body">
+          <div className="fw-semibold">Asistentes</div>
+          <div className="text-muted small mb-3">
+            Crea bloques del PDF sin editar JSON manualmente.
+          </div>
+
+          <div className="list-group">
+            {(["text", "result", "relation", "table"] as const).map((assistant) => (
+              <button
+                key={assistant}
+                type="button"
+                className="list-group-item list-group-item-action"
+                disabled={readOnly}
+                onClick={() => setActiveAssistant(assistant)}
+              >
+                <div className="fw-semibold">{assistantMeta[assistant].title}</div>
+                <div className="small text-muted">{assistantMeta[assistant].description}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {activeAssistant && activeMeta && (
+        <>
+          <div
+            className="modal fade show"
+            style={{ display: "block" }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pdf-assistant-title"
+            tabIndex={-1}
+            onMouseDown={closeAssistant}
+          >
+            <div className="modal-dialog modal-lg modal-dialog-scrollable" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="modal-content">
+                <div className="modal-header">
+                  <div>
+                    <h5 id="pdf-assistant-title" className="modal-title">
+                      {activeMeta.title}
+                    </h5>
+                    <div className="text-muted small">{activeMeta.description}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-close"
+                    aria-label="Cerrar"
+                    onClick={closeAssistant}
+                  />
+                </div>
+
+                <div className="modal-body">{renderAssistantContent()}</div>
+
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-outline-secondary" onClick={closeAssistant}>
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={actionDisabled}
+                    onClick={handleAssistantAction}
+                  >
+                    {activeMeta.action}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop fade show" onMouseDown={closeAssistant} />
+        </>
+      )}
     </div>
   );
 }

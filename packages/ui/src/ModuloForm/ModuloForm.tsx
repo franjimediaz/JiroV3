@@ -15,6 +15,19 @@ import { useSearchParams, useRouter } from "next/dist/client/components/navigati
 type PickTarget = "columns" | "groupByField" | "parentFilterField" | "sumField";
 type ModuleFieldOption = { name: string; label?: string; type?: string };
 
+const VALID_VISIBILITY_OPERATORS = [
+  "=",
+  "!=",
+  ">",
+  ">=",
+  "<",
+  "<=",
+  "contains",
+  "notContains",
+  "empty",
+  "notEmpty",
+] as const;
+
 
 
 
@@ -61,6 +74,49 @@ function validatePropsClient(props: any): string | null {
 
     if (!VALID_FIELD_TYPES.includes(f.type))
       return `fields[${i}].type inválido`;
+
+    if (f.visibility !== undefined) {
+      const visibility = f.visibility;
+      if (!visibility || typeof visibility !== "object") {
+        return `fields[${i}].visibility debe ser objeto`;
+      }
+      if (typeof visibility.enabled !== "boolean") {
+        return `fields[${i}].visibility.enabled debe ser boolean`;
+      }
+      if (visibility.mode !== undefined && !["show", "hide"].includes(visibility.mode)) {
+        return `fields[${i}].visibility.mode inválido`;
+      }
+      if (visibility.logic !== undefined && !["AND", "OR"].includes(visibility.logic)) {
+        return `fields[${i}].visibility.logic inválido`;
+      }
+      if (!Array.isArray(visibility.rules)) {
+        return `fields[${i}].visibility.rules debe ser array`;
+      }
+
+      for (let ruleIndex = 0; ruleIndex < visibility.rules.length; ruleIndex++) {
+        const rule = visibility.rules[ruleIndex];
+        if (!rule || typeof rule !== "object") {
+          return `fields[${i}].visibility.rules[${ruleIndex}] debe ser objeto`;
+        }
+        if (!["currentRecord", "relatedRecord"].includes(rule.source)) {
+          return `fields[${i}].visibility.rules[${ruleIndex}].source inválido`;
+        }
+        if (!VALID_VISIBILITY_OPERATORS.includes(rule.op)) {
+          return `fields[${i}].visibility.rules[${ruleIndex}].op inválido`;
+        }
+        if (rule.source === "currentRecord" && (typeof rule.field !== "string" || !rule.field.trim())) {
+          return `fields[${i}].visibility.rules[${ruleIndex}].field requerido`;
+        }
+        if (rule.source === "relatedRecord") {
+          if (typeof rule.relationField !== "string" || !rule.relationField.trim()) {
+            return `fields[${i}].visibility.rules[${ruleIndex}].relationField requerido`;
+          }
+          if (typeof rule.relatedField !== "string" || !rule.relatedField.trim()) {
+            return `fields[${i}].visibility.rules[${ruleIndex}].relatedField requerido`;
+          }
+        }
+      }
+    }
     
     if (f.type === "selectorTabla") {
       const r = f.ref;

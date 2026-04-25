@@ -108,6 +108,34 @@ export type ReverseLinkRef = {
   filters?: QueryFilter[];
 };
 export type VisibleWhen = "add" | "edit" | "add_edit";
+export type VisibilityOperator =
+  | "="
+  | "!="
+  | ">"
+  | ">="
+  | "<"
+  | "<="
+  | "contains"
+  | "notContains"
+  | "empty"
+  | "notEmpty";
+
+export type VisibilityRule = {
+  source: "currentRecord" | "relatedRecord";
+  field: string;
+  op: VisibilityOperator;
+  value?: any;
+  relationField?: string;
+  relatedModuleSlug?: string;
+  relatedField?: string;
+};
+
+export type VisibilityConfig = {
+  enabled: boolean;
+  mode?: "show" | "hide";
+  logic?: "AND" | "OR";
+  rules: VisibilityRule[];
+};
 
 export type BaseField = {
   name: string;
@@ -123,6 +151,7 @@ export type BaseField = {
   help?: string;
   defaultValue?: any;
   visible?: boolean;
+  visibility?: VisibilityConfig;
   visibleWhen?: VisibleWhen;
   readOnly?: boolean;
   allowedMimeTypes?: string[];

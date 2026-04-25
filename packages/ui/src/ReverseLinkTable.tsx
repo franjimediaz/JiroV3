@@ -284,13 +284,6 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
           statusByKey: relationStatusByKey,
         });
 
-        if (process.env.NODE_ENV !== "production") {
-          console.log("ReverseLinkTable render trace", {
-            fieldName: column.name,
-            rawValue: raw,
-            result,
-          });
-        }
 
         if (result.kind === "resolved") {
           return config.hasStyle

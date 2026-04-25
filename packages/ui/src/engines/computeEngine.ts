@@ -29,6 +29,7 @@ export type DataProvider = {
     input: ListInput,
     context?: Record<string, any>
   ) => Promise<ListResult>;
+  getOne?: (moduleSlug: string, id: string) => Promise<any | null>;
 };
 
 /**
