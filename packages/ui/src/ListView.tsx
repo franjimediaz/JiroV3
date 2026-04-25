@@ -7,6 +7,7 @@ import type {
   ListViewExportPayload,
   ListViewProps,
 } from "@repo/types";
+import { normalizeFieldConfig, normalizeModuleSchema } from "@repo/types";
 import { ActionMenu } from "./ActionMenu";
 import { dataProvider } from "./providers/DataProvider";
 import  SelectorTabla  from "./Selector";
@@ -37,29 +38,32 @@ export default function ListView({
   onExport,
   onImport,
 }: ListViewProps) {
-  const primaryKey = schema.db.primaryKey || "id";
+  const normalizedSchema = useMemo(() => normalizeModuleSchema(schema), [schema]);
+  const primaryKey = normalizedSchema.db.primaryKey || "id";
   const [showFilters, setShowFilters] = useState(false);
 
   // Columnas de la lista
   const listFields = useMemo(() => {
-    const fields = schema.fields || [];
+    const fields = normalizedSchema.fields || [];
 
-    // 1) prioridad: appareance === "List"
-    const byAppareance = fields.filter((f) => f.appareance === "List" || f.appareance === "Always");
-    if (byAppareance.length > 0) return byAppareance;
+    const byAppearance = fields.filter((f) => {
+      const normalized = normalizeFieldConfig(f);
+      return normalized.appearance === "List" || normalized.appearance === "Always";
+    });
+    if (byAppearance.length > 0) return byAppearance;
 
-    // 2) si no hay appareance List, usar list === true
+    // 2) si no hay appearance List, usar list === true
     const byListFlag = fields.filter((f) => f.list);
     if (byListFlag.length > 0) return byListFlag;
 
     // 3) fallback: todos los visibles (o sin visible definido)
     return fields.filter((f) => f.visible !== false);
-  }, [schema.fields]);
+  }, [normalizedSchema.fields]);
 
   // Campos que tienen filtro
   const filterFields = useMemo(
-    () => (schema.fields || []).filter((f) => f.filter),
-    [schema.fields]
+    () => (normalizedSchema.fields || []).filter((f) => f.filter),
+    [normalizedSchema.fields]
   );
 
   const [filters, setFilters] = useState<Record<string, FilterValue>>({});
@@ -172,9 +176,9 @@ export default function ListView({
   }, [filteredData, page, pageSize]);
 
 
-  const icon = schema.ui?.icon;
-  const color = schema.ui?.color;
-  const tableName = schema.db.table;
+  const icon = normalizedSchema.ui?.icon;
+  const color = normalizedSchema.ui?.color;
+  const tableName = normalizedSchema.db.table;
   const exportPayload = useMemo<ListViewExportPayload>(
     () => ({
       columns: [],

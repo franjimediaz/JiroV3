@@ -5,7 +5,7 @@ import styles from "./modulo-detalle.module.css";
 import  Selector from "../Selector";
 import {IconPicker} from "@repo/ui";
 import type { CalendarSpecialViewConfig, CalendarViewMode, Field as FieldSchema, ModuleSchema, Field, FormPreviewTab, FormSection, SpecialViewConfig, UiTab} from "@repo/types";
-import { normalizeModuleDefaultFilters, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
+import { normalizeModuleDefaultFilters, normalizeModuleSchema, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
 import {FieldRow} from "./FieldRow"
 import ModuleDefaultFiltersBuilder from "./ModuleDefaultFiltersBuilder";
@@ -297,7 +297,7 @@ useEffect(() => {
 
     const raw = initialData?.props;
     try {
-      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw || {};
+      const parsed = normalizeModuleSchema(typeof raw === "string" ? JSON.parse(raw) : raw || {});
       const next: ModuleSchema = {
         db: { ...base.db, ...(parsed.db || {}) },
         fields: Array.isArray(parsed.fields) ? (parsed.fields as Field[]) : [],
@@ -552,12 +552,14 @@ const setSpecialViews = (specialViews: SpecialViewConfig[]) => {
       }
     }
 
+    const normalizedToSave = tipo === "carpeta" ? toSave : normalizeModuleSchema(toSave);
+
     if (tipo !== "carpeta") {
-      const err = validatePropsClient(toSave);
+      const err = validatePropsClient(normalizedToSave);
       if (err) return setMsg({ ok: false, text: `Props inválidos: ${err}` });
     }
 
-    toSave = { ...toSave, ui: { ...(toSave.ui || {}), sidebar } };
+    toSave = { ...normalizedToSave, ui: { ...(normalizedToSave.ui || {}), sidebar } };
 
     start(async () => {
       const fd = new FormData();

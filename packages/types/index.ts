@@ -92,4 +92,20 @@ export {
   matchesSelectorTableFilterGroup,
   getSelectorTableFilterRecordValue,
 } from "./selectorTableFilters";
+export {
+  normalizeModuleSchema,
+  normalizeFieldConfig,
+  normalizeTreeViewConfig,
+  normalizeCalendarConfig,
+  normalizeSpecialViews,
+  getLegacySchemaWarnings,
+} from "./normalizeModuleSchema";
+export type {
+  LegacySchemaWarning,
+  NormalizedField,
+  NormalizedModuleSchema,
+  NormalizedTreeViewConfig,
+  NormalizedCalendarConfig,
+  NormalizedSpecialView,
+} from "./normalizeModuleSchema";
 

@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { ModuleSchema } from "@repo/types";
+import { resolveModuleConfigFromRow } from "@/lib/modules/resolveModuleConfig";
 
 export type ModuloTipo = "carpeta" | "tabla" | "subtabla" | "vista";
 
@@ -41,16 +42,16 @@ export async function fetchModuloBySlug(slug: string): Promise<ModuloRecord> {
   }
 
   // `props` viene como jsonb → lo casteamos a ModuleSchema
-  const props = (data.props ?? {}) as ModuleSchema;
+  const resolved = resolveModuleConfigFromRow(data);
 
   return {
     id: data.id,
     nombre: data.nombre,
-    slug: data.slug,
-    route: data.route ?? undefined,
-    tipo: data.tipo as ModuloTipo,
+    slug: resolved.slug,
+    route: resolved.route,
+    tipo: (resolved.tipo || data.tipo) as ModuloTipo,
     orden: data.orden ?? undefined,
     activo: data.activo ?? true,
-    props,
+    props: resolved.schema as ModuleSchema,
   };
 }

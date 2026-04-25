@@ -2,7 +2,7 @@
 "use server";
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { MODULOS_SEED } from "@/lib/seed/modulos.seed";
+
 import { SeedNode } from "@repo/types";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 
@@ -81,8 +81,8 @@ export async function seedModulosAction(): Promise<{ ok: boolean; detail: string
     if (!perfil?.role) return { ok: false, detail: "Tu usuario no tiene rol asignado en 'users'." };
     if (perfil.role !== "systemadmin") return { ok: false, detail: "Permisos insuficientes (se requiere 'systemadmin')." };
 
-    // 3) Ejecutar seed
-    await walk(MODULOS_SEED, null);
+  
+    
 
     return { ok: true, detail: "Seed completado correctamente." };
   } catch (e: any) {

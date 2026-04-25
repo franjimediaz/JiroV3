@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import {ActionMenu} from "./ActionMenu";
+import { normalizeTreeViewConfig } from "@repo/types";
 import {
   collectRelationPendingKeys,
   type RelationDisplayStatusMap,
@@ -86,8 +87,7 @@ type ResolveRouteFn = (source: string) => string | null;
 
 function unwrapConfig(cfg: any): LegacyConfig | null {
   if (!cfg) return null;
-  if (cfg.treeViewConfig) return cfg.treeViewConfig as LegacyConfig;
-  return cfg as LegacyConfig;
+  return normalizeTreeViewConfig(cfg.treeViewConfig ?? cfg) as unknown as LegacyConfig;
 }
 function unwrapProvider(p: any): TreeViewDataProvider | null {
   if (!p) return null;
@@ -310,7 +310,7 @@ export default function TreeView(p: Props) {
   const resolveTable = useMemo(() => unwrapResolveTable(p.resolveTable), [p.resolveTable]);
   const resolveRoute = useMemo(() => unwrapResolveRoute(p.resolveRoute), [p.resolveRoute]);
   const normalizedFilters = useMemo<TreeViewQuery["filters"]>(() => {
-  const raw = (cfg?.filters || []) as any[];
+  const raw = (((cfg as any)?.source?.filters || cfg?.filters || []) as any[]);
   const out: TreeViewQuery["filters"] = [];
 
   for (const f of raw) {
@@ -355,18 +355,15 @@ export default function TreeView(p: Props) {
   const [lookupCache, setLookupCache] = useState<Record<string, RelationDisplayEntry>>({});
   const [lookupStatusByKey, setLookupStatusByKey] = useState<RelationDisplayStatusMap>({});
 
-  // legacy config fields
-
-  const groupByField = Array.isArray(cfg?.groupBy) && cfg!.groupBy!.length ? cfg!.groupBy![0] : undefined;
+  const groupByField = (cfg as any)?.grouping?.groupByField;
   const columns = useMemo(() => normalizeColumns(cfg?.columns), [cfg?.columns]);
   const totals = cfg?.totals || {};
   const currency = totals.currency || "EUR";
   const sumField = totals.sumField;
   const sourceRef =
-    cfg?.sourceTable ||
     (cfg as any)?.source?.table ||
-    (p.config as any)?.sourceTable ||
-    (p.config as any)?.source?.table;
+    (p.config as any)?.source?.table ||
+    (p.config as any)?.sourceTable;
 
 const resolvedSource = useMemo(() => {
   const src = typeof sourceRef === "string" ? sourceRef.trim() : "";

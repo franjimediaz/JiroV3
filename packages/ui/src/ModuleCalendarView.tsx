@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import type { CalendarSpecialViewConfig, CalendarViewMode, ModuleSchema } from "@repo/types";
+import { normalizeCalendarConfig } from "@repo/types";
 import type { DataProvider } from "./engines/computeEngine";
 import { dataProvider as defaultDataProvider } from "./providers/DataProvider";
 
@@ -410,25 +411,26 @@ export default function ModuleCalendarView({
   parentModuleSlug,
   parentRecordId,
 }: Props) {
+  const normalizedConfig = useMemo(() => normalizeCalendarConfig(config), [config]);
   const [state, setState] = useState<LoadState>({
     status: "idle",
     events: [],
     invalidCount: 0,
     error: null,
   });
-  const enabledViews = useMemo(() => normalizeViews(config), [config]);
-  const [currentView, setCurrentView] = useState<CalendarViewMode>(normalizeDefaultView(config));
+  const enabledViews = useMemo(() => normalizeViews(normalizedConfig), [normalizedConfig]);
+  const [currentView, setCurrentView] = useState<CalendarViewMode>(normalizeDefaultView(normalizedConfig));
   const [currentDate, setCurrentDate] = useState(() => new Date());
-  const sourceModuleSlug = useMemo(() => String(config?.sourceModuleSlug || "").trim(), [config?.sourceModuleSlug]);
+  const sourceModuleSlug = useMemo(() => String(normalizedConfig?.sourceModuleSlug || "").trim(), [normalizedConfig?.sourceModuleSlug]);
   const parentLinkResolution = useMemo(
     () =>
       resolveParentLinkField({
-        config,
+        config: normalizedConfig,
         sourceSchema,
         parentSchema,
         parentModuleSlug,
       }),
-    [config, sourceSchema, parentSchema, parentModuleSlug]
+    [normalizedConfig, sourceSchema, parentSchema, parentModuleSlug]
   );
   const shouldFilterByParent = !!parentRecordId;
   const sameModuleAsParent = shouldFilterByParent && sourceModuleSlug === String(parentModuleSlug || "").trim();
@@ -440,11 +442,11 @@ export default function ModuleCalendarView({
   const waitingForParentRecord = !parentRecordId;
 
   useEffect(() => {
-    setCurrentView(normalizeDefaultView(config));
-  }, [config]);
+    setCurrentView(normalizeDefaultView(normalizedConfig));
+  }, [normalizedConfig]);
 
   useEffect(() => {
-    if (!sourceModuleSlug || !config?.titleField || !config?.startField || missingParentLink || waitingForParentRecord) {
+    if (!sourceModuleSlug || !normalizedConfig?.titleField || !normalizedConfig?.startField || missingParentLink || waitingForParentRecord) {
       setState({
         status: "idle",
         events: [],
@@ -474,7 +476,7 @@ export default function ModuleCalendarView({
         let invalidCount = 0;
 
         for (const row of rows) {
-          const event = buildEventFromRecord(row, config);
+          const event = buildEventFromRecord(row, normalizedConfig);
           if (!event) {
             invalidCount += 1;
             continue;
@@ -504,7 +506,7 @@ export default function ModuleCalendarView({
       cancelled = true;
     };
   }, [
-    config,
+    normalizedConfig,
     dataProvider,
     filterField,
     missingParentLink,
@@ -520,11 +522,11 @@ export default function ModuleCalendarView({
   const goPrev = () => setCurrentDate((prev) => addDays(prev, -getViewDateStep(currentView)));
   const goNext = () => setCurrentDate((prev) => addDays(prev, getViewDateStep(currentView)));
 
-  if (!config?.sourceModuleSlug) {
+  if (!normalizedConfig?.sourceModuleSlug) {
     return <div className="alert alert-secondary mb-0">Selecciona primero un módulo fuente para el calendario.</div>;
   }
 
-  if (!config.titleField || !config.startField) {
+  if (!normalizedConfig.titleField || !normalizedConfig.startField) {
     return <div className="alert alert-secondary mb-0">Configura al menos `titleField` y `startField` para el calendario.</div>;
   }
 

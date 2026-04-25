@@ -25,6 +25,9 @@ export default async function NewEntityPage({
   if (!slug) notFound();
 
   const mod = await fetchModuleRowBySlug(slug);
+  if (!mod.table) {
+    throw new Error(`Este modulo no es un modulo de datos: ${slug}`);
+  }
   const { modulesBySlug } = await fetchAllModulesIndex();
 
   return (
@@ -34,7 +37,7 @@ export default async function NewEntityPage({
         initialData={{}}
         mode="create"
         moduleSlug={slug}
-        baseRoute={mod.route || `/${slug}/`}
+        baseRoute={`/m/${slug}/`}
         modulesBySlug={modulesBySlug}
         schemasBySlug={{ [slug]: mod.schema }}
       />

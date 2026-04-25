@@ -69,7 +69,10 @@ export default async function EntityPage({
   const schema = mod.schema;
   const table = mod.table;
   const primaryKey = mod.primaryKey;
-  const baseRoute = mod.route || `/${slug}/`;
+  const baseRoute = `/m/${slug}/`;
+  if (!table) {
+    throw new Error(`Este modulo no es un modulo de datos: ${slug}`);
+  }
 
   // 2) fila
   const row = await fetchRowById(table, primaryKey, id);

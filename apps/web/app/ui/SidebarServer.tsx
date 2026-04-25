@@ -8,6 +8,7 @@ type ModuloRow = {
   nombre: string;
   slug: string;
   route: string | null;
+  tipo?: string | null;
   activo: boolean;
   orden: number | null;
   parent_id: string | null;
@@ -30,6 +31,18 @@ function pickIcon(props: any): string | undefined {
   return p?.ui?.icon || p?.icon || undefined;
 }
 
+function pickRoute(row: ModuloRow) {
+  const props = safeParseProps(row.props);
+  const tipo = String(row.tipo || "").trim().toLowerCase();
+  const table = String(props?.db?.table || props?.table || "").trim();
+  const rawRoute = String(row.route || props?.route || props?.ui?.route || "").trim();
+
+  if (tipo === "carpeta" || tipo === "folder" || tipo === "menu" || tipo === "grupo") return rawRoute;
+  if (rawRoute.startsWith("/system/")) return rawRoute;
+  if (table || tipo === "tabla" || tipo === "subtabla") return `/m/${row.slug}`;
+  return rawRoute;
+}
+
 function buildTree(rows: ModuloRow[]): SidebarItem[] {
   const nodesById = new Map<string, SidebarItem>();
   const roots: SidebarItem[] = [];
@@ -40,7 +53,7 @@ function buildTree(rows: ModuloRow[]): SidebarItem[] {
       id: r.id,
       slug: r.slug,
       nombre: r.nombre,
-      route: r.route || "", // si tu Sidebar tolera "", mejor que null
+      route: pickRoute(r),
       icon: pickIcon(r.props),
       orden: r.orden ?? null,
       hijos: [],
@@ -87,7 +100,7 @@ export default async function SidebarServer({
 
   let q = supabase
     .from("modulos")
-    .select("id,nombre,slug,route,activo,orden,parent_id,props")
+    .select("id,nombre,slug,route,tipo,activo,orden,parent_id,props")
     .order("orden", { ascending: true })
     .order("nombre", { ascending: true });
 

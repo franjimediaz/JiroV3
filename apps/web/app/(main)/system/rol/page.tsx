@@ -1,6 +1,6 @@
 // app/Rol/page.tsx   (server)
 import PageClient from "./PageClient";
-import { fetchModuloBySlug } from "@/lib/modulos/modulos";
+import { fetchModuloBySlug } from "@/lib/modules/modulos";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function RolPage() {

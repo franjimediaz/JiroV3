@@ -11,6 +11,7 @@ import type {
   TreeViewDataProvider,
   UiTab,
 } from "@repo/types";
+import { normalizeCalendarConfig, normalizeModuleSchema } from "@repo/types";
 import { applyCompute } from "./engines/computeEngine";
 import type { DataProvider } from "./engines/computeEngine";
 import { dataProvider as defaultDataProvider } from "./providers/DataProvider";
@@ -217,35 +218,6 @@ function getColumnClass(field: Field): string {
   }
 }
 
-function mapLegacyPreviewTabsToSpecialViews(rawTabs: any[]): SpecialViewConfig[] {
-  return rawTabs
-    .map((tab: any, index: number) => ({
-      id: String(tab?.id || `special_view_${index + 1}`),
-      label: String(tab?.label || tab?.title || `Vista especial ${index + 1}`),
-      type: "pdfPreview" as const,
-      config: {
-        pdfTemplateId: String(tab?.pdfTemplateId || ""),
-      },
-    }))
-    .filter((tab: SpecialViewConfig) => !!tab.id);
-}
-
-function normalizeCalendarConfig(input: any): CalendarSpecialViewConfig {
-  const cfg = input && typeof input === "object" ? input : {};
-  return {
-    sourceModuleSlug: String(cfg.sourceModuleSlug || cfg.sourceTable || "").trim(),
-    titleField: String(cfg.titleField || "").trim(),
-    startField: String(cfg.startField || "").trim(),
-    endField: String(cfg.endField || "").trim(),
-    allDayField: String(cfg.allDayField || "").trim(),
-    colorField: String(cfg.colorField || "").trim(),
-    descriptionField: String(cfg.descriptionField || "").trim(),
-    resourceField: String(cfg.resourceField || "").trim(),
-    enabledViews: Array.isArray(cfg.enabledViews) ? cfg.enabledViews : ["month", "week", "day"],
-    defaultView: ["month", "week", "day"].includes(String(cfg.defaultView)) ? cfg.defaultView : "month",
-  };
-}
-
 export default function Form({
   schema,
   initialData = {},
@@ -267,24 +239,25 @@ export default function Form({
   schemasByTable,
   modulesBySlug,
 }: Props) {
+  const normalizedSchema = useMemo(() => normalizeModuleSchema(schema), [schema]);
   const effectiveMode: Mode = mode || (readOnly ? "view" : "edit");
   const effectiveRecordId = useMemo(
-    () => String(recordId ?? initialData?.id ?? initialData?.[schema?.db?.primaryKey || "id"] ?? "").trim(),
-    [recordId, initialData, schema?.db?.primaryKey]
+    () => String(recordId ?? initialData?.id ?? initialData?.[normalizedSchema?.db?.primaryKey || "id"] ?? "").trim(),
+    [recordId, initialData, normalizedSchema?.db?.primaryKey]
   );
   const effectiveModuleSlug = useMemo(() => {
     if (moduleSlug) return String(moduleSlug).trim();
-    const schemaTable = String(schema?.db?.table || "").trim();
+    const schemaTable = String(normalizedSchema?.db?.table || "").trim();
     if (!schemaTable || !modulesBySlug) return "";
     if (modulesBySlug[schemaTable]) return schemaTable;
     for (const [slug, mod] of Object.entries(modulesBySlug)) {
       if (mod?.db?.table === schemaTable) return slug;
     }
     return "";
-  }, [moduleSlug, schema?.db?.table, modulesBySlug]);
+  }, [moduleSlug, normalizedSchema?.db?.table, modulesBySlug]);
 
   const tabsDesdeSchema = useMemo<UiTab[]>(() => {
-    const uiAny = (schema.ui || {}) as any;
+    const uiAny = (normalizedSchema.ui || {}) as any;
     const rawTabs = Array.isArray(uiAny?.tabs) ? uiAny.tabs : [];
 
     return rawTabs
@@ -295,26 +268,22 @@ export default function Form({
         return { id, label, type, config: tab?.config ?? tab };
       })
       .filter((tab: UiTab) => ["form", "treeview", "calendar"].includes(tab.type));
-  }, [schema.ui]);
+  }, [normalizedSchema.ui]);
 
   const specialViews = useMemo<SpecialViewConfig[]>(() => {
-    const uiAny = (schema.ui || {}) as any;
-    const rawSpecialViews = Array.isArray(uiAny?.specialViews) ? uiAny.specialViews : [];
-    if (rawSpecialViews.length > 0) return rawSpecialViews as SpecialViewConfig[];
-
-    const rawPreviewTabs = Array.isArray(uiAny?.previewTabs) ? uiAny.previewTabs : [];
-    return mapLegacyPreviewTabsToSpecialViews(rawPreviewTabs);
-  }, [schema.ui]);
+    const uiAny = (normalizedSchema.ui || {}) as any;
+    return Array.isArray(uiAny?.specialViews) ? (uiAny.specialViews as SpecialViewConfig[]) : [];
+  }, [normalizedSchema.ui]);
 
   const legacyTreeCfg = useMemo(() => {
-    const uiAny = (schema.ui || {}) as any;
+    const uiAny = (normalizedSchema.ui || {}) as any;
     return uiAny?.treeView ?? null;
-  }, [schema.ui]);
+  }, [normalizedSchema.ui]);
 
   const legacyCalendarCfg = useMemo(() => {
-    const uiAny = (schema.ui || {}) as any;
+    const uiAny = (normalizedSchema.ui || {}) as any;
     return uiAny?.calendar ?? null;
-  }, [schema.ui]);
+  }, [normalizedSchema.ui]);
 
   const uiTabs = useMemo<UiTab[]>(() => {
     if (tabsDesdeSchema.length > 0) return tabsDesdeSchema;
@@ -327,7 +296,7 @@ export default function Form({
         id: "__form__",
         label: "Formulario",
         type: "form",
-        config: { formSections: (schema.ui as any)?.formSections || [] },
+        config: { formSections: (normalizedSchema.ui as any)?.formSections || [] },
       },
     ];
 
@@ -350,7 +319,7 @@ export default function Form({
     }
 
     return tabs;
-  }, [tabsDesdeSchema, legacyTreeCfg, legacyCalendarCfg, schema.ui]);
+  }, [tabsDesdeSchema, legacyTreeCfg, legacyCalendarCfg, normalizedSchema.ui]);
 
   const runtimeTabs = useMemo<RuntimeTab[]>(() => {
     const baseTabs = [...uiTabs];
@@ -362,7 +331,7 @@ export default function Form({
         id: "__form__",
         label: "Formulario",
         type: "form",
-        config: { formSections: (schema.ui as any)?.formSections || [] },
+        config: { formSections: (normalizedSchema.ui as any)?.formSections || [] },
       });
     }
 
@@ -375,7 +344,7 @@ export default function Form({
         config: view,
       })),
     ];
-  }, [specialViews, schema.ui, uiTabs]);
+  }, [specialViews, normalizedSchema.ui, uiTabs]);
 
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [computing, setComputing] = useState(false);
@@ -384,12 +353,12 @@ export default function Form({
   const [resolvedDisplayValues, setResolvedDisplayValues] = useState<ResolvedDisplayState>({});
   const [displayLoadingFields, setDisplayLoadingFields] = useState<Record<string, boolean>>({});
 
-  const syncedInitialValues = useMemo(() => buildInitialValues(schema, initialData), [schema, initialData]);
+  const syncedInitialValues = useMemo(() => buildInitialValues(normalizedSchema as ModuleSchema, initialData), [normalizedSchema, initialData]);
   const [values, setValues] = useState<FormValues>(syncedInitialValues);
   const valuesRef = useRef<FormValues>(syncedInitialValues);
   const aggTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const applyingComputeRef = useRef(false);
-  const lastComputedSigRef = useRef<string>(computeSignature(schema, syncedInitialValues));
+  const lastComputedSigRef = useRef<string>(computeSignature(normalizedSchema as ModuleSchema, syncedInitialValues));
   const displayCacheRef = useRef<ResolvedDisplayState>({});
   const displayRequestRef = useRef<Record<string, number>>({});
 
@@ -416,8 +385,8 @@ export default function Form({
   useEffect(() => {
     valuesRef.current = syncedInitialValues;
     setValues(syncedInitialValues);
-    lastComputedSigRef.current = computeSignature(schema, syncedInitialValues);
-  }, [schema, syncedInitialValues]);
+    lastComputedSigRef.current = computeSignature(normalizedSchema as ModuleSchema, syncedInitialValues);
+  }, [normalizedSchema, syncedInitialValues]);
 
   useEffect(() => {
     let cancelled = false;
@@ -544,17 +513,17 @@ export default function Form({
       }
     };
 
-    const relationalFields = (schema.fields || []).filter((field) => !!getRelationDisplayConfig(field));
+    const relationalFields = (normalizedSchema.fields || []).filter((field) => !!getRelationDisplayConfig(field));
     void Promise.all(relationalFields.map((field) => resolveFieldDisplayValue(field)));
 
     return () => {
       cancelled = true;
     };
-  }, [schema.fields, values, dataProvider]);
+  }, [normalizedSchema.fields, values, dataProvider]);
 
   const reverseLinkFields = useMemo(
-    () => (schema.fields || []).filter((field) => field.type === "ReverseLink"),
-    [schema.fields]
+    () => (normalizedSchema.fields || []).filter((field) => field.type === "ReverseLink"),
+    [normalizedSchema.fields]
   );
 
   useEffect(() => {
@@ -574,8 +543,8 @@ export default function Form({
       return (activeTab.config?.formSections || []) as FormSection[];
     }
 
-    return (((schema.ui as any)?.formSections as FormSection[]) || []) as FormSection[];
-  }, [activeTab, schema.ui]);
+    return (((normalizedSchema.ui as any)?.formSections as FormSection[]) || []) as FormSection[];
+  }, [activeTab, normalizedSchema.ui]);
 
   useEffect(() => {
     const firstId = formSections[0]?.id;
@@ -584,13 +553,13 @@ export default function Form({
 
   const fieldsByName = useMemo(() => {
     const map: Record<string, Field> = {};
-    for (const field of schema.fields || []) {
+    for (const field of normalizedSchema.fields || []) {
       map[field.name] = field;
     }
     return map;
-  }, [schema.fields]);
+  }, [normalizedSchema.fields]);
 
-  const formActions = (((schema.ui as any)?.formActions as FormAction[]) || []);
+  const formActions = (((normalizedSchema.ui as any)?.formActions as FormAction[]) || []);
 
   const fieldsInSections = useMemo(() => {
     const names = new Set<string>();
@@ -605,13 +574,13 @@ export default function Form({
   const unsectionedFields = useMemo(() => {
     if (formSections.length === 0) return [];
 
-    return (schema.fields || []).filter((field) => {
+    return (normalizedSchema.fields || []).filter((field) => {
       if (field.type === "ReverseLink") return false;
       return !fieldsInSections.has(field.name);
     });
-  }, [formSections.length, schema.fields, fieldsInSections]);
+  }, [formSections.length, normalizedSchema.fields, fieldsInSections]);
 
-  const moduleFolder = schema?.db?.table || "general";
+  const moduleFolder = normalizedSchema?.db?.table || "general";
   const computeDepsKey = useMemo(() => JSON.stringify(lightDeps(values)), [values]);
 
   const commitValues = (
@@ -677,7 +646,7 @@ export default function Form({
   };
 
   useEffect(() => {
-    if (!schema?.fields?.length) return;
+    if (!normalizedSchema?.fields?.length) return;
 
     if (applyingComputeRef.current) {
       applyingComputeRef.current = false;
@@ -692,12 +661,12 @@ export default function Form({
     aggTimer.current = setTimeout(async () => {
       try {
         const computed = await applyCompute({
-          schema,
+          schema: normalizedSchema as ModuleSchema,
           record: valuesRef.current,
           dataProvider,
         });
 
-        const sig = computeSignature(schema, computed);
+        const sig = computeSignature(normalizedSchema as ModuleSchema, computed);
         if (sig === lastComputedSigRef.current) return;
 
         lastComputedSigRef.current = sig;
@@ -715,7 +684,7 @@ export default function Form({
       }
       setComputing(false);
     };
-  }, [schema, effectiveMode, dataProvider, computeDepsKey]);
+  }, [normalizedSchema, effectiveMode, dataProvider, computeDepsKey]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -725,7 +694,7 @@ export default function Form({
       const payload = { ...(values || {}) };
       delete payload.meta;
 
-      for (const field of schema.fields || []) {
+      for (const field of normalizedSchema.fields || []) {
         const value = payload[field.name];
         if (field.type === "date") payload[field.name] = value || null;
         if (field.type === "datetime") {
@@ -928,7 +897,7 @@ export default function Form({
   }, [modulesBySlug, schemasBySlug, treeSourceSlug]);
 
   const treeSchemaFields = useMemo(() => {
-    if (!treeSourceSlug) return schema.fields;
+    if (!treeSourceSlug) return normalizedSchema.fields;
     const source = String(treeSourceSlug || "").trim();
     const resolvedSource = resolveTable(source);
     const resolvedTable = String(resolvedSource?.table || "").trim();
@@ -971,14 +940,14 @@ export default function Form({
 
     const moduleSchema = scoredCandidates[0]?.candidate;
 
-    return moduleSchema?.fields || schema.fields;
+    return moduleSchema?.fields || normalizedSchema.fields;
   }, [
     resolveTable,
     schemasBySlug,
     schemasByTable,
     treeSourceModuleSlug,
     treeSourceSlug,
-    schema.fields,
+    normalizedSchema.fields,
     (treeViewConfig as any)?.grouping?.groupByField,
     JSON.stringify((treeViewConfig as any)?.groupBy || []),
     JSON.stringify((treeViewConfig as any)?.columns || []),
@@ -1030,7 +999,7 @@ export default function Form({
       );
     }
 
-    return <div className="row g-3">{(schema.fields || []).map((field) => renderField(field))}</div>;
+    return <div className="row g-3">{(normalizedSchema.fields || []).map((field) => renderField(field))}</div>;
   };
 
   const renderTreeViewContent = () => (

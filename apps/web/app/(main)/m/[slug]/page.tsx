@@ -29,7 +29,10 @@ export default async function ListPage({
   const slug = p?.slug;
   if (!slug) notFound();
 
-  const { schema, table, route, titleSingular } = await fetchModuleRowBySlug(slug);
+  const { schema, table, titleSingular } = await fetchModuleRowBySlug(slug);
+  if (!table) {
+    throw new Error(`Este modulo no es un modulo de datos: ${slug}`);
+  }
   const { modulesBySlug } = await fetchAllModulesIndex();
 
   const supabase = await createClient();
@@ -54,7 +57,7 @@ export default async function ListPage({
         schema={schema}
         rows={rows}
         moduleSlug={slug}
-        baseRoute={route || `/${slug}/`}
+        baseRoute={`/m/${slug}/`}
         titleSingular={titleSingular}
         modulesBySlug={modulesBySlug}
       />

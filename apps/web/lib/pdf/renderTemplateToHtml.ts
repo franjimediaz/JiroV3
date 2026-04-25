@@ -9,6 +9,7 @@
 // - bindings: {{record.xxx}}, {{branding.xxx}}, {{now}}, {{item.xxx}} en tablas (repeat)
 import sanitizeHtml from "sanitize-html";
 import { advancedBlocksCss, renderAdvancedBlock } from "./renderAdvancedBlocks";
+import { normalizePdfTemplate } from "./normalizePdfTemplate";
 
 type AnyObj = Record<string, any>;
 const EURO_HTML = "&#8364;";
@@ -1275,7 +1276,7 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
 }
 
 export function renderTemplateToHtml(template: any, ctx: AnyObj) {
-  const tplObj = template && typeof template === "object" ? template : {};
+  const tplObj = normalizePdfTemplate(template);
   const blocks = Array.isArray(tplObj?.blocks) ? tplObj.blocks : [];
   const page = tplObj?.page && typeof tplObj.page === "object" ? tplObj.page : {};
   const margin = typeof page.margin === "number" ? page.margin : 24;
