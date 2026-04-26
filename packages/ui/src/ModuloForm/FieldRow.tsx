@@ -37,14 +37,17 @@ const emptyVisibilityRule: VisibilityRule = {
   value: "",
 };
 
-function ensureVisibilityConfig(field: FieldSchema): VisibilityConfig {
-  const current = (field as any).visibility;
+export function ensureVisibilityConfigFromValue(current: any): VisibilityConfig {
   return {
     enabled: !!current?.enabled,
     mode: current?.mode === "hide" ? "hide" : "show",
     logic: current?.logic === "OR" ? "OR" : "AND",
     rules: Array.isArray(current?.rules) ? current.rules : [],
   };
+}
+
+function ensureVisibilityConfig(field: FieldSchema): VisibilityConfig {
+  return ensureVisibilityConfigFromValue((field as any).visibility);
 }
 
 function parseRuleValue(raw: string): any {
@@ -181,8 +184,10 @@ function ArrayChips({
   );
 }
 
-function VisibilityConfigEditor({
+export function VisibilityConfigEditor({
   field,
+  value,
+  targetLabel = "campo",
   allFields,
   fieldsByTable,
   loadingByTable,
@@ -190,19 +195,21 @@ function VisibilityConfigEditor({
   readOnly,
   onChange,
 }: {
-  field: FieldSchema;
+  field?: FieldSchema;
+  value?: VisibilityConfig;
+  targetLabel?: string;
   allFields: FieldSchema[];
   fieldsByTable: Record<string, { name: string; label?: string }[]>;
   loadingByTable: Record<string, boolean>;
   ensureFieldsLoaded: (tableSlug: string) => void;
   readOnly?: boolean;
-  onChange: (field: FieldSchema) => void;
+  onChange: (next: any) => void;
 }) {
-  const visibility = ensureVisibilityConfig(field);
+  const visibility = field ? ensureVisibilityConfig(field) : ensureVisibilityConfigFromValue(value);
   const relationFields = allFields.filter((candidate) => candidate.type === "selectorTabla");
 
   const updateVisibility = (next: VisibilityConfig) => {
-    onChange({ ...field, visibility: next });
+    onChange(field ? { ...field, visibility: next } : next);
   };
 
   const updateRule = (index: number, nextRule: VisibilityRule) => {
@@ -242,8 +249,8 @@ function VisibilityConfigEditor({
             onChange={(event) => updateVisibility({ ...visibility, mode: event.target.value as "show" | "hide" })}
             disabled={readOnly || !visibility.enabled}
           >
-            <option value="show">Mostrar campo cuando se cumplan reglas</option>
-            <option value="hide">Ocultar campo cuando se cumplan reglas</option>
+            <option value="show">Mostrar {targetLabel} cuando se cumplan reglas</option>
+            <option value="hide">Ocultar {targetLabel} cuando se cumplan reglas</option>
           </select>
         </div>
 

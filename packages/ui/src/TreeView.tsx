@@ -354,6 +354,7 @@ export default function TreeView(p: Props) {
   const [openGroupKey, setOpenGroupKey] = useState<string | null>(null);
   const [lookupCache, setLookupCache] = useState<Record<string, RelationDisplayEntry>>({});
   const [lookupStatusByKey, setLookupStatusByKey] = useState<RelationDisplayStatusMap>({});
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const groupByField = (cfg as any)?.grouping?.groupByField;
   const columns = useMemo(() => normalizeColumns(cfg?.columns), [cfg?.columns]);
@@ -404,6 +405,32 @@ const handleEdit = onEditRow
       window.location.assign(`${url}?edit=true`);
     }
   : undefined;
+
+const handleDelete =
+  provider?.remove && sourceTable
+    ? async (row: any) => {
+        const id = normalizeId(row?.id);
+        if (!id) return;
+
+        const confirmed = confirmDelete
+          ? await confirmDelete(row)
+          : window.confirm("¿Seguro que quieres eliminar este registro?");
+
+        if (confirmed === false) return;
+
+        setDeletingId(id);
+        setError(null);
+
+        try {
+          await provider.remove!(sourceTable, id);
+          await loadRows();
+        } catch (e: any) {
+          setError(e?.message || "Error eliminando registro");
+        } finally {
+          setDeletingId(null);
+        }
+      }
+    : undefined;
 
 
 
@@ -768,6 +795,13 @@ const pendingLookupKeys = useMemo(
                       label: "Editar",
                       icon: <i className="bi bi-pencil" />,
                       onClick: () => handleEdit?.(r),
+                    },
+                    handleDelete && !!normalizeId(r?.id) && {
+                      label: deletingId === normalizeId(r?.id) ? "Eliminando..." : "Eliminar",
+                      icon: <i className="bi bi-trash" />,
+                      variant: "danger",
+                      disabled: deletingId === normalizeId(r?.id),
+                      onClick: () => handleDelete(r),
                     }
                   ]}
                 />

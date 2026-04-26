@@ -14,7 +14,7 @@ import type {
 import { normalizeCalendarConfig, normalizeModuleSchema } from "@repo/types";
 import { applyCompute } from "./engines/computeEngine";
 import type { DataProvider } from "./engines/computeEngine";
-import { evaluateFieldVisibility } from "./engines/visibilityEngine";
+import { evaluateFieldVisibility, evaluateTabVisibility } from "./engines/visibilityEngine";
 import { dataProvider as defaultDataProvider } from "./providers/DataProvider";
 import ReverseLinkTable from "./ReverseLinkTable";
 import TreeView from "./TreeView";
@@ -36,12 +36,13 @@ type FormValues = Record<string, any>;
 type ResolvedDisplayState = Record<string, { value: string; icon?: string; color?: string }>;
 type RuntimeTab =
   | UiTab
-  | {
-      id: string;
-      label: string;
-      type: "special-view";
-      config: SpecialViewConfig;
-    };
+    | {
+        id: string;
+        label: string;
+        type: "special-view";
+        config: SpecialViewConfig;
+        visibility?: SpecialViewConfig["visibility"];
+      };
 
 type Props = {
   schema: ModuleSchema;
@@ -266,7 +267,7 @@ export default function Form({
         const type = (tab?.type || tab?.kind || "form") as UiTab["type"];
         const id = String(tab?.id || `${type}_${index + 1}`);
         const label = String(tab?.label || tab?.title || (type === "form" ? "Formulario" : type));
-        return { id, label, type, config: tab?.config ?? tab };
+        return { id, label, type, config: tab?.config ?? tab, visibility: tab?.visibility };
       })
       .filter((tab: UiTab) => ["form", "treeview", "calendar"].includes(tab.type));
   }, [normalizedSchema.ui]);
@@ -343,6 +344,7 @@ export default function Form({
         label: view.label,
         type: "special-view",
         config: view,
+        visibility: view.visibility,
       })),
     ];
   }, [specialViews, normalizedSchema.ui, uiTabs]);
@@ -364,11 +366,22 @@ export default function Form({
   const displayCacheRef = useRef<ResolvedDisplayState>({});
   const displayRequestRef = useRef<Record<string, number>>({});
 
+  const formActions = useMemo(
+    () => (((normalizedSchema.ui as any)?.formActions as FormAction[]) || []),
+    [normalizedSchema.ui]
+  );
+
   const visibilityRelationFields = useMemo(() => {
     const relationFields = new Map<string, string>();
 
-    for (const field of normalizedSchema.fields || []) {
-      const visibility = field.visibility;
+    const visibilityTargets = [
+      ...(normalizedSchema.fields || []),
+      ...formActions,
+      ...runtimeTabs,
+    ];
+
+    for (const target of visibilityTargets) {
+      const visibility = (target as any).visibility;
       if (!visibility?.enabled || !Array.isArray(visibility.rules)) continue;
 
       for (const rule of visibility.rules) {
@@ -388,7 +401,23 @@ export default function Form({
         valueField: String((field as any)?.ref?.valueField || "id").trim() || "id",
       };
     });
-  }, [normalizedSchema.fields]);
+  }, [normalizedSchema.fields, formActions, runtimeTabs]);
+
+  const visibleRuntimeTabs = useMemo(() => {
+    return runtimeTabs.filter((tab) => {
+      try {
+        return evaluateTabVisibility({
+          tab,
+          values,
+          schema: normalizedSchema as ModuleSchema,
+          relatedRecordsByField,
+        });
+      } catch (e) {
+        console.warn("Error evaluando visibilidad de pestaña", tab?.id, e);
+        return false;
+      }
+    });
+  }, [runtimeTabs, values, normalizedSchema, relatedRecordsByField]);
 
   const visibilityRelationValuesKey = useMemo(
     () =>
@@ -403,20 +432,20 @@ export default function Form({
   );
 
   useEffect(() => {
-    if (!runtimeTabs.length) {
+    if (!visibleRuntimeTabs.length) {
       setActiveTabId(null);
       return;
     }
 
-    if (!activeTabId || !runtimeTabs.some((tab) => tab.id === activeTabId)) {
-      setActiveTabId(runtimeTabs[0].id);
+    if (!activeTabId || !visibleRuntimeTabs.some((tab) => tab.id === activeTabId)) {
+      setActiveTabId(visibleRuntimeTabs[0].id);
     }
-  }, [runtimeTabs, activeTabId]);
+  }, [visibleRuntimeTabs, activeTabId]);
 
   const activeTab = useMemo(() => {
-    if (!runtimeTabs.length) return null;
-    return runtimeTabs.find((tab) => tab.id === activeTabId) ?? runtimeTabs[0];
-  }, [runtimeTabs, activeTabId]);
+    if (!visibleRuntimeTabs.length) return null;
+    return visibleRuntimeTabs.find((tab) => tab.id === activeTabId) ?? visibleRuntimeTabs[0];
+  }, [visibleRuntimeTabs, activeTabId]);
 
   useEffect(() => {
     valuesRef.current = values;
@@ -645,8 +674,6 @@ export default function Form({
     }
     return map;
   }, [normalizedSchema.fields]);
-
-  const formActions = (((normalizedSchema.ui as any)?.formActions as FormAction[]) || []);
 
   const fieldsInSections = useMemo(() => {
     const names = new Set<string>();
@@ -912,10 +939,12 @@ export default function Form({
     );
   };
 
-  const showMainTabs = runtimeTabs.length > 0;
-  const showFormContent = !activeTab || activeTab.type === "form";
+  const hasConfiguredTabs = runtimeTabs.length > 0;
+  const noVisibleTabs = hasConfiguredTabs && visibleRuntimeTabs.length === 0;
+  const showMainTabs = visibleRuntimeTabs.length > 0;
+  const showFormContent = !hasConfiguredTabs || activeTab?.type === "form";
   const showSpecialViewContent = activeTab?.type === "special-view";
-  const showReverseLinks = showFormContent;
+  const showReverseLinks = showFormContent && !noVisibleTabs;
 
   const resolveTable = useMemo(() => {
     return (moduleSlug: string) => {
@@ -1203,7 +1232,7 @@ export default function Form({
         overflowY: "hidden",
         WebkitOverflowScrolling: "touch",
         borderBottom: "1px solid #e5e7eb",}}>
-          {runtimeTabs.map((tab) => {
+          {visibleRuntimeTabs.map((tab) => {
             const isActive = activeTab?.id === tab.id;
 
             return (
@@ -1227,7 +1256,9 @@ export default function Form({
         </div>
       )}
 
-      {showFormContent ? (
+      {noVisibleTabs ? (
+        <div className="alert alert-secondary mb-0">No hay pestañas disponibles para este registro.</div>
+      ) : showFormContent ? (
         renderFormContent()
       ) : showSpecialViewContent ? (
         renderSpecialViewContent()
@@ -1272,12 +1303,13 @@ export default function Form({
 
       <div className="d-flex justify-content-end align-items-center gap-2 flex-wrap mt-3">
         <FormActionsBar
-          schema={schema}
+          schema={normalizedSchema as ModuleSchema}
           mode={effectiveMode}
           values={values}
           setValues={commitValues}
           actions={formActions}
           resolveRoute={resolveRoute}
+          relatedRecordsByField={relatedRecordsByField}
         />
         {renderActions()}
       </div>

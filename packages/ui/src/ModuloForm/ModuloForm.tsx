@@ -7,13 +7,13 @@ import {IconPicker} from "@repo/ui";
 import type { CalendarSpecialViewConfig, CalendarViewMode, Field as FieldSchema, ModuleSchema, Field, FormPreviewTab, FormSection, SpecialViewConfig, UiTab} from "@repo/types";
 import { normalizeModuleDefaultFilters, normalizeModuleSchema, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
-import {FieldRow} from "./FieldRow"
+import { FieldRow, VisibilityConfigEditor } from "./FieldRow"
 import ModuleDefaultFiltersBuilder from "./ModuleDefaultFiltersBuilder";
 import UiFormActionsEditor, { type UiFormAction } from "./UiFormActionsEditor";
 import { useSearchParams, useRouter } from "next/dist/client/components/navigation";
 
 type PickTarget = "columns" | "groupByField" | "parentFilterField" | "sumField";
-type ModuleFieldOption = { name: string; label?: string; type?: string };
+type ModuleFieldOption = { name: string; label?: string; type?: string; ref?: any };
 
 const VALID_VISIBILITY_OPERATORS = [
   "=",
@@ -27,6 +27,52 @@ const VALID_VISIBILITY_OPERATORS = [
   "empty",
   "notEmpty",
 ] as const;
+
+function validateVisibilityConfigClient(path: string, visibility: any): string | null {
+  if (visibility === undefined) return null;
+  if (!visibility || typeof visibility !== "object") {
+    return `${path} debe ser objeto`;
+  }
+  if (typeof visibility.enabled !== "boolean") {
+    return `${path}.enabled debe ser boolean`;
+  }
+  if (visibility.mode !== undefined && !["show", "hide"].includes(visibility.mode)) {
+    return `${path}.mode inválido`;
+  }
+  if (visibility.logic !== undefined && !["AND", "OR"].includes(visibility.logic)) {
+    return `${path}.logic inválido`;
+  }
+  if (!Array.isArray(visibility.rules)) {
+    return `${path}.rules debe ser array`;
+  }
+
+  for (let ruleIndex = 0; ruleIndex < visibility.rules.length; ruleIndex++) {
+    const rule = visibility.rules[ruleIndex];
+    const rulePath = `${path}.rules[${ruleIndex}]`;
+    if (!rule || typeof rule !== "object") {
+      return `${rulePath} debe ser objeto`;
+    }
+    if (!["currentRecord", "relatedRecord"].includes(rule.source)) {
+      return `${rulePath}.source inválido`;
+    }
+    if (!VALID_VISIBILITY_OPERATORS.includes(rule.op)) {
+      return `${rulePath}.op inválido`;
+    }
+    if (rule.source === "currentRecord" && (typeof rule.field !== "string" || !rule.field.trim())) {
+      return `${rulePath}.field requerido`;
+    }
+    if (rule.source === "relatedRecord") {
+      if (typeof rule.relationField !== "string" || !rule.relationField.trim()) {
+        return `${rulePath}.relationField requerido`;
+      }
+      if (typeof rule.relatedField !== "string" || !rule.relatedField.trim()) {
+        return `${rulePath}.relatedField requerido`;
+      }
+    }
+  }
+
+  return null;
+}
 
 
 
@@ -75,48 +121,8 @@ function validatePropsClient(props: any): string | null {
     if (!VALID_FIELD_TYPES.includes(f.type))
       return `fields[${i}].type inválido`;
 
-    if (f.visibility !== undefined) {
-      const visibility = f.visibility;
-      if (!visibility || typeof visibility !== "object") {
-        return `fields[${i}].visibility debe ser objeto`;
-      }
-      if (typeof visibility.enabled !== "boolean") {
-        return `fields[${i}].visibility.enabled debe ser boolean`;
-      }
-      if (visibility.mode !== undefined && !["show", "hide"].includes(visibility.mode)) {
-        return `fields[${i}].visibility.mode inválido`;
-      }
-      if (visibility.logic !== undefined && !["AND", "OR"].includes(visibility.logic)) {
-        return `fields[${i}].visibility.logic inválido`;
-      }
-      if (!Array.isArray(visibility.rules)) {
-        return `fields[${i}].visibility.rules debe ser array`;
-      }
-
-      for (let ruleIndex = 0; ruleIndex < visibility.rules.length; ruleIndex++) {
-        const rule = visibility.rules[ruleIndex];
-        if (!rule || typeof rule !== "object") {
-          return `fields[${i}].visibility.rules[${ruleIndex}] debe ser objeto`;
-        }
-        if (!["currentRecord", "relatedRecord"].includes(rule.source)) {
-          return `fields[${i}].visibility.rules[${ruleIndex}].source inválido`;
-        }
-        if (!VALID_VISIBILITY_OPERATORS.includes(rule.op)) {
-          return `fields[${i}].visibility.rules[${ruleIndex}].op inválido`;
-        }
-        if (rule.source === "currentRecord" && (typeof rule.field !== "string" || !rule.field.trim())) {
-          return `fields[${i}].visibility.rules[${ruleIndex}].field requerido`;
-        }
-        if (rule.source === "relatedRecord") {
-          if (typeof rule.relationField !== "string" || !rule.relationField.trim()) {
-            return `fields[${i}].visibility.rules[${ruleIndex}].relationField requerido`;
-          }
-          if (typeof rule.relatedField !== "string" || !rule.relatedField.trim()) {
-            return `fields[${i}].visibility.rules[${ruleIndex}].relatedField requerido`;
-          }
-        }
-      }
-    }
+    const fieldVisibilityError = validateVisibilityConfigClient(`fields[${i}].visibility`, f.visibility);
+    if (fieldVisibilityError) return fieldVisibilityError;
     
     if (f.type === "selectorTabla") {
       const r = f.ref;
@@ -164,6 +170,30 @@ function validatePropsClient(props: any): string | null {
         return `fields[${i}].compute aggregate.where debe ser array`;
       }
     }
+  }
+
+  const formActions = Array.isArray(props.ui?.formActions) ? props.ui.formActions : [];
+  for (let i = 0; i < formActions.length; i++) {
+    const actionVisibilityError = validateVisibilityConfigClient(
+      `ui.formActions[${i}].visibility`,
+      formActions[i]?.visibility
+    );
+    if (actionVisibilityError) return actionVisibilityError;
+  }
+
+  const tabs = Array.isArray(props.ui?.tabs) ? props.ui.tabs : [];
+  for (let i = 0; i < tabs.length; i++) {
+    const tabVisibilityError = validateVisibilityConfigClient(`ui.tabs[${i}].visibility`, tabs[i]?.visibility);
+    if (tabVisibilityError) return tabVisibilityError;
+  }
+
+  const specialViews = Array.isArray(props.ui?.specialViews) ? props.ui.specialViews : [];
+  for (let i = 0; i < specialViews.length; i++) {
+    const specialVisibilityError = validateVisibilityConfigClient(
+      `ui.specialViews[${i}].visibility`,
+      specialViews[i]?.visibility
+    );
+    if (specialVisibilityError) return specialVisibilityError;
   }
   
   return null;
@@ -684,6 +714,8 @@ type SimpleField = ModuleFieldOption;
 const sourceFields: SimpleField[] = (propsObj.fields || []).map((f: any) => ({
   name: f.name,
   label: f.label,
+  type: f.type,
+  ref: f.ref,
 }));
 
 const getTableFields = useCallback((tableSlug: string): SimpleField[] => {
@@ -943,6 +975,8 @@ const editorTabs = [
             IconPicker={IconPicker}
             sourceFields={sourceFields}
             getTableFields={getTableFields}
+            fieldsByTable={fieldsByTable}
+            loadingByTable={loadingByTable}
             ensureTableFields={ensureTableFields}
             workflowCatalog={[
               { key: "derive.createFromParent", label: "Generar presupuesto (snapshot tareas)" },
@@ -1129,6 +1163,17 @@ const editorTabs = [
                 />
               </div>
             </div>
+
+            <VisibilityConfigEditor
+              value={(t as any).visibility}
+              targetLabel="pestaña"
+              allFields={propsObj.fields as FieldSchema[]}
+              fieldsByTable={fieldsByTable}
+              loadingByTable={loadingByTable}
+              ensureFieldsLoaded={ensureFieldsLoaded}
+              readOnly={readOnly}
+              onChange={(visibility) => updateTab((prev) => ({ ...prev, visibility } as UiTab))}
+            />
 
             <div className={styles.card} style={{ marginTop: 12 }}>
               <div className={styles.actionsRow} style={{ justifyContent: "space-between", gap: 12 }}>
@@ -1639,6 +1684,7 @@ const editorTabs = [
                             id: prev.id,
                             label: prev.label,
                             type: "calendar",
+                            visibility: (prev as any).visibility,
                             config:
                               prev.type === "calendar"
                                 ? normalizeCalendarConfig(prev.config)
@@ -1650,6 +1696,7 @@ const editorTabs = [
                           id: prev.id,
                           label: prev.label,
                           type: "pdfPreview",
+                          visibility: (prev as any).visibility,
                           config: {
                             pdfTemplateId: prev.type === "pdfPreview" ? prev.config?.pdfTemplateId || "" : "",
                           },
@@ -1663,6 +1710,17 @@ const editorTabs = [
                   </select>
                 </div>
               </div>
+
+              <VisibilityConfigEditor
+                value={(view as any).visibility}
+                targetLabel="pestaña"
+                allFields={propsObj.fields as FieldSchema[]}
+                fieldsByTable={fieldsByTable}
+                loadingByTable={loadingByTable}
+                ensureFieldsLoaded={ensureFieldsLoaded}
+                readOnly={readOnly}
+                onChange={(visibility) => updateView((prev) => ({ ...prev, visibility } as SpecialViewConfig))}
+              />
 
               {view.type === "pdfPreview" && (
                 <div className={styles.card} style={{ marginTop: 12 }}>
@@ -1989,6 +2047,7 @@ const editorTabs = [
                           id: prev.id,
                           label: prev.label,
                           type: "treeview",
+                          visibility: (prev as any).visibility,
                           config: { sourceTable: "", groupBy: [], columns: [] },
                         };
                       }
@@ -1997,6 +2056,7 @@ const editorTabs = [
                         id: prev.id,
                         label: prev.label,
                         type: "calendar",
+                        visibility: (prev as any).visibility,
                         config: { ...defaultCalendarConfig(), sourceTable: "" },
                       };
                     });
@@ -2008,6 +2068,17 @@ const editorTabs = [
                 </select>
               </div>
             </div>
+
+            <VisibilityConfigEditor
+              value={(t as any).visibility}
+              targetLabel="pestaña"
+              allFields={propsObj.fields as FieldSchema[]}
+              fieldsByTable={fieldsByTable}
+              loadingByTable={loadingByTable}
+              ensureFieldsLoaded={ensureFieldsLoaded}
+              readOnly={readOnly}
+              onChange={(visibility) => updateTab((prev) => ({ ...prev, visibility } as UiTab))}
+            />
 
             {t.type === "treeview" && (
               <div className={styles.card} style={{ marginTop: 12 }}>

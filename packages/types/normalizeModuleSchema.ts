@@ -188,6 +188,7 @@ export function normalizeSpecialViews(config: unknown): NormalizedSpecialView[] 
         label: toString(view.label || view.title, `Vista especial ${index + 1}`),
         type,
         config: type === "calendar" ? normalizeCalendarConfig(view.config) : { pdfTemplateId: toString(view.config?.pdfTemplateId || view.pdfTemplateId) },
+        visibility: isRecord(view.visibility) ? view.visibility : undefined,
       } as NormalizedSpecialView;
     });
 
@@ -249,6 +250,7 @@ export function normalizeModuleSchema(schema: unknown): NormalizedModuleSchema {
         label: toString(tab.label || tab.title, type === "form" ? "Formulario" : type),
         type,
         config,
+        visibility: isRecord(tab.visibility) ? tab.visibility : undefined,
       } as UiTab;
     })
     .filter((tab) => tab.type === "form" || tab.type === "treeview" || tab.type === "calendar");

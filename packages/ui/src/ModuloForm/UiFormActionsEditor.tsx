@@ -2,6 +2,8 @@
 
 import React, { useMemo, useState, useEffect } from "react";
 import Selector from "../Selector";
+import type { Field as FieldSchema, VisibilityConfig } from "@repo/types";
+import { VisibilityConfigEditor } from "./FieldRow";
 
 type UiMode = "view" | "edit" | "create";
 type UiActionType =
@@ -12,7 +14,7 @@ type UiActionType =
   | "external"
   | "workflow";
 
-type SimpleField = { name: string; label?: string };
+type SimpleField = { name: string; label?: string; type?: string; ref?: any };
 
 type WorkflowCatalogItem = {
   key: string;
@@ -95,6 +97,7 @@ export type UiFormAction = {
     | "dark";
   showIn?: UiMode[];
   confirm?: { text?: string };
+  visibility?: VisibilityConfig;
 
   // payloads según type
   target?: { table?: string };
@@ -123,6 +126,8 @@ type Props = {
 
   // ✅ para obtener fields de cualquier tabla (destino/origen)
   getTableFields: (table: string) => SimpleField[];
+  fieldsByTable?: Record<string, SimpleField[]>;
+  loadingByTable?: Record<string, boolean>;
 
   // ✅ opcional para precargar fields cuando eliges tabla
   ensureTableFields?: (table: string) => void;
@@ -315,6 +320,8 @@ export default function UiFormActionsEditor({
   IconPicker,
   sourceFields,
   getTableFields,
+  fieldsByTable = {},
+  loadingByTable = {},
   ensureTableFields,
   loadingTableFields,
   workflowCatalog,
@@ -580,6 +587,19 @@ export default function UiFormActionsEditor({
                               }}
                               disabled={readOnly}
                               placeholder="Ej: ¿Seguro que quieres generar el presupuesto?"
+                            />
+                          </div>
+
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <VisibilityConfigEditor
+                              value={(a as any).visibility}
+                              targetLabel="botón"
+                              allFields={sourceFields as FieldSchema[]}
+                              fieldsByTable={fieldsByTable}
+                              loadingByTable={loadingByTable}
+                              ensureFieldsLoaded={(tableSlug) => ensureTableFields?.(tableSlug)}
+                              readOnly={readOnly}
+                              onChange={(visibility) => updateFormAction(idx, { visibility } as any)}
                             />
                           </div>
 

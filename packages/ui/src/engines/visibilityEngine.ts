@@ -1,4 +1,4 @@
-import type { Field, ModuleSchema, VisibilityOperator, VisibilityRule } from "@repo/types";
+import type { Field, ModuleSchema, VisibilityConfig, VisibilityOperator, VisibilityRule } from "@repo/types";
 
 type FormValues = Record<string, any>;
 type RelatedRecordsByField = Record<string, any>;
@@ -91,20 +91,17 @@ export function getRuleLeftValue(
   return relatedRecord[relatedField];
 }
 
-export function evaluateFieldVisibility({
-  field,
+export function evaluateVisibilityConfig({
+  visibility,
   values,
   schema,
   relatedRecordsByField,
 }: {
-  field: Field;
+  visibility?: VisibilityConfig;
   values: FormValues;
   schema: ModuleSchema;
   relatedRecordsByField?: RelatedRecordsByField;
 }): boolean {
-  if (field.visible === false) return false;
-
-  const visibility = field.visibility;
   if (!visibility?.enabled) return true;
 
   const rules = Array.isArray(visibility.rules) ? visibility.rules : [];
@@ -125,4 +122,63 @@ export function evaluateFieldVisibility({
 
   const passes = (visibility.logic || "AND") === "OR" ? results.some(Boolean) : results.every(Boolean);
   return (visibility.mode || "show") === "hide" ? !passes : passes;
+}
+
+export function evaluateFieldVisibility({
+  field,
+  values,
+  schema,
+  relatedRecordsByField,
+}: {
+  field: Field;
+  values: FormValues;
+  schema: ModuleSchema;
+  relatedRecordsByField?: RelatedRecordsByField;
+}): boolean {
+  if (field.visible === false) return false;
+
+  return evaluateVisibilityConfig({
+    visibility: field.visibility,
+    values,
+    schema,
+    relatedRecordsByField,
+  });
+}
+
+export function evaluateActionVisibility({
+  action,
+  values,
+  schema,
+  relatedRecordsByField,
+}: {
+  action: { visibility?: VisibilityConfig };
+  values: FormValues;
+  schema: ModuleSchema;
+  relatedRecordsByField?: RelatedRecordsByField;
+}): boolean {
+  return evaluateVisibilityConfig({
+    visibility: action.visibility,
+    values,
+    schema,
+    relatedRecordsByField,
+  });
+}
+
+export function evaluateTabVisibility({
+  tab,
+  values,
+  schema,
+  relatedRecordsByField,
+}: {
+  tab: { visibility?: VisibilityConfig; config?: any };
+  values: FormValues;
+  schema: ModuleSchema;
+  relatedRecordsByField?: RelatedRecordsByField;
+}): boolean {
+  return evaluateVisibilityConfig({
+    visibility: tab.visibility ?? tab.config?.visibility,
+    values,
+    schema,
+    relatedRecordsByField,
+  });
 }

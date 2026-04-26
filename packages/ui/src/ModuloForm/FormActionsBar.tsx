@@ -6,6 +6,8 @@ import { ActionMenu } from "../ActionMenu";
 import { applyCompute } from "../engines/computeEngine"; // ajusta ruta real si difiere
 import { dataProvider } from "../providers/DataProvider"; // ajusta ruta real si difiere
 import { downloadPdf, openPdfInNewTab, openPdfInSameTab } from "../pdf";
+import { evaluateActionVisibility } from "../engines/visibilityEngine";
+import type { VisibilityConfig } from "@repo/types";
 
 type Mode = "view" | "edit" | "create";
 
@@ -35,6 +37,7 @@ type BaseAction = {
   showIn?: Mode[]; // default: ["view","edit","create"]
   confirm?: { title?: string; text: string };
   disabledWhen?: DisabledWhen;
+  visibility?: VisibilityConfig;
   // opcional: posicionarlo (por si luego quieres header/footer)
   placement?: "top" | "bottom";
 };
@@ -161,6 +164,7 @@ export default function FormActionsBar(props: {
     /** tabla actual (origen) */
     table?: string;
   };
+  relatedRecordsByField?: Record<string, any>;
 }) {
   const {
     schema,
@@ -170,6 +174,7 @@ export default function FormActionsBar(props: {
     navigate,
     resolveRoute,
     actions = [],
+    relatedRecordsByField,
   } = props;
 
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -181,9 +186,21 @@ export default function FormActionsBar(props: {
       const showIn = a.showIn?.length
         ? a.showIn
         : (["view", "edit", "create"] as Mode[]);
-      return showIn.includes(mode);
+      if (!showIn.includes(mode)) return false;
+
+      try {
+        return evaluateActionVisibility({
+          action: a,
+          values,
+          schema,
+          relatedRecordsByField,
+        });
+      } catch (e) {
+        console.warn("Error evaluando visibilidad de acción", a?.id, e);
+        return false;
+      }
     });
-  }, [actions, mode]);
+  }, [actions, mode, values, schema, relatedRecordsByField]);
 
   const go = (href: string) => {
     if (navigate) return navigate(href);

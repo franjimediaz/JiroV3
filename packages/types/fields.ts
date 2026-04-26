@@ -77,12 +77,14 @@ export type PdfPreviewSpecialView = {
   label: string;
   type: "pdfPreview";
   config?: PdfPreviewSpecialViewConfig;
+  visibility?: VisibilityConfig;
 };
 export type CalendarSpecialView = {
   id: string;
   label: string;
   type: "calendar";
   config?: CalendarSpecialViewConfig;
+  visibility?: VisibilityConfig;
 };
 export type SpecialViewConfig = PdfPreviewSpecialView | CalendarSpecialView;
 export type SelectorTablaRef = {
@@ -225,18 +227,21 @@ export type UiTab =
                         label: string;
                         type: "form";
                         config?: { formSections?: FormSection[] };
+                        visibility?: VisibilityConfig;
                       }
                     | {
                         id: string;
                         label: string;
                         type: "treeview";
                         config?: TreeViewConfigLegacy | TreeViewConfig | any;
+                        visibility?: VisibilityConfig;
                       }
                     | {
                         id: string;
                         label: string;
                         type: "calendar";
                         config?: CalendarSpecialViewConfig & { sourceTable?: string };
+                        visibility?: VisibilityConfig;
                       };
 export type ModuleUiSchema = {
   icon?: string;
@@ -469,6 +474,7 @@ type BaseFormAction = {
   showIn?: FormMode[]; // default: ["view","edit","create"]
   confirm?: ActionConfirm;
   disabledWhen?: ActionDisabledWhen;
+  visibility?: VisibilityConfig;
 
   /** por si luego quieres colocar arriba/abajo */
   placement?: "top" | "bottom";
