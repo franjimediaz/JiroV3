@@ -3,8 +3,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { CalendarSpecialViewConfig, CalendarViewMode, ModuleSchema } from "@repo/types";
 import { normalizeCalendarConfig } from "@repo/types";
-import type { DataProvider } from "./engines/computeEngine";
-import { dataProvider as defaultDataProvider } from "./providers/DataProvider";
+import type { DataProvider } from "../../engines/computeEngine";
+import { dataProvider as defaultDataProvider } from "../../providers/DataProvider";
 
 type CalendarEvent = {
   id: string;

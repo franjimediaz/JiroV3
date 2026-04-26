@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
-import Selector from "../Selector";
+import Selector from "../components/fields/Selector";
 import type { Field as FieldSchema, VisibilityConfig } from "@repo/types";
 import { VisibilityConfigEditor } from "./FieldRow";
 

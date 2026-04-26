@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { dataProvider } from "./providers/DataProvider";
-import { PopupSelector } from "./modals/PopUpSelector";
+import { dataProvider } from "../../providers/DataProvider";
+import { PopupSelector } from "../../modals/PopUpSelector";
 import {
   matchesSelectorTableFilterGroup,
   resolveSelectorTableFiltersToQuery,

@@ -10,7 +10,7 @@ import type {
 import { normalizeFieldConfig, normalizeModuleSchema } from "@repo/types";
 import { ActionMenu } from "./ActionMenu";
 import { dataProvider } from "./providers/DataProvider";
-import  SelectorTabla  from "./Selector";
+import  SelectorTabla  from "./components/fields/Selector";
 import {
   collectRelationPendingKeys,
   getRelationDisplayConfig,

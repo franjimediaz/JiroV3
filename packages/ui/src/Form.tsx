@@ -20,8 +20,8 @@ import ReverseLinkTable from "./components/fields/ReverseLinkTable";
 import TreeView from "./components/specialViews/TreeView";
 import FormActionsBar from "./ModuloForm/FormActionsBar";
 import type { FormAction } from "./ModuloForm/FormActionsBar";
-import DetachedFieldInput from "./FieldInput";
-import ModuleCalendarView from "./ModuleCalendarView";
+import DetachedFieldInput from "./components/fields/FieldInput";
+import ModuleCalendarView from "./components/specialViews/ModuleCalendarView";
 import PdfTemplatePreview from "./PdfTemplatePreview";
 import PlanEditorView from "./components/specialViews/PlanEditorView/PlanEditorView";
 import {
