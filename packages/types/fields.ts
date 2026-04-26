@@ -16,7 +16,7 @@ export type Compute =
       op: "sum" | "avg" | "min" | "max" | "count";
       where: Array<{
         field: string;
-        op: "=" | "in";
+        op: "=" | "!=" | ">" | "<" | ">=" | "<=" | "in";
         valueFrom?: "this" | "context"; // "this" usa valores del propio formulario
         path?: string;                  // nombre del campo en "this", p.ej. "servicioId"
         value?: any;                    // valor literal cuando no usas valueFrom
@@ -55,7 +55,7 @@ export type FormPreviewTab = {
   pdfTemplateId: string;
 };
 export type CalendarViewMode = "month" | "week" | "day";
-export type SpecialViewType = "pdfPreview" | "calendar";
+export type SpecialViewType = "pdfPreview" | "calendar" | "planEditor";
 export type PdfPreviewSpecialViewConfig = {
   pdfTemplateId?: string;
 };
@@ -72,6 +72,49 @@ export type CalendarSpecialViewConfig = {
   defaultView?: CalendarViewMode;
   enabledViews?: CalendarViewMode[];
 };
+export type PlanDynamicSourceConfig = {
+  enabled?: boolean;
+  moduleSlug?: string;
+  table?: string;
+  valueField?: string;
+  labelField?: string;
+  displayField?: string;
+  iconField?: string;
+  colorField?: string;
+  categoryField?: string;
+  typeField?: string;
+  orderField?: string;
+  lockedField?: string;
+  visibleField?: string;
+  filters?: QueryFilter[];
+  sort?: QuerySort[];
+};
+export type PlanLinkTargetConfig = {
+  label: string;
+  moduleSlug: string;
+  table?: string;
+  valueField?: string;
+  displayField?: string;
+  filters?: QueryFilter[];
+  sort?: QuerySort[];
+};
+export type PlanEditorSpecialViewConfig = {
+  sourceField: string;
+  options?: {
+    width?: number;
+    height?: number;
+    unit?: "m" | "cm" | "mm" | "px";
+    scale?: {
+      pixels: number;
+      realValue: number;
+      unit: "m" | "cm" | "mm" | "px";
+    } | null;
+    exportTitle?: string;
+    symbolsSource?: PlanDynamicSourceConfig;
+    defaultLayersSource?: PlanDynamicSourceConfig;
+    linkTargets?: PlanLinkTargetConfig[];
+  };
+};
 export type PdfPreviewSpecialView = {
   id: string;
   label: string;
@@ -86,7 +129,16 @@ export type CalendarSpecialView = {
   config?: CalendarSpecialViewConfig;
   visibility?: VisibilityConfig;
 };
-export type SpecialViewConfig = PdfPreviewSpecialView | CalendarSpecialView;
+export type PlanEditorSpecialView = {
+  id: string;
+  label: string;
+  type: "planEditor";
+  sourceField: string;
+  options?: PlanEditorSpecialViewConfig["options"];
+  config?: PlanEditorSpecialViewConfig;
+  visibility?: VisibilityConfig;
+};
+export type SpecialViewConfig = PdfPreviewSpecialView | CalendarSpecialView | PlanEditorSpecialView;
 export type SelectorTablaRef = {
   moduleSlug: string;
   multiple?: boolean;
@@ -241,6 +293,15 @@ export type UiTab =
                         label: string;
                         type: "calendar";
                         config?: CalendarSpecialViewConfig & { sourceTable?: string };
+                        visibility?: VisibilityConfig;
+                      }
+                    | {
+                        id: string;
+                        label: string;
+                        type: "planEditor";
+                        sourceField?: string;
+                        options?: PlanEditorSpecialViewConfig["options"];
+                        config?: PlanEditorSpecialViewConfig;
                         visibility?: VisibilityConfig;
                       };
 export type ModuleUiSchema = {

@@ -4,8 +4,8 @@ import { useState, useTransition, useEffect, useRef, useCallback} from "react";
 import styles from "./modulo-detalle.module.css";
 import  Selector from "../Selector";
 import {IconPicker} from "@repo/ui";
-import type { CalendarSpecialViewConfig, CalendarViewMode, Field as FieldSchema, ModuleSchema, Field, FormPreviewTab, FormSection, SpecialViewConfig, UiTab} from "@repo/types";
-import { normalizeModuleDefaultFilters, normalizeModuleSchema, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
+import type { CalendarSpecialViewConfig, CalendarViewMode, Field as FieldSchema, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
+import { normalizeModuleDefaultFilters, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
 import { FieldRow, VisibilityConfigEditor } from "./FieldRow"
 import ModuleDefaultFiltersBuilder from "./ModuleDefaultFiltersBuilder";
@@ -299,6 +299,254 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h3 style={{ marginTop: 0 }}>{title}</h3>
       {children}
     </div>
+  );
+}
+
+function PlanEditorConfigPanel({
+  value,
+  fields,
+  fieldsByTable,
+  readOnly,
+  ensureTableFields,
+  onChange,
+}: {
+  value: PlanEditorSpecialViewConfig;
+  fields: ModuleFieldOption[];
+  fieldsByTable: Record<string, ModuleFieldOption[]>;
+  readOnly: boolean;
+  ensureTableFields: (tableSlug: string) => void;
+  onChange: (patch: Partial<PlanEditorSpecialViewConfig>) => void;
+}) {
+  const options = value.options || {};
+  const updateOptions = (patch: NonNullable<PlanEditorSpecialViewConfig["options"]>) =>
+    onChange({ options: { ...options, ...patch } });
+
+  const updateSource = (key: "symbolsSource" | "defaultLayersSource", patch: Partial<PlanDynamicSourceConfig>) => {
+    const current = options[key] || {};
+    updateOptions({ [key]: { ...current, ...patch } } as NonNullable<PlanEditorSpecialViewConfig["options"]>);
+  };
+
+  const linkTargets = options.linkTargets || [];
+  const updateLinkTarget = (index: number, patch: Partial<PlanLinkTargetConfig>) => {
+    updateOptions({
+      linkTargets: linkTargets.map((target, targetIndex) => targetIndex === index ? { ...target, ...patch } : target),
+    });
+  };
+
+  return (
+    <div className={styles.card} style={{ marginTop: 12 }}>
+      <h4 style={{ marginTop: 0 }}>Configuracion Plano</h4>
+      <div className={styles.grid}>
+        <div>
+          <label className={styles.label}>sourceField</label>
+          <select className={styles.input} value={value.sourceField || ""} onChange={(e) => onChange({ sourceField: e.target.value })} disabled={readOnly}>
+            <option value="">Seleccionar campo</option>
+            {fields.map((candidate) => (
+              <option key={candidate.name} value={candidate.name}>
+                {candidate.label || candidate.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className={styles.label}>Ancho canvas</label>
+          <input className={styles.input} type="number" min={100} value={options.width || 1200} onChange={(e) => updateOptions({ width: Number(e.target.value || 1200) })} disabled={readOnly} />
+        </div>
+
+        <div>
+          <label className={styles.label}>Alto canvas</label>
+          <input className={styles.input} type="number" min={100} value={options.height || 800} onChange={(e) => updateOptions({ height: Number(e.target.value || 800) })} disabled={readOnly} />
+        </div>
+
+        <div>
+          <label className={styles.label}>Unidad</label>
+          <select className={styles.input} value={options.unit || "m"} onChange={(e) => updateOptions({ unit: e.target.value as "m" | "cm" | "mm" | "px" })} disabled={readOnly}>
+            <option value="m">m</option>
+            <option value="cm">cm</option>
+            <option value="mm">mm</option>
+            <option value="px">px</option>
+          </select>
+        </div>
+
+        <div>
+          <label className={styles.label}>Titulo exportacion</label>
+          <input className={styles.input} value={options.exportTitle || ""} onChange={(e) => updateOptions({ exportTitle: e.target.value })} disabled={readOnly} />
+        </div>
+      </div>
+
+      <PlanSourceEditor
+        title="Catalogo dinamico de simbolos"
+        value={options.symbolsSource}
+        fieldsByTable={fieldsByTable}
+        readOnly={readOnly}
+        ensureTableFields={ensureTableFields}
+        onChange={(patch) => updateSource("symbolsSource", patch)}
+        mappingFields={["valueField", "labelField", "iconField", "colorField", "categoryField", "typeField"]}
+      />
+
+      <PlanSourceEditor
+        title="Capas iniciales desde modulo"
+        value={options.defaultLayersSource}
+        fieldsByTable={fieldsByTable}
+        readOnly={readOnly}
+        ensureTableFields={ensureTableFields}
+        onChange={(patch) => updateSource("defaultLayersSource", patch)}
+        mappingFields={["valueField", "labelField", "colorField", "orderField", "lockedField", "visibleField"]}
+      />
+
+      <div className={styles.card} style={{ marginTop: 12 }}>
+        <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
+          <h5 style={{ margin: 0 }}>Destinos de vinculacion</h5>
+          <button
+            type="button"
+            className={styles.btn}
+            disabled={readOnly}
+            onClick={() => updateOptions({ linkTargets: [...linkTargets, { label: "", moduleSlug: "", table: "", valueField: "id", displayField: "id", filters: [], sort: [] }] })}
+          >
+            Anadir destino
+          </button>
+        </div>
+
+        {linkTargets.length === 0 ? <div className={styles.hint}>Sin destinos configurados.</div> : null}
+        {linkTargets.map((target, index) => {
+          const fieldOptions = fieldsByTable[target.moduleSlug || ""] || [];
+          return (
+            <div key={index} className={styles.card} style={{ marginTop: 10 }}>
+              <div className={styles.grid}>
+                <label>
+                  <span className={styles.label}>Label</span>
+                  <input className={styles.input} value={target.label || ""} disabled={readOnly} onChange={(e) => updateLinkTarget(index, { label: e.target.value })} />
+                </label>
+                <div>
+                  <label className={styles.label}>Modulo destino</label>
+                  <Selector
+                    moduleSlug="modulos"
+                    displayField="nombre"
+                    valueField="slug"
+                    value={target.moduleSlug || ""}
+                    readOnly={readOnly}
+                    placeholder="Seleccionar modulo"
+                    filters={[{ field: "activo", op: "=", value: true }, { field: "tipo", op: "in", value: ["tabla", "subtabla", "vista"] }]}
+                    sort={[{ field: "orden", direction: "asc" }]}
+                    onChange={(moduleSlug: string) => {
+                      ensureTableFields(moduleSlug);
+                      updateLinkTarget(index, { moduleSlug, table: moduleSlug, valueField: "id", displayField: "id" });
+                    }}
+                  />
+                </div>
+                <PlanFieldSelect label="valueField" value={target.valueField || "id"} fields={fieldOptions} disabled={readOnly || !target.moduleSlug} onChange={(field) => updateLinkTarget(index, { valueField: field })} />
+                <PlanFieldSelect label="displayField" value={target.displayField || "id"} fields={fieldOptions} disabled={readOnly || !target.moduleSlug} onChange={(field) => updateLinkTarget(index, { displayField: field })} />
+              </div>
+              <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
+                <button type="button" className={styles.btn} disabled={readOnly} onClick={() => updateOptions({ linkTargets: linkTargets.filter((_, targetIndex) => targetIndex !== index) })}>
+                  Eliminar destino
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className={styles.hint}>El plano se guarda como JSON versionado en el campo seleccionado. Simbolos, capas y vinculos se resuelven desde modulos configurados.</div>
+    </div>
+  );
+}
+
+function PlanSourceEditor({
+  title,
+  value,
+  fieldsByTable,
+  readOnly,
+  ensureTableFields,
+  mappingFields,
+  onChange,
+}: {
+  title: string;
+  value?: PlanDynamicSourceConfig;
+  fieldsByTable: Record<string, ModuleFieldOption[]>;
+  readOnly: boolean;
+  ensureTableFields: (tableSlug: string) => void;
+  mappingFields: Array<keyof PlanDynamicSourceConfig>;
+  onChange: (patch: Partial<PlanDynamicSourceConfig>) => void;
+}) {
+  const source = value || {};
+  const fieldOptions = fieldsByTable[source.moduleSlug || ""] || [];
+
+  return (
+    <div className={styles.card} style={{ marginTop: 12 }}>
+      <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+        <input type="checkbox" checked={!!source.enabled} disabled={readOnly} onChange={(e) => onChange({ enabled: e.target.checked })} />
+        <strong>{title}</strong>
+      </label>
+      <div className={styles.grid}>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <label className={styles.label}>Modulo origen</label>
+          <Selector
+            moduleSlug="modulos"
+            displayField="nombre"
+            valueField="slug"
+            value={source.moduleSlug || ""}
+            readOnly={readOnly || !source.enabled}
+            placeholder="Seleccionar modulo"
+            filters={[{ field: "activo", op: "=", value: true }, { field: "tipo", op: "in", value: ["tabla", "subtabla", "vista"] }]}
+            sort={[{ field: "orden", direction: "asc" }]}
+            onChange={(moduleSlug: string) => {
+              ensureTableFields(moduleSlug);
+              onChange({ moduleSlug, table: moduleSlug, valueField: "id", labelField: "id" });
+            }}
+          />
+        </div>
+        <label>
+          <span className={styles.label}>table</span>
+          <input className={styles.input} value={source.table || ""} disabled={readOnly || !source.enabled} onChange={(e) => onChange({ table: e.target.value })} />
+        </label>
+        {mappingFields.map((fieldName) => (
+          <PlanFieldSelect
+            key={String(fieldName)}
+            label={String(fieldName)}
+            value={String(source[fieldName] || "")}
+            fields={fieldOptions}
+            disabled={readOnly || !source.enabled || !source.moduleSlug}
+            allowEmpty={fieldName !== "valueField" && fieldName !== "labelField"}
+            onChange={(field) => onChange({ [fieldName]: field } as Partial<PlanDynamicSourceConfig>)}
+          />
+        ))}
+      </div>
+      <div className={styles.hint}>Filtros y ordenacion se conservan en JSON si ya existen; esta UI configura el origen y el mapeo de campos.</div>
+    </div>
+  );
+}
+
+function PlanFieldSelect({
+  label,
+  value,
+  fields,
+  disabled,
+  allowEmpty = false,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  fields: ModuleFieldOption[];
+  disabled?: boolean;
+  allowEmpty?: boolean;
+  onChange: (field: string) => void;
+}) {
+  const hasValue = !!value && !fields.some((field) => field.name === value);
+  return (
+    <label>
+      <span className={styles.label}>{label}</span>
+      <select className={styles.input} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+        {allowEmpty ? <option value="">Sin campo</option> : <option value="">Seleccionar campo</option>}
+        {hasValue ? <option value={value}>{value}</option> : null}
+        {fields.map((field) => (
+          <option key={field.name} value={field.name}>
+            {field.label || field.name}{field.type ? ` (${field.type})` : ""}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -1544,6 +1792,34 @@ const editorTabs = [
           onClick={() => {
             const current = getSpecialViews();
             const n = current.length + 1;
+            const nextId = `plan_${n}`;
+            setSpecialViews([
+              ...current,
+              {
+                id: nextId,
+                label: `Plano ${n}`,
+                type: "planEditor",
+                sourceField: "planoJson",
+                options: { width: 1200, height: 800, unit: "m", scale: null },
+                config: {
+                  sourceField: "planoJson",
+                  options: { width: 1200, height: 800, unit: "m", scale: null },
+                },
+              },
+            ]);
+            setActiveViewEditorId(`special:${nextId}`);
+          }}
+          disabled={readOnly}
+        >
+          + Añadir Plano
+        </button>
+
+        <button
+          type="button"
+          className={styles.btnAdd}
+          onClick={() => {
+            const current = getSpecialViews();
+            const n = current.length + 1;
             const nextId = `special_view_${n}`;
             setSpecialViews([
               ...current,
@@ -1627,6 +1903,7 @@ const editorTabs = [
             setActiveViewEditorId(next[0] ? `special:${next[0].id}` : "");
           };
           const calendarConfig = view.type === "calendar" ? normalizeCalendarConfig(view.config) : null;
+          const planEditorConfig = view.type === "planEditor" ? normalizePlanEditorConfig(view.config ?? view) : null;
           const calendarFields = calendarConfig ? getTableFields(calendarConfig.sourceModuleSlug) : [];
           const titleFieldOptions = sortFieldsForCalendar(calendarFields, ["text", "textarea", "select"]);
           const startFieldOptions = sortFieldsForCalendar(calendarFields, ["datetime", "date"]);
@@ -1646,6 +1923,28 @@ const editorTabs = [
                 ...patch,
               },
             }));
+          };
+          const updatePlanEditorConfig = (patch: Partial<PlanEditorSpecialViewConfig>) => {
+            updateView((prev) => {
+              const current = normalizePlanEditorConfig(prev.type === "planEditor" ? prev.config ?? prev : {});
+              const nextConfig: PlanEditorSpecialViewConfig = {
+                ...current,
+                ...patch,
+                options: {
+                  ...(current.options || {}),
+                  ...(patch.options || {}),
+                },
+              };
+              return {
+                id: prev.id,
+                label: prev.label,
+                type: "planEditor",
+                visibility: (prev as any).visibility,
+                sourceField: nextConfig.sourceField,
+                options: nextConfig.options,
+                config: nextConfig,
+              };
+            });
           };
 
           return (
@@ -1692,6 +1991,22 @@ const editorTabs = [
                           };
                         }
 
+                        if (nextType === "planEditor") {
+                          const config =
+                            prev.type === "planEditor"
+                              ? normalizePlanEditorConfig(prev.config ?? prev)
+                              : normalizePlanEditorConfig({ sourceField: "planoJson" });
+                          return {
+                            id: prev.id,
+                            label: prev.label,
+                            type: "planEditor",
+                            visibility: (prev as any).visibility,
+                            sourceField: config.sourceField,
+                            options: config.options,
+                            config,
+                          };
+                        }
+
                         return {
                           id: prev.id,
                           label: prev.label,
@@ -1707,6 +2022,7 @@ const editorTabs = [
                   >
                     <option value="pdfPreview">Preview PDF</option>
                     <option value="calendar">Calendario</option>
+                    <option value="planEditor">Plano</option>
                   </select>
                 </div>
               </div>
@@ -1967,6 +2283,17 @@ const editorTabs = [
                 </div>
               )}
 
+              {view.type === "planEditor" && planEditorConfig && (
+                <PlanEditorConfigPanel
+                  value={planEditorConfig}
+                  fields={propsObj.fields as ModuleFieldOption[]}
+                  fieldsByTable={fieldsByTable}
+                  readOnly={readOnly}
+                  ensureTableFields={ensureTableFields}
+                  onChange={updatePlanEditorConfig}
+                />
+              )}
+
               <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
                 <button
                   type="button"
@@ -2052,6 +2379,19 @@ const editorTabs = [
                         };
                       }
 
+                      if (nextType === "planEditor") {
+                        const config = normalizePlanEditorConfig({ sourceField: "planoJson" });
+                        return {
+                          id: prev.id,
+                          label: prev.label,
+                          type: "planEditor",
+                          visibility: (prev as any).visibility,
+                          sourceField: config.sourceField,
+                          options: config.options,
+                          config,
+                        };
+                      }
+
                       return {
                         id: prev.id,
                         label: prev.label,
@@ -2065,6 +2405,7 @@ const editorTabs = [
                 >
                   <option value="treeview">Tree View</option>
                   <option value="calendar">Calendario</option>
+                  <option value="planEditor">Plano</option>
                 </select>
               </div>
             </div>
@@ -2510,6 +2851,42 @@ const editorTabs = [
                       </div>
                     </div>
                   </div>
+                );
+              })()
+            )}
+
+            {t.type === "planEditor" && (
+              (() => {
+                const planEditorConfig = normalizePlanEditorConfig(t.config ?? t);
+                const updatePlanTabConfig = (patch: Partial<PlanEditorSpecialViewConfig>) =>
+                  updateTab((prev) => {
+                    if (prev.type !== "planEditor") return prev;
+                    const current = normalizePlanEditorConfig(prev.config ?? prev);
+                    const nextConfig: PlanEditorSpecialViewConfig = {
+                      ...current,
+                      ...patch,
+                      options: {
+                        ...(current.options || {}),
+                        ...(patch.options || {}),
+                      },
+                    };
+                    return {
+                      ...prev,
+                      sourceField: nextConfig.sourceField,
+                      options: nextConfig.options,
+                      config: nextConfig,
+                    };
+                  });
+
+                return (
+                  <PlanEditorConfigPanel
+                    value={planEditorConfig}
+                    fields={propsObj.fields as ModuleFieldOption[]}
+                    fieldsByTable={fieldsByTable}
+                    readOnly={readOnly}
+                    ensureTableFields={ensureTableFields}
+                    onChange={updatePlanTabConfig}
+                  />
                 );
               })()
             )}

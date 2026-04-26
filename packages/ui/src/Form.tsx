@@ -11,7 +11,7 @@ import type {
   TreeViewDataProvider,
   UiTab,
 } from "@repo/types";
-import { normalizeCalendarConfig, normalizeModuleSchema } from "@repo/types";
+import { normalizeCalendarConfig, normalizeModuleSchema, normalizePlanEditorConfig } from "@repo/types";
 import { applyCompute } from "./engines/computeEngine";
 import type { DataProvider } from "./engines/computeEngine";
 import { evaluateFieldVisibility, evaluateTabVisibility } from "./engines/visibilityEngine";
@@ -23,6 +23,7 @@ import type { FormAction } from "./ModuloForm/FormActionsBar";
 import DetachedFieldInput from "./FieldInput";
 import ModuleCalendarView from "./ModuleCalendarView";
 import PdfTemplatePreview from "./PdfTemplatePreview";
+import PlanEditorView from "./components/specialViews/PlanEditorView/PlanEditorView";
 import {
   buildRelationDisplayEntry,
   getRelationCacheKey,
@@ -269,7 +270,7 @@ export default function Form({
         const label = String(tab?.label || tab?.title || (type === "form" ? "Formulario" : type));
         return { id, label, type, config: tab?.config ?? tab, visibility: tab?.visibility };
       })
-      .filter((tab: UiTab) => ["form", "treeview", "calendar"].includes(tab.type));
+      .filter((tab: UiTab) => ["form", "treeview", "calendar", "planEditor"].includes(tab.type));
   }, [normalizedSchema.ui]);
 
   const specialViews = useMemo<SpecialViewConfig[]>(() => {
@@ -1004,6 +1005,29 @@ export default function Form({
     return legacyCalendarCfg;
   }, [activeTab, legacyCalendarCfg]);
 
+  const renderPlanEditorContent = (rawConfig: unknown) => {
+    const planConfig = normalizePlanEditorConfig(rawConfig);
+    const sourceField = planConfig.sourceField;
+
+    if (!sourceField) {
+      return (
+        <div className="alert alert-warning mb-0">
+          Esta vista planEditor necesita <code>sourceField</code>.
+        </div>
+      );
+    }
+
+    return (
+      <PlanEditorView
+        config={planConfig}
+        value={values[sourceField]}
+        mode={effectiveMode}
+        dataProvider={dataProvider}
+        onChange={(nextPlan) => handleChange(sourceField, nextPlan)}
+      />
+    );
+  };
+
   const treeSourceSlug =
     (treeViewConfig as any)?.source?.table ??
     (treeViewConfig as any)?.sourceTable ??
@@ -1214,6 +1238,8 @@ export default function Form({
             parentRecordId={effectiveRecordId}
           />
         );
+      case "planEditor":
+        return renderPlanEditorContent(view.config ?? view);
       default:
         return <div className="alert alert-warning mb-0">Tipo de vista no soportado.</div>;
     }
@@ -1262,6 +1288,8 @@ export default function Form({
         renderFormContent()
       ) : showSpecialViewContent ? (
         renderSpecialViewContent()
+      ) : activeTab?.type === "planEditor" ? (
+        renderPlanEditorContent(activeTab.config ?? activeTab)
       ) : activeTab?.type === "treeview" ? (
         renderTreeViewContent()
       ) : (

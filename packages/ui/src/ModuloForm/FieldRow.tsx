@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import styles from "./modulo-detalle.module.css";
 import  Selector from "../Selector";
 import type {
@@ -16,6 +16,12 @@ import { FieldPickerModal} from "../modals/FieldPickerModal";
 import SelectorTableFiltersBuilder from "./SelectorTableFiltersBuilder";
 
 type RefPickCtx = null | { kind: "refDisplayField" };
+type FieldOption = { name: string; label?: string; type?: string };
+type AggregateWhereCondition = {
+  field: string;
+  op: "=" | "!=" | ">" | "<" | ">=" | "<=" | "in";
+  value?: any;
+};
 
 const visibilityOperators: VisibilityOperator[] = [
   "=",
@@ -89,6 +95,21 @@ const defaultAggregate: Extract<Compute, { type: "aggregate" }> = {
 };
 
 const computeNone: Extract<Compute, { type: "none" }> = { type: "none" };
+const aggregateWhereOperators: AggregateWhereCondition["op"][] = ["=", "!=", ">", "<", ">=", "<=", "in"];
+const numericFieldTypes = new Set(["number", "money", "percent"]);
+const sortableFieldTypes = new Set(["number", "money", "percent", "date", "datetime", "text", "textarea", "select"]);
+const formulaArithmeticOperators = ["+", "-", "*", "/", "(", ")"];
+const formulaComparators = ["=", "!=", ">", ">=", "<", "<="];
+const formulaLogicalOperators = ["AND", "OR", "NOT"];
+const formulaConstants = ["true", "false", "null"];
+const formulaFunctionSnippets = [
+  { label: "IF", token: "IF(condicion, valorSiTrue, valorSiFalse)" },
+  { label: "CASE", token: "CASE(campo, valor1, resultado1, valor2, resultado2, default)" },
+  { label: "CASE TRUE", token: "CASE(true, condicion1, resultado1, condicion2, resultado2, default)" },
+  { label: "ISNULL", token: "ISNULL(valor, fallback)" },
+  { label: "ISNULL?", token: "ISNULL(valor)" },
+  { label: "COALESCE", token: "COALESCE(valor1, valor2, fallback)" },
+];
 
 
 function normalizeFieldType(field: Field, nextType: FieldType): Field {
@@ -526,6 +547,662 @@ function getLabelForFieldName(
   return fields.find((f) => f.name === name)?.label || name;
 }
 
+function buildFieldOptions(fields: FieldOption[], selectedName?: string) {
+  const output = [...fields];
+  if (selectedName && !output.some((candidate) => candidate.name === selectedName)) {
+    output.push({ name: selectedName, label: selectedName });
+  }
+  return output;
+}
+
+function sortAggregateFields(fields: FieldOption[], op: Extract<Compute, { type: "aggregate" }>["op"]) {
+  if (op === "count") return fields;
+  const preferred = op === "sum" || op === "avg" ? numericFieldTypes : sortableFieldTypes;
+  return [...fields].sort((a, b) => {
+    const aPreferred = preferred.has(String(a.type || "")) ? 0 : 1;
+    const bPreferred = preferred.has(String(b.type || "")) ? 0 : 1;
+    if (aPreferred !== bPreferred) return aPreferred - bPreferred;
+    return (a.label || a.name).localeCompare(b.label || b.name, "es");
+  });
+}
+
+function parseAggregateWhereValue(raw: string, op: AggregateWhereCondition["op"]) {
+  if (op === "in") {
+    return raw
+      .split(",")
+      .map((entry) => parseScalarValue(entry.trim()))
+      .filter((entry) => entry !== "");
+  }
+  return parseScalarValue(raw);
+}
+
+function parseScalarValue(raw: string) {
+  const trimmed = raw.trim();
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (trimmed === "null") return null;
+  if (trimmed !== "" && !Number.isNaN(Number(trimmed))) return Number(trimmed);
+  return raw;
+}
+
+function formatAggregateWhereValue(value: any) {
+  if (Array.isArray(value)) return value.map((entry) => String(entry)).join(", ");
+  if (value === undefined || value === null) return value === null ? "null" : "";
+  return String(value);
+}
+
+function normalizeAggregateWhere(where: any): AggregateWhereCondition[] {
+  if (!Array.isArray(where)) return [];
+  return where
+    .filter((condition) => condition && typeof condition === "object")
+    .map((condition) => ({
+      field: typeof condition.field === "string" ? condition.field : "",
+      op: aggregateWhereOperators.includes(condition.op) ? condition.op : "=",
+      value: "value" in condition ? condition.value : "",
+    }));
+}
+
+function FormulaComputeEditor({
+  field,
+  allFields,
+  readOnly,
+  onChange,
+}: {
+  field: FieldSchema;
+  allFields: FieldSchema[];
+  readOnly?: boolean;
+  onChange: (f: FieldSchema) => void;
+}) {
+  const formula = ensureFormula(field);
+  const availableFields = allFields.filter((candidate) => candidate.name && candidate.name !== field.name);
+  const selectedDeps = formula.deps || [];
+
+  const updateFormula = (patch: Partial<Extract<Compute, { type: "formula" }>>) => {
+    onChange({ ...field, compute: { ...formula, ...patch } });
+  };
+
+  const insertToken = (token: string, depName?: string) => {
+    if (readOnly) return;
+    const separator = formula.expr && !formula.expr.endsWith(" ") ? " " : "";
+    updateFormula({
+      expr: `${formula.expr}${separator}${token}`,
+      deps: depName && !selectedDeps.includes(depName) ? [...selectedDeps, depName] : selectedDeps,
+    });
+  };
+
+  const toggleDep = (name: string) => {
+    if (readOnly) return;
+    const next = selectedDeps.includes(name)
+      ? selectedDeps.filter((dep) => dep !== name)
+      : [...selectedDeps, name];
+    updateFormula({ deps: next });
+  };
+
+  return (
+    <div className={styles.card} style={{ marginTop: 12 }}>
+      <h4 style={{ marginTop: 0 }}>Cálculo (formula)</h4>
+
+      <label className={styles.label}>Expresión</label>
+      <textarea
+        className={styles.textarea}
+        rows={4}
+        value={formula.expr}
+        onChange={(e) => updateFormula({ expr: e.target.value })}
+        spellCheck={false}
+        disabled={readOnly}
+        placeholder="precioUnidad * cantidad"
+      />
+      <div className={styles.hint} style={{ marginTop: 6 }}>
+        Sintaxis compatible con el motor actual: variables planas, textos entre comillas, booleanos, <code>null</code>,
+        comparadores, <code>AND</code>/<code>OR</code>/<code>NOT</code> y funciones <code>IF</code>, <code>CASE</code>,
+        <code>ISNULL</code>, <code>COALESCE</code>. En aritmética, campos vacíos cuentan como 0.
+      </div>
+
+      <div className={styles.grid} style={{ marginTop: 12 }}>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <label className={styles.label}>Insertar campo</label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {availableFields.length === 0 ? <span className={styles.hint}>No hay otros campos disponibles.</span> : null}
+            {availableFields.map((candidate) => (
+              <button
+                key={candidate.name}
+                type="button"
+                className={styles.btn}
+                onClick={() => insertToken(candidate.name, candidate.name)}
+                disabled={readOnly}
+                title={candidate.label || candidate.name}
+              >
+                {candidate.label || candidate.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ gridColumn: "1 / -1" }}>
+          <label className={styles.label}>Operadores aritméticos</label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {formulaArithmeticOperators.map((operator) => (
+              <button
+                key={operator}
+                type="button"
+                className={styles.btn}
+                onClick={() => insertToken(operator)}
+                disabled={readOnly}
+              >
+                {operator}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ gridColumn: "1 / -1" }}>
+          <label className={styles.label}>Comparadores</label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {formulaComparators.map((operator) => (
+              <button
+                key={operator}
+                type="button"
+                className={styles.btn}
+                onClick={() => insertToken(operator)}
+                disabled={readOnly}
+              >
+                {operator}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ gridColumn: "1 / -1" }}>
+          <label className={styles.label}>Lógica y valores</label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {[...formulaLogicalOperators, ...formulaConstants].map((token) => (
+              <button
+                key={token}
+                type="button"
+                className={styles.btn}
+                onClick={() => insertToken(token)}
+                disabled={readOnly}
+              >
+                {token}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ gridColumn: "1 / -1" }}>
+          <label className={styles.label}>Funciones</label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {formulaFunctionSnippets.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                className={styles.btn}
+                onClick={() => insertToken(item.token)}
+                disabled={readOnly}
+                title={item.token}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className={styles.hint} style={{ marginTop: 6 }}>
+            Ejemplos: <code>IF(total &gt; 1000, total * 0.9, total)</code>,{" "}
+            <code>CASE(estado, "pendiente", 0, "aceptado", 1, 0)</code>,{" "}
+            <code>COALESCE(descuento, 0)</code>.
+          </div>
+        </div>
+      </div>
+
+      <label className={styles.label}>Dependencias</label>
+      <select
+        className={styles.input}
+        value=""
+        disabled={readOnly}
+        onChange={(event) => {
+          const next = event.target.value;
+          if (next) toggleDep(next);
+        }}
+      >
+        <option value="">Añadir dependencia</option>
+        {availableFields
+          .filter((candidate) => !selectedDeps.includes(candidate.name))
+          .map((candidate) => (
+            <option key={candidate.name} value={candidate.name}>
+              {candidate.label || candidate.name}
+            </option>
+          ))}
+      </select>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+        {selectedDeps.length === 0 ? <span className={styles.hint}>Sin dependencias seleccionadas.</span> : null}
+        {selectedDeps.map((dep) => (
+          <span key={dep} className={styles.badge}>
+            {getLabelForFieldName(availableFields, dep)}
+            <button type="button" onClick={() => toggleDep(dep)} disabled={readOnly} aria-label={`Eliminar ${dep}`}>
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+
+      <div className={styles.card} style={{ marginTop: 12 }}>
+        <label className={styles.label}>Resumen</label>
+        <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
+          {formula.expr || "Sin expresión"}
+        </div>
+        <div className={styles.hint} style={{ marginTop: 6 }}>
+          Depende de: {selectedDeps.length ? selectedDeps.join(", ") : "ningún campo"}
+        </div>
+      </div>
+
+      <label className={styles.label}>Persistencia</label>
+      <select
+        className={styles.input}
+        value={formula.persist}
+        onChange={(e) => updateFormula({ persist: e.target.value as "none" | "onSave" | "always" })}
+        disabled={readOnly}
+      >
+        <option value="none">none</option>
+        <option value="onSave">onSave</option>
+        <option value="always">always</option>
+      </select>
+    </div>
+  );
+}
+
+function AggregateComputeEditor({
+  field,
+  fieldsByTable,
+  loadingByTable,
+  ensureFieldsLoaded,
+  currentFields,
+  readOnly,
+  onChange,
+}: {
+  field: FieldSchema;
+  fieldsByTable: Record<string, FieldOption[]>;
+  loadingByTable: Record<string, boolean>;
+  ensureFieldsLoaded: (tableSlug: string) => void;
+  currentFields: FieldSchema[];
+  readOnly?: boolean;
+  onChange: (f: FieldSchema) => void;
+}) {
+  const aggregate = ensureAggregate(field);
+  const sourceFields = fieldsByTable[aggregate.sourceTable || ""] || [];
+  const orderedSourceFields = useMemo(
+    () => sortAggregateFields(sourceFields, aggregate.op),
+    [sourceFields, aggregate.op]
+  );
+
+  useEffect(() => {
+    if (aggregate.sourceTable) ensureFieldsLoaded(aggregate.sourceTable);
+  }, [aggregate.sourceTable, ensureFieldsLoaded]);
+
+  useEffect(() => {
+    if (!aggregate.sourceTable || !aggregate.field || sourceFields.length === 0) return;
+    if (aggregate.op === "count" && aggregate.field === "id") return;
+    if (!sourceFields.some((candidate) => candidate.name === aggregate.field)) {
+      onChange({ ...field, compute: { ...aggregate, field: "" } });
+    }
+  }, [aggregate.sourceTable, aggregate.field, aggregate.op, sourceFields, field, onChange]);
+
+  const updateAggregate = (patch: Partial<Extract<Compute, { type: "aggregate" }>>) => {
+    onChange({ ...field, compute: { ...aggregate, ...patch } });
+  };
+
+  return (
+    <div className={styles.card} style={{ marginTop: 12 }}>
+      <h4 style={{ marginTop: 0 }}>Cálculo (aggregate)</h4>
+
+      <div className={styles.grid}>
+        <div>
+          <label className={styles.label}>sourceTable</label>
+          <Selector
+            moduleSlug="modulos"
+            displayField="nombre"
+            valueField="slug"
+            value={aggregate.sourceTable || ""}
+            readOnly={readOnly}
+            placeholder="— Seleccionar —"
+            label="Selecciona la tabla origen (aggregate)"
+            filters={[
+              { field: "activo", op: "=", value: true },
+              { field: "tipo", op: "in", value: ["tabla", "subtabla"] },
+            ]}
+            sort={[{ field: "orden", direction: "asc" }]}
+            onChange={(slugSel: string) => {
+              const sourceTable = slugSel || "";
+              ensureFieldsLoaded(sourceTable);
+              onChange({
+                ...field,
+                compute: {
+                  ...aggregate,
+                  sourceTable,
+                  field: aggregate.sourceTable === sourceTable ? aggregate.field : aggregate.op === "count" ? "id" : "",
+                },
+              });
+            }}
+          />
+        </div>
+
+        <div>
+          <label className={styles.label}>op</label>
+          <select
+            className={styles.input}
+            value={aggregate.op}
+            onChange={(e) => {
+              const op = e.target.value as Extract<Compute, { type: "aggregate" }>["op"];
+              updateAggregate({ op, field: op === "count" && !aggregate.field ? "id" : aggregate.field });
+            }}
+            disabled={readOnly}
+          >
+            <option value="sum">sum</option>
+            <option value="avg">avg</option>
+            <option value="min">min</option>
+            <option value="max">max</option>
+            <option value="count">count</option>
+          </select>
+        </div>
+
+        <div>
+          <label className={styles.label}>field</label>
+          <select
+            className={styles.input}
+            value={aggregate.field}
+            onChange={(e) => updateAggregate({ field: aggregate.op === "count" && !e.target.value ? "id" : e.target.value })}
+            disabled={readOnly || !aggregate.sourceTable}
+          >
+            <option value={aggregate.op === "count" ? "id" : ""}>
+              {aggregate.op === "count" ? "id (count)" : "Seleccionar campo"}
+            </option>
+            {aggregate.op === "count" && !orderedSourceFields.some((candidate) => candidate.name === "id") ? (
+              <option value="id">id</option>
+            ) : null}
+            {buildFieldOptions(orderedSourceFields, aggregate.field).map((candidate) => (
+              <option key={candidate.name} value={candidate.name}>
+                {candidate.label || candidate.name}
+                {candidate.type ? ` (${candidate.type})` : ""}
+              </option>
+            ))}
+          </select>
+          <div className={styles.hint} style={{ marginTop: 4 }}>
+            {loadingByTable[aggregate.sourceTable || ""]
+              ? "Cargando campos..."
+              : aggregate.op === "sum" || aggregate.op === "avg"
+              ? "Los campos numéricos aparecen primero."
+              : aggregate.op === "count"
+              ? "El backend usa la clave primaria para contar; id es el valor seguro."
+              : "Puedes usar números, fechas o texto si el backend los acepta."}
+          </div>
+        </div>
+      </div>
+
+      <AggregateWhereBuilder
+        value={aggregate.where || []}
+        sourceTable={aggregate.sourceTable}
+        sourceFields={sourceFields}
+        currentFields={currentFields}
+        loading={!!loadingByTable[aggregate.sourceTable || ""]}
+        readOnly={readOnly}
+        onRequestFields={() => aggregate.sourceTable && ensureFieldsLoaded(aggregate.sourceTable)}
+        onChange={(where) => updateAggregate({ where })}
+      />
+
+      <label className={styles.label}>persist</label>
+      <select
+        className={styles.input}
+        value={aggregate.persist}
+        onChange={(e) => updateAggregate({ persist: e.target.value as "none" | "onSave" | "always" })}
+        disabled={readOnly}
+      >
+        <option value="none">none</option>
+        <option value="onSave">onSave</option>
+        <option value="always">always</option>
+      </select>
+    </div>
+  );
+}
+
+function AggregateWhereBuilder({
+  value,
+  sourceTable,
+  sourceFields,
+  currentFields,
+  loading,
+  readOnly,
+  onRequestFields,
+  onChange,
+}: {
+  value: any[];
+  sourceTable: string;
+  sourceFields: FieldOption[];
+  currentFields: FieldSchema[];
+  loading?: boolean;
+  readOnly?: boolean;
+  onRequestFields: () => void;
+  onChange: (where: AggregateWhereCondition[]) => void;
+}) {
+  const [mode, setMode] = useState<"visual" | "advanced">("visual");
+  const [whereText, setWhereText] = useState(() => JSON.stringify(value || [], null, 2));
+  const [whereErr, setWhereErr] = useState<string | null>(null);
+  const conditions = normalizeAggregateWhere(value);
+
+  useEffect(() => {
+    setWhereText(JSON.stringify(value || [], null, 2));
+    setWhereErr(null);
+  }, [value]);
+
+  const commitWhereIfValid = (text: string) => {
+    try {
+      const parsed = JSON.parse(text || "[]");
+      if (!Array.isArray(parsed)) {
+        setWhereErr("El where debe ser un array. Ejemplo: [{...}]");
+        return;
+      }
+      for (let i = 0; i < parsed.length; i++) {
+        const condition = parsed[i];
+        if (!condition || typeof condition !== "object") {
+          setWhereErr(`Condición [${i}] debe ser un objeto`);
+          return;
+        }
+        if (typeof condition.field !== "string" || !condition.field.trim()) {
+          setWhereErr(`Condición [${i}] => "field" (string) es requerido`);
+          return;
+        }
+        if (typeof condition.op !== "string" || !condition.op.trim()) {
+          setWhereErr(`Condición [${i}] => "op" (string) es requerido`);
+          return;
+        }
+        if (!("value" in condition)) {
+          setWhereErr(`Condición [${i}] => falta "value"`);
+          return;
+        }
+      }
+      setWhereErr(null);
+      onChange(parsed);
+    } catch (e: any) {
+      setWhereErr(e?.message || "JSON inválido");
+    }
+  };
+
+  const updateCondition = (index: number, patch: Partial<AggregateWhereCondition>) => {
+    const next = conditions.map((condition, conditionIndex) =>
+      conditionIndex === index ? { ...condition, ...patch } : condition
+    );
+    onChange(next);
+  };
+
+  const setDynamicValue = (index: number, fieldName: string) => {
+    updateCondition(index, { value: fieldName ? `{{${fieldName}}}` : "" });
+  };
+
+  return (
+    <div className={styles.card} style={{ marginTop: 12, marginBottom: 12 }}>
+      <div className={styles.actionsRow} style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+        <div>
+          <h4 style={{ margin: 0 }}>where</h4>
+          <div className={styles.hint}>
+            Se guarda como array legacy: <code>{`[{ "field": "obraId", "op": "=", "value": "{{id}}" }]`}</code>.
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" className={styles.btn} onClick={() => setMode("visual")} disabled={mode === "visual"}>
+            Visual
+          </button>
+          <button type="button" className={styles.btn} onClick={() => setMode("advanced")} disabled={mode === "advanced"}>
+            JSON avanzado
+          </button>
+        </div>
+      </div>
+
+      {mode === "visual" ? (
+        <div style={{ marginTop: 12 }}>
+          {!sourceTable ? <div className={styles.hint}>Selecciona primero sourceTable para elegir campos.</div> : null}
+          {sourceTable && sourceFields.length === 0 ? (
+            <div className={styles.hint}>
+              {loading ? "Cargando campos de la tabla origen..." : "Aún no hay campos cargados para la tabla origen."}
+              {!loading ? (
+                <>
+                  {" "}
+                  <button type="button" className={styles.btn} onClick={onRequestFields} disabled={readOnly}>
+                    Cargar campos
+                  </button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="d-flex flex-column gap-2">
+            {conditions.length === 0 ? <div className={styles.hint}>Sin condiciones.</div> : null}
+            {conditions.map((condition, index) => (
+              <div key={index} className={styles.card}>
+                <div className={styles.grid} style={{ alignItems: "end" }}>
+                  <div>
+                    <label className={styles.label}>Campo origen</label>
+                    <select
+                      className={styles.input}
+                      value={condition.field}
+                      disabled={readOnly || !sourceTable}
+                      onChange={(event) => updateCondition(index, { field: event.target.value })}
+                    >
+                      <option value="">Seleccionar campo</option>
+                      {buildFieldOptions(sourceFields, condition.field).map((candidate) => (
+                        <option key={candidate.name} value={candidate.name}>
+                          {candidate.label || candidate.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={styles.label}>Operador</label>
+                    <select
+                      className={styles.input}
+                      value={condition.op}
+                      disabled={readOnly}
+                      onChange={(event) =>
+                        updateCondition(index, {
+                          op: event.target.value as AggregateWhereCondition["op"],
+                          value: parseAggregateWhereValue(formatAggregateWhereValue(condition.value), event.target.value as AggregateWhereCondition["op"]),
+                        })
+                      }
+                    >
+                      {aggregateWhereOperators.map((operator) => (
+                        <option key={operator} value={operator}>
+                          {operator}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={styles.label}>Valor literal</label>
+                    <input
+                      className={styles.input}
+                      value={formatAggregateWhereValue(condition.value)}
+                      disabled={readOnly}
+                      placeholder={condition.op === "in" ? "a, b, c" : "valor"}
+                      onChange={(event) =>
+                        updateCondition(index, {
+                          value: parseAggregateWhereValue(event.target.value, condition.op),
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className={styles.label}>Valor dinámico</label>
+                    <select
+                      className={styles.input}
+                      value={
+                        (typeof condition.value === "string" &&
+                          condition.value.match(/^\{\{\s*([\w.]+)\s*\}\}$/)?.[1]) ||
+                        ""
+                      }
+                      disabled={readOnly}
+                      onChange={(event) => setDynamicValue(index, event.target.value)}
+                    >
+                      <option value="">Sin valor dinámico</option>
+                      {currentFields.map((candidate) => (
+                        <option key={candidate.name} value={candidate.name}>
+                          {candidate.label || candidate.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className={styles.switchRow}>
+                    <button
+                      type="button"
+                      className={styles.btnDel}
+                      onClick={() => onChange(conditions.filter((_, conditionIndex) => conditionIndex !== index))}
+                      disabled={readOnly}
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className={styles.btnAdd}
+            style={{ marginTop: 12 }}
+            disabled={readOnly}
+            onClick={() => onChange([...conditions, { field: "", op: "=", value: "" }])}
+          >
+            Añadir condición
+          </button>
+        </div>
+      ) : (
+        <div style={{ marginTop: 12 }}>
+          <textarea
+            className={styles.textarea}
+            rows={6}
+            value={whereText}
+            placeholder={`[
+  { "field": "obraId", "op": "=", "value": "{{id}}" }
+]`}
+            onChange={(e) => {
+              const next = e.target.value;
+              setWhereText(next);
+              commitWhereIfValid(next);
+            }}
+            onBlur={() => commitWhereIfValid(whereText)}
+            spellCheck={false}
+            disabled={readOnly}
+          />
+          <div className={styles.hint} style={{ marginTop: 6 }}>
+            Ejemplos de referencia al formulario actual: <code>{"{{id}}"}</code>, <code>{"{{obraId}}"}</code>, <code>{"{{clienteId}}"}</code>.
+          </div>
+          {whereErr ? <div style={{ marginTop: 8, fontSize: 12, color: "#b42318" }}>{whereErr}</div> : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 
 export function FieldRow({
@@ -577,67 +1254,11 @@ export function FieldRow({
     onChange(copy);
   };
 
-  // arriba del return de FieldRow (o dentro, antes del return)
-const [whereText, setWhereText] = useState(() =>
-  JSON.stringify(ensureAggregate(field).where ?? [], null, 2)
-);
-const [whereErr, setWhereErr] = useState<string | null>(null);
-
-// si cambia el field desde fuera (p.ej. cambias compute kind / cambias de campo)
-useEffect(() => {
-  setWhereText(JSON.stringify(ensureAggregate(field).where ?? [], null, 2));
-  setWhereErr(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [field.name, field.compute?.type]);
-
-useEffect(() => {
-  if (!open) return;
-  if (!selectorModuleSlug) return;
-  ensureFieldsLoaded(selectorModuleSlug);
-}, [open, selectorModuleSlug, ensureFieldsLoaded]);
-
-const commitWhereIfValid = (text: string) => {
-  try {
-    const parsed = JSON.parse(text || "[]");
-    if (!Array.isArray(parsed)) {
-      setWhereErr("El where debe ser un ARRAY. Ejemplo: [{...}]");
-      return;
-    }
-
-    // Validación suave: estructura mínima
-    for (let i = 0; i < parsed.length; i++) {
-      const c = parsed[i];
-      if (!c || typeof c !== "object") {
-        setWhereErr(`Condición [${i}] debe ser un objeto`);
-        return;
-      }
-      if (typeof c.field !== "string" || !c.field.trim()) {
-        setWhereErr(`Condición [${i}] => "field" (string) es requerido`);
-        return;
-      }
-      if (typeof c.op !== "string" || !c.op.trim()) {
-        setWhereErr(`Condición [${i}] => "op" (string) es requerido`);
-        return;
-      }
-      // value puede ser string/number/boolean/null/array, pero debe existir la clave
-      if (!("value" in c)) {
-        setWhereErr(`Condición [${i}] => falta "value"`);
-        return;
-      }
-    }
-
-    setWhereErr(null);
-
-    const base = ensureAggregate(field);
-    onChange({ ...field, compute: { ...base, where: parsed } });
-  } catch (e: any) {
-    setWhereErr(e?.message || "JSON inválido");
-  }
-};
-
-
-
-
+  useEffect(() => {
+    if (!open) return;
+    if (!selectorModuleSlug) return;
+    ensureFieldsLoaded(selectorModuleSlug);
+  }, [open, selectorModuleSlug, ensureFieldsLoaded]);
 
   return (
     <div className={styles.fieldformcard} style={{ marginBottom: 12 }}>
@@ -1395,184 +2016,25 @@ const commitWhereIfValid = (text: string) => {
             )}
 
           {getComputeKind(field) === "formula" && (
-            <div className={styles.card} style={{ marginTop: 12 }}>
-              <h4 style={{ marginTop: 0 }}>Cálculo (formula)</h4>
-
-              <label className={styles.label}>Expresión</label>
-              <input
-                className={styles.input}
-                value={ensureFormula(field).expr}
-                onChange={(e) => {
-                  const base = ensureFormula(field);
-                  onChange({ ...field, compute: { ...base, expr: e.target.value } });
-                }}
-                disabled={readOnly}
-              />
-
-              <label className={styles.label}>Dependencias (coma separadas)</label>
-              <input
-                className={styles.input}
-                value={ensureFormula(field).deps.join(",")}
-                onChange={(e) => {
-                  const deps = e.target.value
-                    .split(",")
-                    .map((d) => d.trim())
-                    .filter(Boolean);
-                  const base = ensureFormula(field);
-                  onChange({ ...field, compute: { ...base, deps } });
-                }}
-                disabled={readOnly}
-              />
-
-              <label className={styles.label}>Persistencia</label>
-              <select
-                className={styles.input}
-                value={ensureFormula(field).persist}
-                onChange={(e) => {
-                  const base = ensureFormula(field);
-                  onChange({
-                    ...field,
-                    compute: { ...base, persist: e.target.value as "none" | "onSave" | "always" },
-                  });
-                }}
-                disabled={readOnly}
-              >
-                <option value="none">none</option>
-                <option value="onSave">onSave</option>
-                <option value="always">always</option>
-              </select>
-            </div>
-            )}
+            <FormulaComputeEditor
+              field={field}
+              allFields={currentFields}
+              readOnly={readOnly}
+              onChange={onChange}
+            />
+          )}
 
           {getComputeKind(field) === "aggregate" && (
-            <div className={styles.card} style={{ marginTop: 12 }}>
-              <h4 style={{ marginTop: 0 }}>Cálculo (aggregate)</h4>
-
-              <div className={styles.grid}>
-
-                <div>
-                  <label className={styles.label}>sourceTable</label>
-
-                  <Selector
-                    moduleSlug="modulos"
-                    displayField="nombre"
-                    valueField="slug" // guardamos el slug como "sourceTable"
-                    value={ensureAggregate(field).sourceTable || ""}
-                    readOnly={readOnly}
-                    placeholder="— Seleccionar —"
-                    label="Selecciona la tabla origen (aggregate)"
-                    filters={[
-                      { field: "activo", op: "=", value: true },
-                      { field: "tipo", op: "in", value: ["tabla", "subtabla"] },
-                    ]}
-                    sort={[{ field: "orden", direction: "asc" }]}
-                    onChange={(slugSel: string) => {
-                      const base = ensureAggregate(field);
-                      onChange({
-                        ...field,
-                        compute: { ...base, sourceTable: slugSel || "" },
-                      });
-                    }}
-                  />
-                </div>
-
-
-                <div>
-                  <label className={styles.label}>field</label>
-                  <input
-                    className={styles.input}
-                    value={ensureAggregate(field).field}
-                    onChange={(e) => {
-                      const base = ensureAggregate(field);
-                      onChange({ ...field, compute: { ...base, field: e.target.value } });
-                    }}
-                    disabled={readOnly}
-                  />
-                </div>
-
-                <div>
-                  <label className={styles.label}>op</label>
-                  <select
-                    className={styles.input}
-                    value={ensureAggregate(field).op}
-                    onChange={(e) => {
-                      const base = ensureAggregate(field);
-                      onChange({ ...field, compute: { ...base, op: e.target.value as any } });
-                    }}
-                    disabled={readOnly}
-                  >
-                    <option value="sum">sum</option>
-                    <option value="avg">avg</option>
-                    <option value="min">min</option>
-                    <option value="max">max</option>
-                    <option value="count">count</option>
-                  </select>
-                </div>
-              </div>
-
-              <label className={styles.label}>where (JSON)</label>
-                <textarea
-                  className={styles.textarea}
-                  rows={6}
-                  value={whereText}
-                  placeholder={`[
-                  { "field": "obraId", "op": "=", "value": "{{id}}" }
-                ]`}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setWhereText(next);
-
-                    // Si el usuario lo deja válido mientras escribe, lo aplicamos al vuelo.
-                    // Si no, no rompemos el estado del campo: solo mostramos error.
-                    commitWhereIfValid(next);
-                  }}
-                  onBlur={() => {
-                    // En blur, intentamos consolidar (por si quedó medio escrito)
-                    commitWhereIfValid(whereText);
-                  }}
-                  spellCheck={false}
-                  disabled={readOnly}
-                />
-
-                <div className={styles.hint} style={{ marginTop: 6 }}>
-                  
-                  Ejemplo referencia formulario actual: <code>{"{{id}}"}</code>, <code>{"{{obraId}}"}</code>, <code>{"{{clienteId}}"}</code>.
-                  Ejemplo consulta: <code>{ '[{"op": "=",'+
-                          ' "field": "task",'+
-                          '"value": "{{id}}"}]'
-                            
-                          
-                          }
-                          </code>
-                  
-                </div>
-
-                {whereErr && (
-                  <div style={{ marginTop: 8, fontSize: 12, color: "#b42318" }}>
-                    {whereErr}
-                  </div>
-                )}
-
-
-              <label className={styles.label}>persist</label>
-              <select
-                className={styles.input}
-                value={ensureAggregate(field).persist}
-                onChange={(e) => {
-                  const base = ensureAggregate(field);
-                  onChange({
-                    ...field,
-                    compute: { ...base, persist: e.target.value as "none" | "onSave" | "always" },
-                  });
-                }}
-                disabled={readOnly}
-              >
-                <option value="none">none</option>
-                <option value="onSave">onSave</option>
-                <option value="always">always</option>
-              </select>
-            </div>
-            )}
+            <AggregateComputeEditor
+              field={field}
+              fieldsByTable={fieldsByTable}
+              loadingByTable={loadingByTable}
+              ensureFieldsLoaded={ensureFieldsLoaded}
+              currentFields={currentFields}
+              readOnly={readOnly}
+              onChange={onChange}
+            />
+          )}
 
           {/* ========= FOOTER DE ACCIONES ========= */}
           <div className={styles.actionsRow} style={{ justifyContent: "space-between", marginTop: 12 }}>

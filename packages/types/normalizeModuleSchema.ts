@@ -5,6 +5,7 @@ import type {
   Field,
   FormSection,
   ModuleSchema,
+  PlanEditorSpecialViewConfig,
   SpecialViewConfig,
   TreeViewConfig,
   UiTab,
@@ -35,6 +36,7 @@ export type NormalizedField = Field & {
 
 export type NormalizedTreeViewConfig = TreeViewConfig;
 export type NormalizedCalendarConfig = CalendarSpecialViewConfig;
+export type NormalizedPlanEditorConfig = PlanEditorSpecialViewConfig;
 export type NormalizedSpecialView = SpecialViewConfig;
 export type NormalizedModuleSchema = Omit<ModuleSchema, "fields"> & {
   fields: NormalizedField[];
@@ -176,18 +178,95 @@ export function normalizeCalendarConfig(config: unknown): NormalizedCalendarConf
   };
 }
 
+export function normalizePlanEditorConfig(config: unknown): NormalizedPlanEditorConfig {
+  const raw = isRecord(config) ? config : {};
+  const options = isRecord(raw.options) ? raw.options : raw;
+  const width = Number(options.width);
+  const height = Number(options.height);
+  const scaleRaw = isRecord(options.scale) ? options.scale : null;
+  const scalePixels = Number(scaleRaw?.pixels);
+  const scaleRealValue = Number(scaleRaw?.realValue);
+  const scaleUnit =
+    scaleRaw?.unit === "cm" || scaleRaw?.unit === "mm" || scaleRaw?.unit === "px" || scaleRaw?.unit === "m"
+      ? scaleRaw.unit
+      : options.unit === "cm" || options.unit === "mm" || options.unit === "px"
+        ? options.unit
+        : "m";
+
+  return {
+    sourceField: toString(raw.sourceField),
+    options: {
+      width: Number.isFinite(width) && width > 0 ? width : 1200,
+      height: Number.isFinite(height) && height > 0 ? height : 800,
+      unit: options.unit === "cm" || options.unit === "mm" || options.unit === "px" ? options.unit : "m",
+      scale:
+        Number.isFinite(scalePixels) && scalePixels > 0 && Number.isFinite(scaleRealValue) && scaleRealValue > 0
+          ? { pixels: scalePixels, realValue: scaleRealValue, unit: scaleUnit }
+          : null,
+      exportTitle: toString(options.exportTitle) || undefined,
+      symbolsSource: normalizePlanDynamicSource(options.symbolsSource),
+      defaultLayersSource: normalizePlanDynamicSource(options.defaultLayersSource),
+      linkTargets: normalizePlanLinkTargets(options.linkTargets),
+    },
+  };
+}
+
+function normalizePlanDynamicSource(input: unknown) {
+  if (!isRecord(input)) return undefined;
+  return {
+    enabled: input.enabled === true,
+    moduleSlug: toString(input.moduleSlug),
+    table: toString(input.table),
+    valueField: toString(input.valueField, "id") || "id",
+    labelField: toString(input.labelField || input.displayField),
+    displayField: toString(input.displayField || input.labelField),
+    iconField: toString(input.iconField) || undefined,
+    colorField: toString(input.colorField) || undefined,
+    categoryField: toString(input.categoryField) || undefined,
+    typeField: toString(input.typeField) || undefined,
+    orderField: toString(input.orderField) || undefined,
+    lockedField: toString(input.lockedField) || undefined,
+    visibleField: toString(input.visibleField) || undefined,
+    filters: Array.isArray(input.filters) ? input.filters : [],
+    sort: Array.isArray(input.sort) ? input.sort : [],
+  };
+}
+
+function normalizePlanLinkTargets(input: unknown) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .filter(isRecord)
+    .map((target) => ({
+      label: toString(target.label),
+      moduleSlug: toString(target.moduleSlug),
+      table: toString(target.table),
+      valueField: toString(target.valueField, "id") || "id",
+      displayField: toString(target.displayField, "id") || "id",
+      filters: Array.isArray(target.filters) ? target.filters : [],
+      sort: Array.isArray(target.sort) ? target.sort : [],
+    }))
+    .filter((target) => target.label && target.moduleSlug);
+}
+
 export function normalizeSpecialViews(config: unknown): NormalizedSpecialView[] {
   const ui = isRecord(config) && isRecord(config.ui) ? config.ui : isRecord(config) ? config : {};
   const rawSpecialViews = Array.isArray(ui.specialViews) ? ui.specialViews : [];
   const specialViews = rawSpecialViews
     .filter(isRecord)
     .map((view, index) => {
-      const type = view.type === "calendar" ? "calendar" : "pdfPreview";
+      const type = view.type === "calendar" ? "calendar" : view.type === "planEditor" ? "planEditor" : "pdfPreview";
+      const planConfig = normalizePlanEditorConfig(view.config ?? view);
       return {
         id: toString(view.id, `special_view_${index + 1}`),
         label: toString(view.label || view.title, `Vista especial ${index + 1}`),
         type,
-        config: type === "calendar" ? normalizeCalendarConfig(view.config) : { pdfTemplateId: toString(view.config?.pdfTemplateId || view.pdfTemplateId) },
+        ...(type === "planEditor" ? { sourceField: planConfig.sourceField, options: planConfig.options } : {}),
+        config:
+          type === "calendar"
+            ? normalizeCalendarConfig(view.config)
+            : type === "planEditor"
+              ? planConfig
+              : { pdfTemplateId: toString(view.config?.pdfTemplateId || view.pdfTemplateId) },
         visibility: isRecord(view.visibility) ? view.visibility : undefined,
       } as NormalizedSpecialView;
     });
@@ -244,16 +323,24 @@ export function normalizeModuleSchema(schema: unknown): NormalizedModuleSchema {
     .filter(isRecord)
     .map((tab, index) => {
       const type = (tab.type || tab.kind || "form") as UiTab["type"];
-      const config = type === "treeview" ? normalizeTreeViewConfig(tab.config ?? tab) : type === "calendar" ? normalizeCalendarConfig(tab.config ?? tab) : tab.config ?? tab;
+      const config =
+        type === "treeview"
+          ? normalizeTreeViewConfig(tab.config ?? tab)
+          : type === "calendar"
+            ? normalizeCalendarConfig(tab.config ?? tab)
+            : type === "planEditor"
+              ? normalizePlanEditorConfig(tab.config ?? tab)
+              : tab.config ?? tab;
       return {
         id: toString(tab.id, `${type}_${index + 1}`),
         label: toString(tab.label || tab.title, type === "form" ? "Formulario" : type),
         type,
         config,
+        ...(type === "planEditor" ? { sourceField: (config as PlanEditorSpecialViewConfig).sourceField, options: (config as PlanEditorSpecialViewConfig).options } : {}),
         visibility: isRecord(tab.visibility) ? tab.visibility : undefined,
       } as UiTab;
     })
-    .filter((tab) => tab.type === "form" || tab.type === "treeview" || tab.type === "calendar");
+    .filter((tab) => tab.type === "form" || tab.type === "treeview" || tab.type === "calendar" || tab.type === "planEditor");
 
   const normalizedUi: AnyRecord = {
     ...uiRaw,

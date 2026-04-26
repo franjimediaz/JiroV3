@@ -20,7 +20,10 @@
   },
   "dependencies": {
     "@repo/types": "workspace:*",
-    "bootstrap-icons": "^1.13.1"
+    "bootstrap-icons": "^1.13.1",
+    "jspdf": "^4.2.1",
+    "konva": "^10.2.5",
+    "react-konva": "^19.2.3"
   },
   "devDependencies": {
     "rimraf": "^6.1.0"

@@ -14,6 +14,9 @@ export type {
     SpecialViewType,
     PdfPreviewSpecialViewConfig,
     CalendarSpecialViewConfig,
+    PlanDynamicSourceConfig,
+    PlanEditorSpecialViewConfig,
+    PlanLinkTargetConfig,
     SpecialViewConfig,
     UiTab,
     ModuloRow,
@@ -100,6 +103,7 @@ export {
   normalizeFieldConfig,
   normalizeTreeViewConfig,
   normalizeCalendarConfig,
+  normalizePlanEditorConfig,
   normalizeSpecialViews,
   getLegacySchemaWarnings,
 } from "./normalizeModuleSchema";
@@ -109,6 +113,7 @@ export type {
   NormalizedModuleSchema,
   NormalizedTreeViewConfig,
   NormalizedCalendarConfig,
+  NormalizedPlanEditorConfig,
   NormalizedSpecialView,
 } from "./normalizeModuleSchema";
 

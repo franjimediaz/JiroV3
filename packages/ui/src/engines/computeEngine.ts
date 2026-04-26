@@ -5,7 +5,13 @@ export type AggregateInput = {
   sourceTable: string;
   field: string;
   op: "sum" | "avg" | "min" | "max" | "count";
-  where: Array<{ field: string; op: "=" | "in"; valueFrom?: "this" | "context"; path?: string; value?: any }>;
+  where: Array<{
+    field: string;
+    op: "=" | "!=" | ">" | "<" | ">=" | "<=" | "in";
+    valueFrom?: "this" | "context";
+    path?: string;
+    value?: any;
+  }>;
 };
 export type ListInput = {
   moduleSlug: string; // o table, pero tú trabajas con módulo
