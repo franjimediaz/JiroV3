@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import styles from "./modulo-detalle.module.css";
-import  Selector from "../Selector";
+import  Selector from "../components/fields/Selector";
 import type {
   Field as FieldSchema,
   FieldType,

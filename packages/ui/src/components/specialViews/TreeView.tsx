@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import {ActionMenu} from "./ActionMenu";
+import {ActionMenu} from "../../ActionMenu";
 import { normalizeTreeViewConfig } from "@repo/types";
 import {
   collectRelationPendingKeys,
@@ -11,7 +11,7 @@ import {
   preloadRelationDisplayCache,
   renderRelationDisplay,
   type RelationDisplayEntry,
-} from "./utils/relationDisplay";
+} from "../../utils/relationDisplay";
 
 type ColumnType = "text" | "money" | "date" | "datetime" | "boolean" | "select" | "percent";
 type LegacyFilter =

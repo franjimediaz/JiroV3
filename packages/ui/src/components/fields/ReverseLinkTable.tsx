@@ -2,8 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import type { Field, FieldType, ModuleSchema } from "@repo/types";
-import { dataProvider } from "./providers/DataProvider";
-import { ActionMenu } from ".//ActionMenu";
+import { dataProvider } from "../../providers/DataProvider";
+import { ActionMenu } from "../../ActionMenu";
 import {
   collectRelationPendingKeys,
   getRelationDisplayConfig,
@@ -12,7 +12,7 @@ import {
   renderRelationDisplay,
   type RelationDisplayEntry,
   type RelationDisplayStatusMap,
-} from "./utils/relationDisplay";
+} from "../../utils/relationDisplay";
 
 type Mode = "view" | "edit" | "create";
 
