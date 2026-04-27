@@ -3,32 +3,58 @@
 import { useEffect, useState } from "react";
 import styles from "./PlanEditorView.module.css";
 import type { LinkTargetRecord } from "./planDataSources";
-import type { PlanLayer, PlanLinkTargetConfig, PlanObject } from "./planTypes";
+import type { PlanDocument, PlanEditorOptions, PlanLayer, PlanLinkTargetConfig, PlanObject, PlanUnit } from "./planTypes";
+import { calculateLineMeasure, getObjectAreaLabel, validatePolygon } from "./planUtils";
 
 type Props = {
   object: PlanObject | null;
   layers: PlanLayer[];
+  scale: PlanDocument["canvas"]["scale"];
   linkTargets?: PlanLinkTargetConfig[];
   linkRecords?: LinkTargetRecord[];
   loadingLinkRecords?: boolean;
   readOnly?: boolean;
+  editingVertices?: boolean;
+  selectedVertexIndex?: number | null;
+  calibrationActive?: boolean;
+  calibration?: PlanEditorOptions["calibration"];
+  polygonValidationOptions?: PlanEditorOptions["polygonValidation"];
   onChange: (patch: Partial<PlanObject>) => void;
   onLoadLinkRecords?: (target: PlanLinkTargetConfig, searchText?: string) => void;
+  onToggleVertexEditing?: () => void;
+  onSelectVertex?: (index: number | null) => void;
+  onAddVertex?: () => void;
+  onDeleteVertex?: () => void;
+  onUseLineForCalibration?: (lineId: string, realLength: number, unit: PlanUnit) => void;
 };
 
 export default function PlanPropertiesPanel({
   object,
   layers,
+  scale,
   linkTargets = [],
   linkRecords = [],
   loadingLinkRecords,
   readOnly,
+  editingVertices,
+  selectedVertexIndex,
+  calibrationActive,
+  calibration,
+  polygonValidationOptions,
   onChange,
   onLoadLinkRecords,
+  onToggleVertexEditing,
+  onSelectVertex,
+  onAddVertex,
+  onDeleteVertex,
+  onUseLineForCalibration,
 }: Props) {
   const [linkTargetIndex, setLinkTargetIndex] = useState(0);
   const [linkSearch, setLinkSearch] = useState("");
+  const [calibrationLength, setCalibrationLength] = useState("");
+  const [calibrationUnit, setCalibrationUnit] = useState<PlanUnit>(calibration?.defaultUnit || "m");
   const selectedTarget = linkTargets[linkTargetIndex] || null;
+  const allowedCalibrationUnits = calibration?.allowedUnits?.length ? calibration.allowedUnits : ["mm", "cm", "m", "km", "in", "ft"];
 
   useEffect(() => {
     if (!object || !selectedTarget) return;
@@ -45,6 +71,9 @@ export default function PlanPropertiesPanel({
   }
 
   const color = object.type === "text" ? object.fill : object.type === "symbol" ? object.symbolColor || "#111827" : object.stroke;
+  const polygonValidation = object.type === "polygon" && polygonValidationOptions?.enabled !== false
+    ? validatePolygon(object.points, polygonValidationOptions?.epsilon || 0.5)
+    : null;
 
   return (
     <aside className={styles.panel}>
@@ -174,6 +203,112 @@ export default function PlanPropertiesPanel({
                   onChange={(event) => onChange({ manualMeasureLabel: event.target.value || undefined } as Partial<PlanObject>)}
                 />
               </label>
+              {calibrationActive ? (
+                <div className={styles.panelSection}>
+                  <h4 className={styles.sectionTitle}>Calibrar escala</h4>
+                  <div className={styles.hint}>Medida actual: {calculateLineMeasure(object, scale)}</div>
+                  <label className={styles.field}>
+                    <span className={styles.label}>Medida real</span>
+                    <input className={styles.input} type="number" min={0.0001} step={0.01} value={calibrationLength} disabled={readOnly} onChange={(event) => setCalibrationLength(event.target.value)} />
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.label}>Unidad</span>
+                    <select className={styles.input} value={calibrationUnit} disabled={readOnly} onChange={(event) => setCalibrationUnit(event.target.value as PlanUnit)}>
+                      {allowedCalibrationUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className={styles.button}
+                    disabled={readOnly || !Number(calibrationLength)}
+                    onClick={() => onUseLineForCalibration?.(object.id, Number(calibrationLength), calibrationUnit)}
+                  >
+                    Usar para calibrar escala
+                  </button>
+                </div>
+              ) : null}
+            </>
+          ) : object.type === "rect" || object.type === "polygon" ? (
+            <>
+              {object.type === "rect" ? (
+                <div className={styles.settingsGrid}>
+                  <label className={styles.field}>
+                    <span className={styles.label}>Ancho</span>
+                    <input className={styles.input} type="number" min={1} value={object.width} disabled={readOnly} onChange={(event) => onChange({ width: Number(event.target.value || 1) } as Partial<PlanObject>)} />
+                  </label>
+                  <label className={styles.field}>
+                    <span className={styles.label}>Alto</span>
+                    <input className={styles.input} type="number" min={1} value={object.height} disabled={readOnly} onChange={(event) => onChange({ height: Number(event.target.value || 1) } as Partial<PlanObject>)} />
+                  </label>
+                </div>
+              ) : null}
+
+              <label className={styles.field}>
+                <span className={styles.label}>Relleno</span>
+                <input className={styles.input} value={object.fill} disabled={readOnly} onChange={(event) => onChange({ fill: event.target.value } as Partial<PlanObject>)} />
+              </label>
+
+              <label className={styles.checkboxRow}>
+                <input type="checkbox" checked={object.showArea} disabled={readOnly} onChange={(event) => onChange({ showArea: event.target.checked } as Partial<PlanObject>)} />
+                <span>Mostrar superficie</span>
+              </label>
+
+              <label className={styles.field}>
+                <span className={styles.label}>Superficie manual</span>
+                <input
+                  className={styles.input}
+                  value={object.manualAreaLabel || ""}
+                  placeholder={getObjectAreaLabel(object, scale, true)}
+                  disabled={readOnly}
+                  onChange={(event) => onChange({ manualAreaLabel: event.target.value || undefined } as Partial<PlanObject>)}
+                />
+              </label>
+
+              <div className={styles.hint}>Superficie: {getObjectAreaLabel(object, scale, true) || "Oculta"}</div>
+              {object.type === "polygon" ? (
+                <div className={styles.panelSection}>
+                  {polygonValidation && (polygonValidation.errors.length || polygonValidation.warnings.length) ? (
+                    <div className={polygonValidation.errors.length ? styles.errorText : styles.hint}>
+                      {[...polygonValidation.errors, ...polygonValidation.warnings].join(" ")}
+                    </div>
+                  ) : null}
+                  <div className={styles.settingsHeader}>
+                    <h4 className={styles.sectionTitle}>Vertices</h4>
+                    <button type="button" className={styles.linkButton} disabled={readOnly} onClick={onToggleVertexEditing}>
+                      {editingVertices ? "Finalizar edicion" : "Editar vertices"}
+                    </button>
+                  </div>
+                  <div className={styles.actionsRow}>
+                    <button type="button" className={styles.button} disabled={readOnly || !editingVertices} onClick={onAddVertex}>
+                      Anadir vertice
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.button} ${styles.buttonDanger}`}
+                      disabled={readOnly || !editingVertices || selectedVertexIndex === null || object.points.length <= 3}
+                      onClick={onDeleteVertex}
+                    >
+                      Eliminar vertice
+                    </button>
+                  </div>
+                  <div className={styles.vertexList}>
+                    {object.points.map((point, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        className={`${styles.vertexRow} ${selectedVertexIndex === index ? styles.vertexRowActive : ""}`}
+                        disabled={readOnly || !editingVertices}
+                        onClick={() => onSelectVertex?.(index)}
+                      >
+                        <span>#{index + 1}</span>
+                        <span>x {Math.round(point.x)}</span>
+                        <span>y {Math.round(point.y)}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {object.points.length <= 3 ? <div className={styles.hint}>Un poligono necesita al menos 3 vertices.</div> : null}
+                </div>
+              ) : null}
             </>
           ) : null}
         </>

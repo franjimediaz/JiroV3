@@ -1023,6 +1023,7 @@ export default function Form({
         value={values[sourceField]}
         mode={effectiveMode}
         dataProvider={dataProvider}
+        record={values}
         onChange={(nextPlan) => handleChange(sourceField, nextPlan)}
       />
     );

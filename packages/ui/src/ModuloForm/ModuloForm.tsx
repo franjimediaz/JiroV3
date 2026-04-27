@@ -320,6 +320,15 @@ function PlanEditorConfigPanel({
   const options = value.options || {};
   const updateOptions = (patch: NonNullable<PlanEditorSpecialViewConfig["options"]>) =>
     onChange({ options: { ...options, ...patch } });
+  const gridOptions = options.grid || { enabled: true, size: 20, snap: true };
+  const exportOptions = options.export || { includeGrid: false, includeLayerLegend: true, pageOrientation: "landscape" as const };
+  const backgroundOptions = options.background || { locked: true, opacity: 1, fit: "contain" as const };
+  const backgroundUploader = backgroundOptions.uploader || { enabled: true, endpoint: "/api/upload", mode: "global" as const };
+  const calibrationOptions = options.calibration || { enabled: true, allowedUnits: ["mm", "cm", "m", "km", "in", "ft"], defaultUnit: "m" as const };
+  const polygonValidationOptions = options.polygonValidation || { enabled: true, showWarnings: true, epsilon: 0.5 };
+  const snapOptions = options.snap || { enabled: true, toGrid: true, toObjects: true, threshold: 8 };
+  const viewOptions = options.view || { showRulers: true, showGuides: true };
+  const measurementOptions = options.measurement || { enabled: true, allowConvertToLine: true };
 
   const updateSource = (key: "symbolsSource" | "defaultLayersSource", patch: Partial<PlanDynamicSourceConfig>) => {
     const current = options[key] || {};
@@ -372,6 +381,152 @@ function PlanEditorConfigPanel({
         <div>
           <label className={styles.label}>Titulo exportacion</label>
           <input className={styles.input} value={options.exportTitle || ""} onChange={(e) => updateOptions({ exportTitle: e.target.value })} disabled={readOnly} />
+        </div>
+
+        <PlanFieldSelect label="Subtitulo exportacion" value={options.exportSubtitleField || ""} fields={fields} disabled={readOnly} allowEmpty onChange={(field) => updateOptions({ exportSubtitleField: field })} />
+      </div>
+
+      <div className={styles.card} style={{ marginTop: 12 }}>
+        <h5 style={{ marginTop: 0 }}>Grid y snapping</h5>
+        <div className={styles.grid}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={gridOptions.enabled !== false} disabled={readOnly} onChange={(e) => updateOptions({ grid: { ...gridOptions, enabled: e.target.checked } })} />
+            <span>Grid activo</span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={gridOptions.snap !== false} disabled={readOnly} onChange={(e) => updateOptions({ grid: { ...gridOptions, snap: e.target.checked } })} />
+            <span>Snap activo</span>
+          </label>
+          <label>
+            <span className={styles.label}>Tamano grid</span>
+            <input className={styles.input} type="number" min={2} value={gridOptions.size || 20} disabled={readOnly} onChange={(e) => updateOptions({ grid: { ...gridOptions, size: Number(e.target.value || 20) } })} />
+          </label>
+        </div>
+      </div>
+
+      <div className={styles.card} style={{ marginTop: 12 }}>
+        <h5 style={{ marginTop: 0 }}>Exportacion</h5>
+        <div className={styles.grid}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={exportOptions.includeGrid === true} disabled={readOnly} onChange={(e) => updateOptions({ export: { ...exportOptions, includeGrid: e.target.checked } })} />
+            <span>Incluir grid en PNG/PDF</span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={exportOptions.includeLayerLegend !== false} disabled={readOnly} onChange={(e) => updateOptions({ export: { ...exportOptions, includeLayerLegend: e.target.checked } })} />
+            <span>Leyenda de capas</span>
+          </label>
+          <label>
+            <span className={styles.label}>Orientacion PDF</span>
+            <select className={styles.input} value={exportOptions.pageOrientation || "landscape"} disabled={readOnly} onChange={(e) => updateOptions({ export: { ...exportOptions, pageOrientation: e.target.value as "portrait" | "landscape" } })}>
+              <option value="landscape">landscape</option>
+              <option value="portrait">portrait</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div className={styles.card} style={{ marginTop: 12 }}>
+        <h5 style={{ marginTop: 0 }}>Fondo por defecto</h5>
+        <div className={styles.grid}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={backgroundOptions.locked !== false} disabled={readOnly} onChange={(e) => updateOptions({ background: { ...backgroundOptions, locked: e.target.checked } })} />
+            <span>Bloqueado</span>
+          </label>
+          <label>
+            <span className={styles.label}>Opacidad</span>
+            <input className={styles.input} type="number" min={0} max={1} step={0.05} value={backgroundOptions.opacity ?? 1} disabled={readOnly} onChange={(e) => updateOptions({ background: { ...backgroundOptions, opacity: Number(e.target.value || 1) } })} />
+          </label>
+          <label>
+            <span className={styles.label}>Ajuste</span>
+            <select className={styles.input} value={backgroundOptions.fit || "contain"} disabled={readOnly} onChange={(e) => updateOptions({ background: { ...backgroundOptions, fit: e.target.value as "contain" | "cover" | "stretch" | "original" } })}>
+              <option value="contain">contain</option>
+              <option value="cover">cover</option>
+              <option value="stretch">stretch</option>
+              <option value="original">original</option>
+            </select>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={backgroundUploader.enabled !== false} disabled={readOnly} onChange={(e) => updateOptions({ background: { ...backgroundOptions, uploader: { ...backgroundUploader, enabled: e.target.checked } } })} />
+            <span>Uploader global activo</span>
+          </label>
+          <label>
+            <span className={styles.label}>Endpoint uploader</span>
+            <input className={styles.input} value={backgroundUploader.endpoint || "/api/upload"} disabled={readOnly} onChange={(e) => updateOptions({ background: { ...backgroundOptions, uploader: { ...backgroundUploader, endpoint: e.target.value || "/api/upload", mode: "global" } } })} />
+          </label>
+          <label>
+            <span className={styles.label}>Carpeta uploader</span>
+            <input className={styles.input} value={backgroundUploader.folder || ""} disabled={readOnly} onChange={(e) => updateOptions({ background: { ...backgroundOptions, uploader: { ...backgroundUploader, folder: e.target.value || undefined, mode: "global" } } })} />
+          </label>
+        </div>
+      </div>
+
+      <div className={styles.card} style={{ marginTop: 12 }}>
+        <h5 style={{ marginTop: 0 }}>Calibracion y geometria</h5>
+        <div className={styles.grid}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={calibrationOptions.enabled !== false} disabled={readOnly} onChange={(e) => updateOptions({ calibration: { ...calibrationOptions, enabled: e.target.checked } })} />
+            <span>Calibracion activa</span>
+          </label>
+          <label>
+            <span className={styles.label}>Unidad por defecto</span>
+            <select className={styles.input} value={calibrationOptions.defaultUnit || "m"} disabled={readOnly} onChange={(e) => updateOptions({ calibration: { ...calibrationOptions, defaultUnit: e.target.value as any } })}>
+              {(calibrationOptions.allowedUnits || ["mm", "cm", "m", "km", "in", "ft"]).map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className={styles.label}>Unidades permitidas</span>
+            <input className={styles.input} value={(calibrationOptions.allowedUnits || []).join(",")} disabled={readOnly} onChange={(e) => updateOptions({ calibration: { ...calibrationOptions, allowedUnits: e.target.value.split(",").map((unit) => unit.trim()).filter(Boolean) as any } })} />
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={polygonValidationOptions.enabled !== false} disabled={readOnly} onChange={(e) => updateOptions({ polygonValidation: { ...polygonValidationOptions, enabled: e.target.checked } })} />
+            <span>Validar poligonos</span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={polygonValidationOptions.showWarnings !== false} disabled={readOnly} onChange={(e) => updateOptions({ polygonValidation: { ...polygonValidationOptions, showWarnings: e.target.checked } })} />
+            <span>Mostrar avisos</span>
+          </label>
+          <label>
+            <span className={styles.label}>Epsilon</span>
+            <input className={styles.input} type="number" min={0.1} step={0.1} value={polygonValidationOptions.epsilon || 0.5} disabled={readOnly} onChange={(e) => updateOptions({ polygonValidation: { ...polygonValidationOptions, epsilon: Number(e.target.value || 0.5) } })} />
+          </label>
+        </div>
+      </div>
+
+      <div className={styles.card} style={{ marginTop: 12 }}>
+        <h5 style={{ marginTop: 0 }}>Snapping, vista y medicion</h5>
+        <div className={styles.grid}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={snapOptions.enabled !== false} disabled={readOnly} onChange={(e) => updateOptions({ snap: { ...snapOptions, enabled: e.target.checked } })} />
+            <span>Snap activo</span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={snapOptions.toGrid !== false} disabled={readOnly} onChange={(e) => updateOptions({ snap: { ...snapOptions, toGrid: e.target.checked } })} />
+            <span>Snap a grid</span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={snapOptions.toObjects !== false} disabled={readOnly} onChange={(e) => updateOptions({ snap: { ...snapOptions, toObjects: e.target.checked } })} />
+            <span>Snap a objetos</span>
+          </label>
+          <label>
+            <span className={styles.label}>Threshold snap</span>
+            <input className={styles.input} type="number" min={1} value={snapOptions.threshold || 8} disabled={readOnly} onChange={(e) => updateOptions({ snap: { ...snapOptions, threshold: Number(e.target.value || 8) } })} />
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={viewOptions.showRulers !== false} disabled={readOnly} onChange={(e) => updateOptions({ view: { ...viewOptions, showRulers: e.target.checked } })} />
+            <span>Mostrar reglas</span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={viewOptions.showGuides !== false} disabled={readOnly} onChange={(e) => updateOptions({ view: { ...viewOptions, showGuides: e.target.checked } })} />
+            <span>Mostrar guias</span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={measurementOptions.enabled !== false} disabled={readOnly} onChange={(e) => updateOptions({ measurement: { ...measurementOptions, enabled: e.target.checked } })} />
+            <span>Medicion activa</span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={measurementOptions.allowConvertToLine !== false} disabled={readOnly} onChange={(e) => updateOptions({ measurement: { ...measurementOptions, allowConvertToLine: e.target.checked } })} />
+            <span>Permitir convertir medida</span>
+          </label>
         </div>
       </div>
 

@@ -1,21 +1,28 @@
 "use client";
 
-import { Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ReactNode } from "react";
 import Konva from "konva";
-import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
+import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
 import styles from "./PlanEditorView.module.css";
-import type { PlanDocument, PlanLineObject, PlanObject, PlanRectObject, PlanSymbolDefinition, PlanTool } from "./planTypes";
+import type { PlanDocument, PlanLineObject, PlanObject, PlanPolygonObject, PlanPolygonPoint, PlanRectObject, PlanSymbolDefinition, PlanTool } from "./planTypes";
 import { getPlanIconInfo, getSymbolCanvasText } from "./planIconUtils";
-import { calculateLineMeasure, createPlanObjectId, getPlanLayer, getVisiblePlanObjects, isPlanObjectEditable, updatePlanObject } from "./planUtils";
+import { calculateLineMeasure, calculateTemporaryMeasurement, getObjectAreaLabel, createPlanObjectId, getObjectSnapPoints, getPlanLayer, getPolygonCentroid, getSelectionBounds, getSelectionSnapPoints, getSnapGuides, getVisiblePlanObjects, isPlanObjectEditable, moveObjectByDelta, moveObjectsByDelta, objectIntersectsRect, applyObjectSnap, projectPointOnSegment, shouldSnap, snapPoint, updatePlanObject, validatePolygon, type PlanBounds, type SnapGuide } from "./planUtils";
 
 type Props = {
   document: PlanDocument;
   tool: PlanTool;
   selectedId: string | null;
+  selectedIds?: string[];
   readOnly?: boolean;
   activeSymbol: PlanSymbolDefinition | null;
+  editingPolygonId?: string | null;
+  selectedVertexIndex?: number | null;
   onChange: (document: PlanDocument) => void;
   onSelect: (objectId: string | null) => void;
+  onSelectionChange?: (objectIds: string[], activeObjectId?: string | null) => void;
+  onSelectVertex?: (index: number | null) => void;
+  onMovePolygonVertex?: (objectId: string, vertexIndex: number, point: PlanPolygonPoint) => void;
+  onInsertPolygonVertex?: (objectId: string, segmentIndex: number, point: PlanPolygonPoint) => void;
 };
 
 type DraftObject = PlanLineObject | PlanRectObject | null;
@@ -25,13 +32,24 @@ export type PlanCanvasHandle = {
 };
 
 const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
-  { document, tool, selectedId, readOnly, activeSymbol, onChange, onSelect },
+  { document, tool, selectedId, selectedIds = selectedId ? [selectedId] : [], readOnly, activeSymbol, editingPolygonId, selectedVertexIndex, onChange, onSelect, onSelectionChange, onSelectVertex, onMovePolygonVertex, onInsertPolygonVertex },
   ref
 ) {
   const stageRef = useRef<Konva.Stage | null>(null);
   const transformerRef = useRef<Konva.Transformer | null>(null);
   const shapeRefs = useRef<Record<string, Konva.Node | null>>({});
   const [draft, setDraft] = useState<DraftObject>(null);
+  const [draftPolygon, setDraftPolygon] = useState<PlanPolygonObject | null>(null);
+  const [pointerPreview, setPointerPreview] = useState<PlanPolygonPoint | null>(null);
+  const [hoveredSegmentIndex, setHoveredSegmentIndex] = useState<number | null>(null);
+  const [selectionDraft, setSelectionDraft] = useState<PlanBounds | null>(null);
+  const [selectionStart, setSelectionStart] = useState<PlanPolygonPoint | null>(null);
+  const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
+  const [measurementStart, setMeasurementStart] = useState<PlanPolygonPoint | null>(null);
+  const [measurementEnd, setMeasurementEnd] = useState<PlanPolygonPoint | null>(null);
+  const [measurements, setMeasurements] = useState<Array<{ id: string; a: PlanPolygonPoint; b: PlanPolygonPoint }>>([]);
+  const [zoom, setZoom] = useState(1);
+  const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
   const backgroundImage = useImage(document.background?.url || "");
   const visibleObjects = useMemo(() => getVisiblePlanObjects(document), [document]);
 
@@ -39,6 +57,11 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
     () => document.objects.find((object) => object.id === selectedId) || null,
     [document.objects, selectedId]
   );
+  const editingPolygon = useMemo(
+    () => document.objects.find((object): object is PlanPolygonObject => object.id === editingPolygonId && object.type === "polygon") || null,
+    [document.objects, editingPolygonId]
+  );
+  const selectionBounds = useMemo(() => getSelectionBounds(visibleObjects, selectedIds), [visibleObjects, selectedIds]);
 
   useImperativeHandle(ref, () => ({
     getStage: () => stageRef.current,
@@ -47,10 +70,10 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
   useEffect(() => {
     const transformer = transformerRef.current;
     if (!transformer) return;
-    const selectedNode = selectedId ? shapeRefs.current[selectedId] : null;
+    const selectedNode = selectedIds.length === 1 ? shapeRefs.current[selectedIds[0]] : null;
     transformer.nodes(selectedNode ? [selectedNode] : []);
     transformer.getLayer()?.batchDraw();
-  }, [selectedId, document.objects]);
+  }, [selectedIds, document.objects]);
 
   const commitObject = (object: PlanObject) => {
     onChange({ ...document, objects: [...document.objects, object] });
@@ -61,20 +84,62 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
     onChange(updatePlanObject(document, objectId, patch));
   };
 
+  const getPlanPointer = () => {
+    const raw = stageRef.current?.getPointerPosition();
+    if (!raw) return null;
+    return { x: (raw.x - stagePosition.x) / zoom, y: (raw.y - stagePosition.y) / zoom };
+  };
+
+  const getSnapCandidates = (excludeIds: string[]) =>
+    visibleObjects
+      .filter((object) => !excludeIds.includes(object.id))
+      .flatMap(getObjectSnapPoints);
+
+  const snapDeltaForSelection = (ids: string[], dx: number, dy: number) => {
+    if (!document.canvas.snap.enabled || !document.canvas.snap.toObjects) return { dx, dy, guides: [] as SnapGuide[] };
+    const moved = document.objects.filter((object) => ids.includes(object.id)).map((object) => moveObjectByDelta(object, dx, dy));
+    const sourcePoints = getSelectionSnapPoints(moved);
+    const candidates = getSnapCandidates(ids);
+    for (const point of sourcePoints) {
+      const snapped = applyObjectSnap(point, candidates, document.canvas.snap.threshold);
+      if (snapped.target) {
+        return { dx: dx + snapped.dx, dy: dy + snapped.dy, guides: getSnapGuides({ x: point.x + snapped.dx, y: point.y + snapped.dy }, snapped.target) };
+      }
+    }
+    return { dx, dy, guides: [] as SnapGuide[] };
+  };
+
+  const moveSelection = (ids: string[], dx: number, dy: number) => {
+    const snapped = snapDeltaForSelection(ids, dx, dy);
+    setSnapGuides(snapped.guides);
+    onChange({ ...document, objects: moveObjectsByDelta(document.objects, ids, snapped.dx, snapped.dy, { layers: document.layers, readOnly }) });
+  };
+
   const handleStagePointerDown = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
     if (readOnly) return;
     const stage = stageRef.current;
-    const point = stage?.getPointerPosition();
-    if (!point) return;
+    const rawPoint = getPlanPointer();
+    if (!rawPoint) return;
+    const point = normalizePointer(document, rawPoint);
     const activeLayer = getPlanLayer(document, document.activeLayerId);
     const canDrawOnLayer = !readOnly && activeLayer.visible !== false && !activeLayer.locked;
 
     if (event.target === stage && tool === "select") {
-      onSelect(null);
+      setSelectionStart(point);
+      setSelectionDraft({ x: point.x, y: point.y, width: 0, height: 0 });
+      if (!(event.evt as MouseEvent).shiftKey) {
+        onSelectionChange?.([], null);
+        onSelect(null);
+      }
       return;
     }
 
     if (!canDrawOnLayer) return;
+
+    if (tool !== "polygon" && draftPolygon) {
+      setDraftPolygon(null);
+      setPointerPreview(null);
+    }
 
     if (tool === "line") {
       setDraft({
@@ -106,6 +171,7 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
         strokeWidth: 2,
         fill: "transparent",
         label: "",
+        showArea: true,
       });
       return;
     }
@@ -138,12 +204,63 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
         source: activeSymbol.source,
       });
     }
+
+    if (tool === "measure") {
+      if (!measurementStart) {
+        setMeasurementStart(point);
+        setMeasurementEnd(point);
+      } else {
+        setMeasurements((current) => [...current, { id: createPlanObjectId(), a: measurementStart, b: point }]);
+        setMeasurementStart(null);
+        setMeasurementEnd(null);
+      }
+      return;
+    }
+
+    if (tool === "polygon") {
+      if (!draftPolygon) {
+        setDraftPolygon({
+          id: createPlanObjectId(),
+          layerId: activeLayer.id,
+          type: "polygon",
+          points: [point],
+          stroke: "#111827",
+          strokeWidth: 2,
+          fill: "rgba(37, 99, 235, 0.12)",
+          label: "Zona",
+          showArea: true,
+        });
+        setPointerPreview(point);
+        return;
+      }
+
+      setDraftPolygon({ ...draftPolygon, points: [...draftPolygon.points, point] });
+      setPointerPreview(point);
+    }
   };
 
   const handleStagePointerMove = () => {
-    if (readOnly || !draft) return;
-    const point = stageRef.current?.getPointerPosition();
-    if (!point) return;
+    if (readOnly) return;
+    const rawPoint = getPlanPointer();
+    if (!rawPoint) return;
+    const point = normalizePointer(document, rawPoint);
+
+    if (selectionStart && selectionDraft) {
+      setSelectionDraft(normalizeBounds(selectionStart, point));
+      return;
+    }
+
+    if (measurementStart) {
+      setMeasurementEnd(point);
+      return;
+    }
+
+    if (draftPolygon) {
+      setPointerPreview(point);
+      return;
+    }
+
+    if (!draft) return;
 
     if (draft.type === "line") {
       setDraft({ ...draft, x2: point.x, y2: point.y });
@@ -158,6 +275,15 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
   };
 
   const handleStagePointerUp = () => {
+    if (selectionDraft) {
+      const ids = visibleObjects.filter((object) => objectIntersectsRect(object, selectionDraft)).map((object) => object.id);
+      onSelectionChange?.(ids, ids[0] || null);
+      onSelect(ids[0] || null);
+      setSelectionDraft(null);
+      setSelectionStart(null);
+      return;
+    }
+
     if (readOnly || !draft) return;
 
     if (draft.type === "line") {
@@ -172,8 +298,41 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
     setDraft(null);
   };
 
+  const finishPolygon = () => {
+    if (readOnly || !draftPolygon) return;
+    if (draftPolygon.points.length >= 3) commitObject(draftPolygon);
+    setDraftPolygon(null);
+    setPointerPreview(null);
+  };
+
+  const cancelPolygon = () => {
+    setDraftPolygon(null);
+    setPointerPreview(null);
+  };
+
+  useEffect(() => {
+    if (tool !== "polygon") cancelPolygon();
+  }, [tool]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (readOnly || tool !== "polygon") return;
+      if (event.key === "Enter") {
+        event.preventDefault();
+        finishPolygon();
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cancelPolygon();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [draftPolygon, readOnly, tool]);
+
   return (
     <div className={styles.canvasWrap}>
+      {document.canvas.view.showRulers ? <PlanRulers document={document} zoom={zoom} /> : null}
       <div className={styles.stageInner}>
         <Stage
           ref={stageRef}
@@ -185,31 +344,48 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
           onTouchMove={handleStagePointerMove}
           onMouseUp={handleStagePointerUp}
           onTouchEnd={handleStagePointerUp}
+          onDblClick={finishPolygon}
+          onDblTap={finishPolygon}
+          scaleX={zoom}
+          scaleY={zoom}
+          x={stagePosition.x}
+          y={stagePosition.y}
+          draggable={tool === "pan"}
+          onDragEnd={(event) => setStagePosition({ x: event.target.x(), y: event.target.y() })}
+          onWheel={(event) => {
+            if (!event.evt.ctrlKey && !event.evt.metaKey) return;
+            event.evt.preventDefault();
+            const direction = event.evt.deltaY > 0 ? -1 : 1;
+            setZoom((current) => Math.max(0.25, Math.min(4, current + direction * 0.1)));
+          }}
         >
           {backgroundImage ? (
             <Layer listening={false}>
               <KonvaImage
                 image={backgroundImage}
-                x={0}
-                y={0}
-                width={document.canvas.width}
-                height={document.canvas.height}
                 opacity={document.background?.opacity ?? 1}
+                {...getBackgroundImageProps(document, backgroundImage)}
                 listening={false}
               />
             </Layer>
           ) : null}
+          {document.canvas.grid.enabled ? <GridLayer document={document} /> : null}
           <Layer>
             {visibleObjects.map((object) => renderObject({
               object,
               selected: object.id === selectedId,
               readOnly: readOnly || !isPlanObjectEditable(document, object, readOnly),
               scale: document.canvas.scale,
+              document,
               setRef: (node) => {
                 shapeRefs.current[object.id] = node;
               },
               onSelect,
+              onSelectionChange,
               onMove: updateObject,
+              selectedIds,
+              onMoveSelection: moveSelection,
+              editing: object.id === editingPolygonId,
             }))}
 
             {draft ? renderObject({
@@ -217,13 +393,37 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
               selected: false,
               readOnly: true,
               scale: document.canvas.scale,
+              document,
               setRef: () => undefined,
               onSelect: () => undefined,
+              onSelectionChange: undefined,
               onMove: () => undefined,
+              selectedIds: [],
+              onMoveSelection: () => undefined,
+              editing: false,
+            }) : null}
+
+            {draftPolygon ? renderObject({
+              object: {
+                ...draftPolygon,
+                points: pointerPreview && draftPolygon.points.length ? [...draftPolygon.points, pointerPreview] : draftPolygon.points,
+              },
+              selected: false,
+              readOnly: true,
+              scale: document.canvas.scale,
+              document,
+              setRef: () => undefined,
+              onSelect: () => undefined,
+              onSelectionChange: undefined,
+              onMove: () => undefined,
+              selectedIds: [],
+              onMoveSelection: () => undefined,
+              editing: false,
             }) : null}
 
             <Transformer
               ref={transformerRef}
+              name="plan-editor-transformer"
               rotateEnabled={false}
               resizeEnabled={false}
               enabledAnchors={[]}
@@ -232,8 +432,120 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
               ignoreStroke
               visible={!!selectedObject}
             />
+            {selectionBounds && selectedIds.length > 1 ? (
+              <Rect
+                name="plan-editor-selection"
+                x={selectionBounds.x}
+                y={selectionBounds.y}
+                width={selectionBounds.width}
+                height={selectionBounds.height}
+                stroke="#2563eb"
+                dash={[6, 4]}
+                listening={false}
+              />
+            ) : null}
+            {selectionDraft ? (
+              <Rect
+                name="plan-editor-selection"
+                x={selectionDraft.x}
+                y={selectionDraft.y}
+                width={selectionDraft.width}
+                height={selectionDraft.height}
+                stroke="#2563eb"
+                fill="rgba(37,99,235,0.08)"
+                dash={[5, 4]}
+                listening={false}
+              />
+            ) : null}
+            {document.canvas.view.showGuides ? snapGuides.map((guide, index) => (
+              <Line
+                key={index}
+                name="plan-editor-guides"
+                points={guide.orientation === "vertical" ? [guide.position, guide.from, guide.position, guide.to] : [guide.from, guide.position, guide.to, guide.position]}
+                stroke="#f97316"
+                strokeWidth={1}
+                dash={[5, 4]}
+                listening={false}
+              />
+            )) : null}
+            {[...measurements, ...(measurementStart && measurementEnd ? [{ id: "draft", a: measurementStart, b: measurementEnd }] : [])].map((item) => (
+              <Fragment key={item.id}>
+                <Line name="plan-editor-measurements" points={[item.a.x, item.a.y, item.b.x, item.b.y]} stroke="#7c3aed" strokeWidth={2} dash={[8, 4]} listening={false} />
+                <Text name="plan-editor-measurements" x={(item.a.x + item.b.x) / 2 + 8} y={(item.a.y + item.b.y) / 2 - 18} text={calculateTemporaryMeasurement(item.a, item.b, document.canvas.scale)} fill="#7c3aed" fontSize={13} fontStyle="bold" listening={false} />
+              </Fragment>
+            ))}
           </Layer>
+          {editingPolygon && !readOnly && selectedId === editingPolygon.id ? (
+            <Layer name="plan-editor-handles">
+              {editingPolygon.points.map((point, index) => {
+                const next = editingPolygon.points[(index + 1) % editingPolygon.points.length];
+                return (
+                  <Fragment key={`segment_${editingPolygon.id}_${index}`}>
+                    {hoveredSegmentIndex === index ? (
+                      <Line points={[point.x, point.y, next.x, next.y]} stroke="#f97316" strokeWidth={4} dash={[7, 5]} listening={false} />
+                    ) : null}
+                    <Line
+                      points={[point.x, point.y, next.x, next.y]}
+                      stroke="rgba(0,0,0,0.01)"
+                      strokeWidth={18}
+                      onMouseEnter={() => setHoveredSegmentIndex(index)}
+                      onMouseLeave={() => setHoveredSegmentIndex((current) => current === index ? null : current)}
+                      onClick={() => {
+                        const rawPoint = stageRef.current?.getPointerPosition();
+                        if (!rawPoint) return;
+                        const projected = projectPointOnSegment(rawPoint, point, next);
+                        onInsertPolygonVertex?.(editingPolygon.id, index, normalizePointer(document, projected));
+                      }}
+                      onTap={() => {
+                        const rawPoint = stageRef.current?.getPointerPosition();
+                        if (!rawPoint) return;
+                        const projected = projectPointOnSegment(rawPoint, point, next);
+                        onInsertPolygonVertex?.(editingPolygon.id, index, normalizePointer(document, projected));
+                      }}
+                    />
+                  </Fragment>
+                );
+              })}
+              {editingPolygon.points.map((point, index) => (
+                <Circle
+                  key={`${editingPolygon.id}_${index}`}
+                  x={point.x}
+                  y={point.y}
+                  radius={7}
+                  fill={selectedVertexIndex === index ? "#f97316" : "#ffffff"}
+                  stroke="#2563eb"
+                  strokeWidth={2}
+                  draggable
+                  onClick={() => onSelectVertex?.(index)}
+                  onTap={() => onSelectVertex?.(index)}
+                  onDragStart={() => onSelectVertex?.(index)}
+                  onDragEnd={(event) => {
+                    const nextPoint = normalizePointer(document, { x: event.target.x(), y: event.target.y() });
+                    event.target.position(nextPoint);
+                    onMovePolygonVertex?.(editingPolygon.id, index, nextPoint);
+                  }}
+                />
+              ))}
+            </Layer>
+          ) : null}
         </Stage>
+      </div>
+      {draftPolygon ? (
+        <div className={styles.canvasOverlay}>
+          <button type="button" className={styles.button} onClick={finishPolygon} disabled={draftPolygon.points.length < 3}>
+            Finalizar zona
+          </button>
+          <button type="button" className={styles.button} onClick={cancelPolygon}>
+            Cancelar
+          </button>
+        </div>
+      ) : null}
+      <div className={styles.canvasOverlay}>
+        <button type="button" className={styles.button} onClick={() => setZoom((value) => Math.min(4, value + 0.1))}>+</button>
+        <button type="button" className={styles.button} onClick={() => setZoom((value) => Math.max(0.25, value - 0.1))}>-</button>
+        <button type="button" className={styles.button} onClick={() => { setZoom(1); setStagePosition({ x: 0, y: 0 }); }}>100%</button>
+        <button type="button" className={styles.button} onClick={() => { setZoom(0.75); setStagePosition({ x: 0, y: 0 }); }}>Ajustar</button>
+        <button type="button" className={styles.button} onClick={() => setMeasurements([])} disabled={!measurements.length}>Limpiar medidas</button>
       </div>
     </div>
   );
@@ -246,15 +558,27 @@ function renderObject(args: {
   selected: boolean;
   readOnly?: boolean;
   scale: PlanDocument["canvas"]["scale"];
+  document: PlanDocument;
   setRef: (node: Konva.Node | null) => void;
   onSelect: (objectId: string) => void;
+  onSelectionChange?: (objectIds: string[], activeObjectId?: string | null) => void;
   onMove: (objectId: string, patch: Partial<PlanObject>) => void;
+  selectedIds: string[];
+  onMoveSelection: (objectIds: string[], dx: number, dy: number) => void;
+  editing?: boolean;
 }) {
-  const { object, selected, readOnly, scale, setRef, onSelect, onMove } = args;
+  const { object, selected, readOnly, scale, document, setRef, onSelect, onSelectionChange, onMove, selectedIds, onMoveSelection, editing } = args;
   const common = {
     ref: setRef,
     draggable: !readOnly && !object.locked,
-    onClick: () => onSelect(object.id),
+    onClick: (event: Konva.KonvaEventObject<MouseEvent>) => {
+      if (event.evt.shiftKey) {
+        const next = selectedIds.includes(object.id) ? selectedIds.filter((id) => id !== object.id) : [...selectedIds, object.id];
+        onSelectionChange?.(next, object.id);
+        return;
+      }
+      onSelect(object.id);
+    },
     onTap: () => onSelect(object.id),
   };
   const isLocked = !!object.locked;
@@ -274,11 +598,19 @@ function renderObject(args: {
             const dx = event.target.x();
             const dy = event.target.y();
             event.target.position({ x: 0, y: 0 });
+            if (selectedIds.includes(object.id) && selectedIds.length > 1) {
+              onMoveSelection(selectedIds, dx, dy);
+              return;
+            }
+            if (document.canvas.snap.enabled && document.canvas.snap.toObjects) {
+              onMoveSelection([object.id], dx, dy);
+              return;
+            }
             onMove(object.id, {
-              x1: object.x1 + dx,
-              y1: object.y1 + dy,
-              x2: object.x2 + dx,
-              y2: object.y2 + dy,
+              x1: snapMaybe(document, object.x1 + dx),
+              y1: snapMaybe(document, object.y1 + dy),
+              x2: snapMaybe(document, object.x2 + dx),
+              y2: snapMaybe(document, object.y2 + dy),
             } as Partial<PlanObject>);
           }}
         />
@@ -319,7 +651,19 @@ function renderObject(args: {
           stroke={selected ? "#2563eb" : isLocked ? "#6b7280" : object.stroke}
           strokeWidth={object.strokeWidth}
           fill={object.fill}
-          onDragEnd={(event) => onMove(object.id, { x: event.target.x(), y: event.target.y() } as Partial<PlanObject>)}
+          onDragEnd={(event) => {
+            if (selectedIds.includes(object.id) && selectedIds.length > 1) {
+              onMoveSelection(selectedIds, event.target.x() - object.x, event.target.y() - object.y);
+              event.target.position({ x: object.x, y: object.y });
+              return;
+            }
+            if (document.canvas.snap.enabled && document.canvas.snap.toObjects) {
+              onMoveSelection([object.id], event.target.x() - object.x, event.target.y() - object.y);
+              event.target.position({ x: object.x, y: object.y });
+              return;
+            }
+            onMove(object.id, snapPatch(document, { x: event.target.x(), y: event.target.y() }) as Partial<PlanObject>);
+          }}
         />
         {object.label ? (
           <Text
@@ -328,6 +672,72 @@ function renderObject(args: {
             text={object.label}
             fill={object.stroke}
             fontSize={13}
+            listening={false}
+          />
+        ) : null}
+        {object.showArea ? (
+          <Text
+            x={object.x + object.width / 2 - 36}
+            y={object.y + object.height / 2 - 8}
+            width={72}
+            text={getObjectAreaLabel(object, scale)}
+            fill="#2563eb"
+            fontSize={13}
+            fontStyle="bold"
+            align="center"
+            listening={false}
+          />
+        ) : null}
+      </Fragment>
+    );
+  }
+
+  if (object.type === "polygon") {
+    const points = object.points.flatMap((point) => [point.x, point.y]);
+    const center = getPolygonCentroid(object.points);
+    const validation = validatePolygon(object.points);
+    return (
+      <Fragment key={object.id}>
+        <Line
+          {...common}
+          x={0}
+          y={0}
+          points={points}
+          closed={object.points.length >= 3}
+          stroke={!validation.valid ? "#dc2626" : selected ? "#2563eb" : isLocked ? "#6b7280" : object.stroke}
+          strokeWidth={object.strokeWidth}
+          dash={!validation.valid ? [8, 5] : editing ? [4, 4] : undefined}
+          fill={object.fill}
+          onDragEnd={(event) => {
+            const dx = event.target.x();
+            const dy = event.target.y();
+            event.target.position({ x: 0, y: 0 });
+            if (selectedIds.includes(object.id) && selectedIds.length > 1) {
+              onMoveSelection(selectedIds, dx, dy);
+              return;
+            }
+            if (document.canvas.snap.enabled && document.canvas.snap.toObjects) {
+              onMoveSelection([object.id], dx, dy);
+              return;
+            }
+            onMove(object.id, {
+              points: object.points.map((point) => normalizePointer(document, { x: point.x + dx, y: point.y + dy })),
+            } as Partial<PlanObject>);
+          }}
+        />
+        {object.label ? (
+          <Text x={center.x + 8} y={center.y + 8} text={object.label} fill={object.stroke} fontSize={13} listening={false} />
+        ) : null}
+        {object.showArea && validation.valid ? (
+          <Text
+            x={center.x - 44}
+            y={center.y - 8}
+            width={88}
+            text={getObjectAreaLabel(object, scale)}
+            fill="#2563eb"
+            fontSize={13}
+            fontStyle="bold"
+            align="center"
             listening={false}
           />
         ) : null}
@@ -344,7 +754,10 @@ function renderObject(args: {
         readOnly={readOnly}
         setRef={setRef}
         onSelect={onSelect}
-        onMove={onMove}
+        onSelectionChange={onSelectionChange}
+        onMove={(objectId, patch) => onMove(objectId, snapPatch(document, patch) as Partial<PlanObject>)}
+        selectedIds={selectedIds}
+        onMoveSelection={onMoveSelection}
       />
     );
   }
@@ -358,7 +771,19 @@ function renderObject(args: {
       text={object.text}
       fill={selected ? "#2563eb" : object.fill}
       fontSize={object.fontSize}
-      onDragEnd={(event) => onMove(object.id, { x: event.target.x(), y: event.target.y() } as Partial<PlanObject>)}
+      onDragEnd={(event) => {
+        if (selectedIds.includes(object.id) && selectedIds.length > 1) {
+          onMoveSelection(selectedIds, event.target.x() - object.x, event.target.y() - object.y);
+          event.target.position({ x: object.x, y: object.y });
+          return;
+        }
+        if (document.canvas.snap.enabled && document.canvas.snap.toObjects) {
+          onMoveSelection([object.id], event.target.x() - object.x, event.target.y() - object.y);
+          event.target.position({ x: object.x, y: object.y });
+          return;
+        }
+        onMove(object.id, snapPatch(document, { x: event.target.x(), y: event.target.y() }) as Partial<PlanObject>);
+      }}
     />
   );
 }
@@ -369,14 +794,20 @@ function PlanSymbolNode({
   readOnly,
   setRef,
   onSelect,
+  onSelectionChange,
   onMove,
+  selectedIds,
+  onMoveSelection,
 }: {
   object: Extract<PlanObject, { type: "symbol" }>;
   selected: boolean;
   readOnly?: boolean;
   setRef: (node: Konva.Node | null) => void;
   onSelect: (objectId: string) => void;
+  onSelectionChange?: (objectIds: string[], activeObjectId?: string | null) => void;
   onMove: (objectId: string, patch: Partial<PlanObject>) => void;
+  selectedIds: string[];
+  onMoveSelection: (objectIds: string[], dx: number, dy: number) => void;
 }) {
   const icon = getPlanIconInfo(object.symbolIcon);
   const image = useImage(icon.kind === "image" ? icon.value : "");
@@ -392,9 +823,29 @@ function PlanSymbolNode({
       x={object.x}
       y={object.y}
       draggable={!readOnly && !object.locked}
-      onClick={() => onSelect(object.id)}
+      onClick={(event) => {
+        if ((event.evt as MouseEvent).shiftKey) {
+          const next = selectedIds.includes(object.id) ? selectedIds.filter((id) => id !== object.id) : [...selectedIds, object.id];
+          onSelectionChange?.(next, object.id);
+          return;
+        }
+        onSelect(object.id);
+      }}
       onTap={() => onSelect(object.id)}
-      onDragEnd={(event) => onMove(object.id, { x: event.target.x(), y: event.target.y() } as Partial<PlanObject>)}
+      onDragEnd={(event) => {
+        if (selectedIds.includes(object.id) && selectedIds.length > 1) {
+          onMoveSelection(selectedIds, event.target.x() - object.x, event.target.y() - object.y);
+          event.target.position({ x: object.x, y: object.y });
+          return;
+        }
+        // Single-symbol object snapping is handled by the same selection mover.
+        if (selectedIds.length <= 1) {
+          onMoveSelection([object.id], event.target.x() - object.x, event.target.y() - object.y);
+          event.target.position({ x: object.x, y: object.y });
+          return;
+        }
+        onMove(object.id, { x: event.target.x(), y: event.target.y() } as Partial<PlanObject>);
+      }}
     >
       {image ? (
         <KonvaImage image={image} x={0} y={0} width={markerSize} height={markerSize} />
@@ -491,5 +942,89 @@ function normalizeRectDraft(rect: PlanRectObject): PlanRectObject {
     y,
     width: Math.abs(rect.width),
     height: Math.abs(rect.height),
+  };
+}
+
+function normalizeBounds(a: PlanPolygonPoint, b: PlanPolygonPoint): PlanBounds {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) };
+}
+
+function normalizePointer(document: PlanDocument, point: PlanPolygonPoint) {
+  return shouldSnap(document) ? snapPoint(point, document.canvas.grid.size) : point;
+}
+
+function snapMaybe(document: PlanDocument, value: number) {
+  return shouldSnap(document) ? Math.round(value / document.canvas.grid.size) * document.canvas.grid.size : value;
+}
+
+function snapPatch(document: PlanDocument, patch: Partial<PlanObject>) {
+  if (!shouldSnap(document)) return patch;
+  const next: Record<string, unknown> = { ...patch };
+  for (const key of ["x", "y", "x1", "y1", "x2", "y2"]) {
+    if (typeof next[key] === "number") next[key] = snapMaybe(document, next[key]);
+  }
+  return next;
+}
+
+function getPolygonCenter(points: PlanPolygonPoint[]) {
+  if (!points.length) return { x: 0, y: 0 };
+  const totals = points.reduce((acc, point) => ({ x: acc.x + point.x, y: acc.y + point.y }), { x: 0, y: 0 });
+  return { x: totals.x / points.length, y: totals.y / points.length };
+}
+
+function GridLayer({ document }: { document: PlanDocument }) {
+  const size = document.canvas.grid.size;
+  const lines: ReactNode[] = [];
+  for (let x = 0; x <= document.canvas.width; x += size) {
+    lines.push(<Line key={`gx_${x}`} points={[x, 0, x, document.canvas.height]} stroke="rgba(148, 163, 184, 0.28)" strokeWidth={1} listening={false} />);
+  }
+  for (let y = 0; y <= document.canvas.height; y += size) {
+    lines.push(<Line key={`gy_${y}`} points={[0, y, document.canvas.width, y]} stroke="rgba(148, 163, 184, 0.28)" strokeWidth={1} listening={false} />);
+  }
+  return <Layer name="plan-grid" listening={false}>{lines}</Layer>;
+}
+
+function PlanRulers({ document, zoom }: { document: PlanDocument; zoom: number }) {
+  const step = document.canvas.grid.size || 50;
+  const top: ReactNode[] = [];
+  const left: ReactNode[] = [];
+  for (let x = 0; x <= document.canvas.width; x += step) {
+    top.push(<span key={x} className={styles.rulerTick} style={{ left: x * zoom }}>{formatRulerValue(x, document)}</span>);
+  }
+  for (let y = 0; y <= document.canvas.height; y += step) {
+    left.push(<span key={y} className={styles.rulerTickVertical} style={{ top: y * zoom }}>{formatRulerValue(y, document)}</span>);
+  }
+  return (
+    <>
+      <div className={styles.rulerTop}>{top}</div>
+      <div className={styles.rulerLeft}>{left}</div>
+    </>
+  );
+}
+
+function formatRulerValue(value: number, document: PlanDocument) {
+  const scale = document.canvas.scale;
+  if (!scale?.pixels || !scale.realValue) return `${Math.round(value)}`;
+  return `${Math.round((value / scale.pixels) * scale.realValue * 100) / 100}${scale.unit}`;
+}
+
+function getBackgroundImageProps(document: PlanDocument, image: HTMLImageElement) {
+  const fit = document.background.fit;
+  if (fit === "stretch") return { x: 0, y: 0, width: document.canvas.width, height: document.canvas.height };
+  if (fit === "original") return { x: 0, y: 0, width: image.width, height: image.height };
+
+  const canvasRatio = document.canvas.width / document.canvas.height;
+  const imageRatio = image.width / image.height;
+  const cover = fit === "cover";
+  const matchWidth = cover ? imageRatio < canvasRatio : imageRatio > canvasRatio;
+  const width = matchWidth ? document.canvas.width : document.canvas.height * imageRatio;
+  const height = matchWidth ? document.canvas.width / imageRatio : document.canvas.height;
+  return {
+    x: (document.canvas.width - width) / 2,
+    y: (document.canvas.height - height) / 2,
+    width,
+    height,
   };
 }

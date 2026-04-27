@@ -5,7 +5,7 @@
     "predev": "node scripts/kill-dev-ports.mjs",
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "test": "node --test apps/web/lib/pdf/*.test.mjs",
+    "test": "node --test apps/web/lib/pdf/*.test.mjs scripts/*.test.mjs",
     "lint": "turbo run lint",
     "gen:types": "supabase gen types typescript --linked --schema public > packages/types/supabase.ts",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",

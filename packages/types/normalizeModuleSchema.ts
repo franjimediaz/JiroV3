@@ -43,6 +43,7 @@ export type NormalizedModuleSchema = Omit<ModuleSchema, "fields"> & {
 };
 
 const CALENDAR_VIEWS: CalendarViewMode[] = ["month", "week", "day"];
+const DEFAULT_PLAN_CALIBRATION_UNITS: Array<"mm" | "cm" | "m" | "km" | "in" | "ft"> = ["mm", "cm", "m", "km", "in", "ft"];
 
 function isRecord(value: unknown): value is AnyRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -184,12 +185,20 @@ export function normalizePlanEditorConfig(config: unknown): NormalizedPlanEditor
   const width = Number(options.width);
   const height = Number(options.height);
   const scaleRaw = isRecord(options.scale) ? options.scale : null;
+  const gridRaw = isRecord(options.grid) ? options.grid : {};
+  const backgroundRaw = isRecord(options.background) ? options.background : {};
+  const exportRaw = isRecord(options.export) ? options.export : {};
+  const snapRaw = isRecord(options.snap) ? options.snap : {};
+  const viewRaw = isRecord(options.view) ? options.view : {};
+  const measurementRaw = isRecord(options.measurement) ? options.measurement : {};
   const scalePixels = Number(scaleRaw?.pixels);
   const scaleRealValue = Number(scaleRaw?.realValue);
+  const gridSize = Number(gridRaw.size);
+  const backgroundOpacity = Number(backgroundRaw.opacity);
   const scaleUnit =
-    scaleRaw?.unit === "cm" || scaleRaw?.unit === "mm" || scaleRaw?.unit === "px" || scaleRaw?.unit === "m"
+    isPlanUnit(scaleRaw?.unit)
       ? scaleRaw.unit
-      : options.unit === "cm" || options.unit === "mm" || options.unit === "px"
+      : isPlanUnit(options.unit)
         ? options.unit
         : "m";
 
@@ -198,16 +207,90 @@ export function normalizePlanEditorConfig(config: unknown): NormalizedPlanEditor
     options: {
       width: Number.isFinite(width) && width > 0 ? width : 1200,
       height: Number.isFinite(height) && height > 0 ? height : 800,
-      unit: options.unit === "cm" || options.unit === "mm" || options.unit === "px" ? options.unit : "m",
+      unit: isPlanUnit(options.unit) ? options.unit : "m",
       scale:
         Number.isFinite(scalePixels) && scalePixels > 0 && Number.isFinite(scaleRealValue) && scaleRealValue > 0
-          ? { pixels: scalePixels, realValue: scaleRealValue, unit: scaleUnit }
+          ? { pixels: scalePixels, realValue: scaleRealValue, unit: scaleUnit, calibratedFrom: normalizeScaleCalibration(scaleRaw?.calibratedFrom) }
           : null,
+      grid: {
+        enabled: gridRaw.enabled !== false,
+        size: Number.isFinite(gridSize) && gridSize > 0 ? gridSize : 20,
+        snap: gridRaw.snap !== false,
+      },
+      snap: {
+        enabled: snapRaw.enabled !== false,
+        toGrid: snapRaw.toGrid !== false,
+        toObjects: snapRaw.toObjects !== false,
+        threshold: Number.isFinite(Number(snapRaw.threshold)) && Number(snapRaw.threshold) > 0 ? Number(snapRaw.threshold) : 8,
+      },
+      view: {
+        showRulers: viewRaw.showRulers !== false,
+        showGuides: viewRaw.showGuides !== false,
+      },
+      background: {
+        locked: backgroundRaw.locked !== false,
+        opacity: Number.isFinite(backgroundOpacity) ? Math.min(1, Math.max(0, backgroundOpacity)) : 1,
+        fit:
+          backgroundRaw.fit === "cover" || backgroundRaw.fit === "stretch" || backgroundRaw.fit === "original" || backgroundRaw.fit === "contain"
+            ? backgroundRaw.fit
+            : "contain",
+        uploader: normalizePlanBackgroundUploader(backgroundRaw.uploader),
+      },
+      export: {
+        includeGrid: exportRaw.includeGrid === true,
+        includeLayerLegend: exportRaw.includeLayerLegend !== false,
+        pageOrientation: exportRaw.pageOrientation === "portrait" ? "portrait" : "landscape",
+      },
       exportTitle: toString(options.exportTitle) || undefined,
+      exportSubtitleField: toString(options.exportSubtitleField) || undefined,
+      calibration: normalizePlanCalibration(options.calibration),
+      polygonValidation: normalizePolygonValidation(options.polygonValidation),
+      measurement: {
+        enabled: measurementRaw.enabled !== false,
+        allowConvertToLine: measurementRaw.allowConvertToLine !== false,
+      },
       symbolsSource: normalizePlanDynamicSource(options.symbolsSource),
       defaultLayersSource: normalizePlanDynamicSource(options.defaultLayersSource),
       linkTargets: normalizePlanLinkTargets(options.linkTargets),
     },
+  };
+}
+
+function isPlanUnit(value: unknown): value is "m" | "cm" | "mm" | "km" | "in" | "ft" | "px" {
+  return value === "m" || value === "cm" || value === "mm" || value === "km" || value === "in" || value === "ft" || value === "px";
+}
+
+function normalizeScaleCalibration(input: unknown) {
+  if (!isRecord(input)) return undefined;
+  const pixelLength = Number(input.pixelLength);
+  const realLength = Number(input.realLength);
+  if (!Number.isFinite(pixelLength) || pixelLength <= 0 || !Number.isFinite(realLength) || realLength <= 0) return undefined;
+  return {
+    objectId: toString(input.objectId) || undefined,
+    pixelLength,
+    realLength,
+    unit: isPlanUnit(input.unit) ? input.unit : "m",
+    calibratedAt: toString(input.calibratedAt),
+  };
+}
+
+function normalizePlanCalibration(input: unknown) {
+  const raw = isRecord(input) ? input : {};
+  const allowed = Array.isArray(raw.allowedUnits) ? raw.allowedUnits.filter(isPlanUnit) : DEFAULT_PLAN_CALIBRATION_UNITS;
+  return {
+    enabled: raw.enabled !== false,
+    allowedUnits: allowed.length ? allowed : DEFAULT_PLAN_CALIBRATION_UNITS,
+    defaultUnit: isPlanUnit(raw.defaultUnit) ? raw.defaultUnit : "m",
+  };
+}
+
+function normalizePolygonValidation(input: unknown) {
+  const raw = isRecord(input) ? input : {};
+  const epsilon = Number(raw.epsilon);
+  return {
+    enabled: raw.enabled !== false,
+    showWarnings: raw.showWarnings !== false,
+    epsilon: Number.isFinite(epsilon) && epsilon > 0 ? epsilon : 0.5,
   };
 }
 
@@ -245,6 +328,18 @@ function normalizePlanLinkTargets(input: unknown) {
       filters: Array.isArray(target.filters) ? target.filters : [],
       sort: Array.isArray(target.sort) ? target.sort : [],
     }));
+}
+
+function normalizePlanBackgroundUploader(input: unknown) {
+  if (!isRecord(input)) {
+    return { enabled: true, endpoint: "/api/upload", mode: "global" as const };
+  }
+  return {
+    enabled: input.enabled !== false,
+    endpoint: toString(input.endpoint, "/api/upload") || "/api/upload",
+    mode: "global" as const,
+    folder: toString(input.folder) || undefined,
+  };
 }
 
 export function normalizeSpecialViews(config: unknown): NormalizedSpecialView[] {

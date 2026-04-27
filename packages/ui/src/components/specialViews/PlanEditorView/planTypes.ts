@@ -1,26 +1,71 @@
 import type { QueryFilter, QuerySort } from "@repo/types";
 
-export type PlanTool = "select" | "line" | "rect" | "text" | "symbol";
+export type PlanTool = "select" | "line" | "rect" | "text" | "symbol" | "polygon" | "measure" | "pan";
 
-export type PlanUnit = "m" | "cm" | "mm" | "px";
+export type PlanUnit = "m" | "cm" | "mm" | "km" | "in" | "ft" | "px";
 
 export type PlanCanvasConfig = {
   width: number;
   height: number;
   unit: PlanUnit;
   scale: PlanScaleConfig | null;
+  grid: PlanGridConfig;
+  snap: PlanSnapConfig;
+  view: PlanViewConfig;
 };
 
 export type PlanScaleConfig = {
   pixels: number;
   realValue: number;
   unit: PlanUnit;
+  calibratedFrom?: PlanScaleCalibration;
+};
+
+export type PlanScaleCalibration = {
+  objectId?: string;
+  pixelLength: number;
+  realLength: number;
+  unit: PlanUnit;
+  calibratedAt: string;
+};
+
+export type PlanGridConfig = {
+  enabled: boolean;
+  size: number;
+  snap: boolean;
+};
+
+export type PlanSnapConfig = {
+  enabled: boolean;
+  toGrid: boolean;
+  toObjects: boolean;
+  threshold: number;
+};
+
+export type PlanViewConfig = {
+  showRulers: boolean;
+  showGuides: boolean;
 };
 
 export type PlanBackgroundConfig = {
   url: string;
   locked: boolean;
   opacity: number;
+  fit: "contain" | "cover" | "stretch" | "original";
+  source?: PlanBackgroundSource;
+};
+
+export type PlanBackgroundSource = {
+  type: "url" | "upload";
+  fileName?: string;
+  uploadedAt?: string;
+};
+
+export type PlanBackgroundUploaderConfig = {
+  enabled?: boolean;
+  endpoint?: string;
+  mode?: "global";
+  folder?: string;
 };
 
 export type PlanLinkedRecord = {
@@ -67,6 +112,24 @@ export type PlanRectObject = PlanObjectBase & {
   strokeWidth: number;
   fill: string;
   label: string;
+  showArea: boolean;
+  manualAreaLabel?: string;
+};
+
+export type PlanPolygonPoint = {
+  x: number;
+  y: number;
+};
+
+export type PlanPolygonObject = PlanObjectBase & {
+  type: "polygon";
+  points: PlanPolygonPoint[];
+  stroke: string;
+  strokeWidth: number;
+  fill: string;
+  label: string;
+  showArea: boolean;
+  manualAreaLabel?: string;
 };
 
 export type PlanTextObject = PlanObjectBase & {
@@ -90,7 +153,7 @@ export type PlanSymbolObject = PlanObjectBase & {
   source?: PlanObjectSource;
 };
 
-export type PlanObject = PlanLineObject | PlanRectObject | PlanTextObject | PlanSymbolObject;
+export type PlanObject = PlanLineObject | PlanRectObject | PlanPolygonObject | PlanTextObject | PlanSymbolObject;
 
 export type PlanLayer = {
   id: string;
@@ -103,9 +166,9 @@ export type PlanLayer = {
 };
 
 export type PlanDocument = {
-  version: 3;
+  version: 7;
   canvas: PlanCanvasConfig;
-  background?: PlanBackgroundConfig;
+  background: PlanBackgroundConfig;
   layers: PlanLayer[];
   activeLayerId: string;
   objects: PlanObject[];
@@ -152,6 +215,32 @@ export type PlanSymbolDefinition = {
 
 export type PlanEditorOptions = Partial<Pick<PlanCanvasConfig, "width" | "height" | "unit" | "scale">> & {
   exportTitle?: string;
+  exportSubtitleField?: string;
+  grid?: Partial<PlanGridConfig>;
+  background?: Partial<PlanBackgroundConfig> & {
+    uploader?: PlanBackgroundUploaderConfig;
+  };
+  export?: {
+    includeGrid?: boolean;
+    includeLayerLegend?: boolean;
+    pageOrientation?: "portrait" | "landscape";
+  };
+  calibration?: {
+    enabled?: boolean;
+    allowedUnits?: PlanUnit[];
+    defaultUnit?: PlanUnit;
+  };
+  polygonValidation?: {
+    enabled?: boolean;
+    showWarnings?: boolean;
+    epsilon?: number;
+  };
+  snap?: Partial<PlanSnapConfig>;
+  view?: Partial<PlanViewConfig>;
+  measurement?: {
+    enabled?: boolean;
+    allowConvertToLine?: boolean;
+  };
   symbolsSource?: PlanDynamicSourceConfig;
   defaultLayersSource?: PlanDynamicSourceConfig;
   linkTargets?: PlanLinkTargetConfig[];

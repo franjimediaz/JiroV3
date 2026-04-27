@@ -103,13 +103,67 @@ export type PlanEditorSpecialViewConfig = {
   options?: {
     width?: number;
     height?: number;
-    unit?: "m" | "cm" | "mm" | "px";
+    unit?: "m" | "cm" | "mm" | "km" | "in" | "ft" | "px";
     scale?: {
       pixels: number;
       realValue: number;
-      unit: "m" | "cm" | "mm" | "px";
+      unit: "m" | "cm" | "mm" | "km" | "in" | "ft" | "px";
+      calibratedFrom?: {
+        objectId?: string;
+        pixelLength: number;
+        realLength: number;
+        unit: "m" | "cm" | "mm" | "km" | "in" | "ft" | "px";
+        calibratedAt: string;
+      };
     } | null;
+    grid?: {
+      enabled?: boolean;
+      size?: number;
+      snap?: boolean;
+    };
+    snap?: {
+      enabled?: boolean;
+      toGrid?: boolean;
+      toObjects?: boolean;
+      threshold?: number;
+    };
+    view?: {
+      showRulers?: boolean;
+      showGuides?: boolean;
+    };
+    background?: {
+      url?: string;
+      locked?: boolean;
+      opacity?: number;
+      fit?: "contain" | "cover" | "stretch" | "original";
+      uploader?: {
+        enabled?: boolean;
+        endpoint?: string;
+        mode?: "global";
+        folder?: string;
+      };
+    };
+    export?: {
+      includeGrid?: boolean;
+      includeLayerLegend?: boolean;
+      pageOrientation?: "portrait" | "landscape";
+    };
     exportTitle?: string;
+    exportSubtitleField?: string;
+    calibration?: {
+      enabled?: boolean;
+      allowedUnits?: Array<"m" | "cm" | "mm" | "km" | "in" | "ft" | "px">;
+      defaultUnit?: "m" | "cm" | "mm" | "km" | "in" | "ft" | "px";
+    };
+    polygonValidation?: {
+      enabled?: boolean;
+      showWarnings?: boolean;
+      epsilon?: number;
+    };
+    measurement?: {
+      enabled?: boolean;
+      allowConvertToLine?: boolean;
+    };
     symbolsSource?: PlanDynamicSourceConfig;
     defaultLayersSource?: PlanDynamicSourceConfig;
     linkTargets?: PlanLinkTargetConfig[];

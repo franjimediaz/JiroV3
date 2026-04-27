@@ -3,26 +3,56 @@ import type {
   PlanCanvasConfig,
   PlanDocument,
   PlanEditorOptions,
+  PlanGridConfig,
   PlanLayer,
   PlanLineObject,
   PlanLinkedRecord,
   PlanObject,
+  PlanPolygonPoint,
+  PlanRectObject,
   PlanScaleConfig,
+  PlanSnapConfig,
   PlanSymbolObject,
   PlanUnit,
+  PlanViewConfig,
 } from "./planTypes";
 
 const DEFAULT_CANVAS: PlanCanvasConfig = {
   width: 1200,
   height: 800,
   unit: "m",
-  scale: null,
+  scale: {
+    pixels: 100,
+    realValue: 1,
+    unit: "m",
+  },
+  grid: {
+    enabled: true,
+    size: 20,
+    snap: true,
+  },
+  snap: {
+    enabled: true,
+    toGrid: true,
+    toObjects: true,
+    threshold: 8,
+  },
+  view: {
+    showRulers: true,
+    showGuides: true,
+  },
 };
 
 const DEFAULT_BACKGROUND: PlanBackgroundConfig = {
   url: "",
   locked: true,
   opacity: 1,
+  fit: "contain",
+  source: {
+    type: "url",
+    fileName: "",
+    uploadedAt: "",
+  },
 };
 
 export const DEFAULT_LAYER_ID = "layer_default";
@@ -36,7 +66,7 @@ export const DEFAULT_PLAN_LAYER: PlanLayer = {
 };
 
 export const DEFAULT_PLAN_DOCUMENT: PlanDocument = {
-  version: 3,
+  version: 7,
   canvas: DEFAULT_CANVAS,
   background: DEFAULT_BACKGROUND,
   layers: [DEFAULT_PLAN_LAYER],
@@ -46,15 +76,19 @@ export const DEFAULT_PLAN_DOCUMENT: PlanDocument = {
 
 export function createDefaultPlanData(options?: PlanEditorOptions, initialLayers?: PlanLayer[]): PlanDocument {
   const layers = normalizeLayers(initialLayers);
+  const canvasUnit = normalizeUnit(options?.unit, DEFAULT_CANVAS.unit);
   return {
-    version: 3,
+    version: 7,
     canvas: {
       width: normalizePositiveNumber(options?.width, DEFAULT_CANVAS.width),
       height: normalizePositiveNumber(options?.height, DEFAULT_CANVAS.height),
-      unit: options?.unit || DEFAULT_CANVAS.unit,
-      scale: normalizeScale(options?.scale, null),
+      unit: canvasUnit,
+      scale: normalizeScale(options?.scale, DEFAULT_CANVAS.scale),
+      grid: normalizeGrid(options?.grid, DEFAULT_CANVAS.grid),
+      snap: normalizeSnap(options?.snap, DEFAULT_CANVAS.snap),
+      view: normalizeView(options?.view, DEFAULT_CANVAS.view),
     },
-    background: DEFAULT_BACKGROUND,
+    background: normalizeBackground(options?.background),
     layers,
     activeLayerId: layers[0]?.id || DEFAULT_LAYER_ID,
     objects: [],
@@ -98,14 +132,17 @@ export function normalizePlanData(input: unknown, options?: PlanEditorOptions): 
     : [];
 
   return {
-    version: 3,
+    version: 7,
     canvas: {
       width: normalizePositiveNumber(rawCanvas.width, fallback.canvas.width),
       height: normalizePositiveNumber(rawCanvas.height, fallback.canvas.height),
       unit: rawCanvas.unit === "cm" || rawCanvas.unit === "mm" || rawCanvas.unit === "px" ? rawCanvas.unit : fallback.canvas.unit,
       scale: normalizeScale(rawCanvas.scale, fallback.canvas.scale),
+      grid: normalizeGrid(rawCanvas.grid, fallback.canvas.grid),
+      snap: normalizeSnap(rawCanvas.snap ?? options?.snap, fallback.canvas.snap),
+      view: normalizeView(rawCanvas.view ?? options?.view, fallback.canvas.view),
     },
-    background: normalizeBackground(raw.background),
+    background: normalizeBackground(raw.background, fallback.background),
     layers,
     activeLayerId,
     objects: objects as PlanObject[],
@@ -155,9 +192,316 @@ export function getVisiblePlanObjects(document: PlanDocument) {
 export function calculateLineMeasure(line: PlanLineObject, scale: PlanScaleConfig | null) {
   if (!line.showMeasure) return "";
   if (line.manualMeasureLabel?.trim()) return line.manualMeasureLabel.trim();
-  if (!scale || scale.pixels <= 0 || scale.realValue <= 0) return "sin escala";
+  if (!hasValidScale(scale)) return "Sin escala";
 
   const pixels = Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
+  const realValue = (pixels / scale.pixels) * scale.realValue;
+  const decimals = realValue >= 10 ? 1 : 2;
+  return `${trimNumber(realValue, decimals)} ${scale.unit}`;
+}
+
+export function snapValue(value: number, gridSize: number) {
+  if (!Number.isFinite(value) || !Number.isFinite(gridSize) || gridSize <= 0) return value;
+  return Math.round(value / gridSize) * gridSize;
+}
+
+export function snapPoint(point: PlanPolygonPoint, gridSize: number): PlanPolygonPoint {
+  return {
+    x: snapValue(point.x, gridSize),
+    y: snapValue(point.y, gridSize),
+  };
+}
+
+export function shouldSnap(plan: PlanDocument, mode: "create" | "move" | "edit" = "create") {
+  void mode;
+  return plan.canvas.snap.enabled && plan.canvas.snap.toGrid && plan.canvas.grid.enabled && plan.canvas.grid.snap && plan.canvas.grid.size > 0;
+}
+
+export function hasValidScale(scale: PlanScaleConfig | null | undefined): scale is PlanScaleConfig {
+  return !!scale && scale.pixels > 0 && scale.realValue > 0;
+}
+
+export const isValidScale = hasValidScale;
+
+export function calculateRectArea(rect: Pick<PlanRectObject, "width" | "height">, scale: PlanScaleConfig | null | undefined) {
+  if (!hasValidScale(scale)) return null;
+  const areaPx = Math.abs(rect.width * rect.height);
+  return areaPx * Math.pow(scale.realValue / scale.pixels, 2);
+}
+
+export function calculatePolygonArea(points: PlanPolygonPoint[], scale: PlanScaleConfig | null | undefined) {
+  if (!hasValidScale(scale) || points.length < 3) return null;
+  const areaPx = getPolygonAreaPx(points);
+  return areaPx * Math.pow(scale.realValue / scale.pixels, 2);
+}
+
+export function formatArea(value: number | null | undefined, unit: PlanUnit | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "Sin escala";
+  if (value <= 0) return "0";
+  const decimals = value >= 100 ? 1 : value >= 10 ? 2 : 3;
+  return `${trimNumber(value, decimals)} ${unit || "m"}²`;
+}
+
+export function calculateObjectAreaLabel(object: PlanObject, scale: PlanScaleConfig | null | undefined) {
+  return getObjectAreaLabel(object, scale, true);
+}
+
+export function getObjectAreaLabel(object: PlanObject, scale: PlanScaleConfig | null | undefined, includeUnscaled = false) {
+  if (object.type !== "rect" && object.type !== "polygon") return "";
+  if (!object.showArea) return "";
+  if (object.manualAreaLabel?.trim()) return object.manualAreaLabel.trim();
+  if (!hasValidScale(scale)) return includeUnscaled ? "Sin escala" : "";
+  if (object.type === "polygon" && !validatePolygon(object.points).valid) return "";
+  const area = object.type === "rect" ? calculateRectArea(object, scale) : calculatePolygonArea(object.points, scale);
+  return formatArea(area, scale?.unit);
+}
+
+export type PolygonValidationResult = {
+  valid: boolean;
+  warnings: string[];
+  errors: string[];
+};
+
+export function getPolygonAreaPx(points: PlanPolygonPoint[]) {
+  if (points.length < 3) return 0;
+  let sum = 0;
+  for (let index = 0; index < points.length; index++) {
+    const current = points[index];
+    const next = points[(index + 1) % points.length];
+    if (!isFinitePoint(current) || !isFinitePoint(next)) return 0;
+    sum += current.x * next.y - next.x * current.y;
+  }
+  return Math.abs(sum) / 2;
+}
+
+export function hasDuplicateOrNearDuplicatePoints(points: PlanPolygonPoint[], epsilon = 0.5) {
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      if (Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y) <= epsilon) return true;
+    }
+  }
+  return false;
+}
+
+export function doSegmentsIntersect(a1: PlanPolygonPoint, a2: PlanPolygonPoint, b1: PlanPolygonPoint, b2: PlanPolygonPoint) {
+  const d1 = direction(a1, a2, b1);
+  const d2 = direction(a1, a2, b2);
+  const d3 = direction(b1, b2, a1);
+  const d4 = direction(b1, b2, a2);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+  return d1 === 0 && onSegment(a1, a2, b1) || d2 === 0 && onSegment(a1, a2, b2) || d3 === 0 && onSegment(b1, b2, a1) || d4 === 0 && onSegment(b1, b2, a2);
+}
+
+export function polygonHasSelfIntersections(points: PlanPolygonPoint[]) {
+  if (points.length < 4) return false;
+  for (let i = 0; i < points.length; i++) {
+    const a1 = points[i];
+    const a2 = points[(i + 1) % points.length];
+    for (let j = i + 1; j < points.length; j++) {
+      if (Math.abs(i - j) <= 1 || (i === 0 && j === points.length - 1)) continue;
+      if (doSegmentsIntersect(a1, a2, points[j], points[(j + 1) % points.length])) return true;
+    }
+  }
+  return false;
+}
+
+export function validatePolygon(points: PlanPolygonPoint[], epsilon = 0.5): PolygonValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  if (points.length < 3) errors.push("La zona tiene menos de 3 puntos.");
+  if (points.some((point) => !isFinitePoint(point))) errors.push("La zona tiene coordenadas invalidas.");
+  if (hasDuplicateOrNearDuplicatePoints(points, epsilon)) errors.push("La zona tiene puntos duplicados.");
+  if (points.length >= 3 && getPolygonAreaPx(points) <= epsilon) errors.push("La superficie no se puede calcular correctamente.");
+  if (polygonHasSelfIntersections(points)) errors.push("La zona tiene segmentos cruzados.");
+  return { valid: errors.length === 0, warnings, errors };
+}
+
+export function calculateDistancePx(a: PlanPolygonPoint, b: PlanPolygonPoint) {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+export function projectPointOnSegment(point: PlanPolygonPoint, a: PlanPolygonPoint, b: PlanPolygonPoint): PlanPolygonPoint {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq <= 0) return a;
+  const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSq));
+  return { x: a.x + t * dx, y: a.y + t * dy };
+}
+
+export function distancePointToSegment(point: PlanPolygonPoint, a: PlanPolygonPoint, b: PlanPolygonPoint) {
+  const projected = projectPointOnSegment(point, a, b);
+  return calculateDistancePx(point, projected);
+}
+
+export function getClosestSegment(points: PlanPolygonPoint[], point: PlanPolygonPoint, threshold = 10) {
+  if (points.length < 2) return null;
+  let best: { index: number; distance: number; point: PlanPolygonPoint } | null = null;
+  for (let index = 0; index < points.length; index++) {
+    const projected = projectPointOnSegment(point, points[index], points[(index + 1) % points.length]);
+    const distance = calculateDistancePx(point, projected);
+    if (distance <= threshold && (!best || distance < best.distance)) best = { index, distance, point: projected };
+  }
+  return best;
+}
+
+export function insertPointInPolygonSegment(points: PlanPolygonPoint[], segmentIndex: number, point: PlanPolygonPoint) {
+  const index = Math.max(0, Math.min(segmentIndex, points.length - 1));
+  return [...points.slice(0, index + 1), point, ...points.slice(index + 1)];
+}
+
+export function getPolygonBoundingBox(points: PlanPolygonPoint[]) {
+  if (!points.length) return { x: 0, y: 0, width: 0, height: 0 };
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  return { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
+}
+
+export function getPolygonCentroid(points: PlanPolygonPoint[]) {
+  const area = signedPolygonArea(points);
+  if (points.length < 3 || Math.abs(area) < 0.000001) {
+    const box = getPolygonBoundingBox(points);
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  }
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < points.length; i++) {
+    const current = points[i];
+    const next = points[(i + 1) % points.length];
+    const cross = current.x * next.y - next.x * current.y;
+    cx += (current.x + next.x) * cross;
+    cy += (current.y + next.y) * cross;
+  }
+  return { x: cx / (6 * area), y: cy / (6 * area) };
+}
+
+export function calibrateScaleFromLine(line: PlanLineObject, realLength: number, unit: PlanUnit): PlanScaleConfig {
+  const pixelLength = calculateDistancePx({ x: line.x1, y: line.y1 }, { x: line.x2, y: line.y2 });
+  if (pixelLength <= 0) throw new Error("La linea de calibracion no tiene longitud.");
+  if (!Number.isFinite(realLength) || realLength <= 0) throw new Error("La medida real debe ser mayor que 0.");
+  return {
+    pixels: pixelLength,
+    realValue: realLength,
+    unit,
+    calibratedFrom: {
+      objectId: line.id,
+      pixelLength,
+      realLength,
+      unit,
+      calibratedAt: new Date().toISOString(),
+    },
+  };
+}
+
+export type PlanBounds = { x: number; y: number; width: number; height: number };
+export type PlanSnapPoint = { x: number; y: number; objectId?: string; kind?: string };
+export type SnapGuide = { orientation: "horizontal" | "vertical"; position: number; from: number; to: number };
+
+export function canEditObject(object: PlanObject, layer: PlanLayer | undefined, readOnly?: boolean) {
+  return !readOnly && !object.locked && layer?.locked !== true && layer?.visible !== false;
+}
+
+export function canMoveObject(object: PlanObject, layer: PlanLayer | undefined, readOnly?: boolean) {
+  return canEditObject(object, layer, readOnly);
+}
+
+export function moveObjectByDelta(object: PlanObject, dx: number, dy: number): PlanObject {
+  if (object.type === "line") return { ...object, x1: object.x1 + dx, y1: object.y1 + dy, x2: object.x2 + dx, y2: object.y2 + dy };
+  if (object.type === "rect") return { ...object, x: object.x + dx, y: object.y + dy };
+  if (object.type === "polygon") return { ...object, points: object.points.map((point) => ({ x: point.x + dx, y: point.y + dy })) };
+  return { ...object, x: object.x + dx, y: object.y + dy };
+}
+
+export function moveObjectsByDelta(objects: PlanObject[], ids: string[], dx: number, dy: number, context?: { layers?: PlanLayer[]; readOnly?: boolean }) {
+  const selected = new Set(ids);
+  const layerMap = new Map((context?.layers || []).map((layer) => [layer.id, layer]));
+  return objects.map((object) => {
+    if (!selected.has(object.id)) return object;
+    const layer = object.layerId ? layerMap.get(object.layerId) : context?.layers?.[0];
+    return canMoveObject(object, layer, context?.readOnly) ? moveObjectByDelta(object, dx, dy) : object;
+  });
+}
+
+export function getObjectBounds(object: PlanObject): PlanBounds {
+  if (object.type === "line") {
+    const x = Math.min(object.x1, object.x2);
+    const y = Math.min(object.y1, object.y2);
+    return { x, y, width: Math.abs(object.x2 - object.x1), height: Math.abs(object.y2 - object.y1) };
+  }
+  if (object.type === "rect") return { x: object.x, y: object.y, width: object.width, height: object.height };
+  if (object.type === "polygon") return getPolygonBoundingBox(object.points);
+  if (object.type === "symbol") return { x: object.x, y: object.y, width: object.size, height: object.size };
+  return { x: object.x, y: object.y, width: Math.max(1, object.text.length * object.fontSize * 0.55), height: object.fontSize };
+}
+
+export function getSelectionBounds(objects: PlanObject[], ids?: string[]): PlanBounds | null {
+  const selected = ids ? objects.filter((object) => ids.includes(object.id)) : objects;
+  if (!selected.length) return null;
+  const boxes = selected.map(getObjectBounds);
+  const minX = Math.min(...boxes.map((box) => box.x));
+  const minY = Math.min(...boxes.map((box) => box.y));
+  const maxX = Math.max(...boxes.map((box) => box.x + box.width));
+  const maxY = Math.max(...boxes.map((box) => box.y + box.height));
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+export function objectIntersectsRect(object: PlanObject, rect: PlanBounds) {
+  const box = getObjectBounds(object);
+  return box.x >= rect.x && box.y >= rect.y && box.x + box.width <= rect.x + rect.width && box.y + box.height <= rect.y + rect.height;
+}
+
+export function getObjectSnapPoints(object: PlanObject): PlanSnapPoint[] {
+  if (object.type === "line") return [{ x: object.x1, y: object.y1, objectId: object.id, kind: "endpoint" }, { x: object.x2, y: object.y2, objectId: object.id, kind: "endpoint" }];
+  if (object.type === "polygon") return object.points.map((point) => ({ ...point, objectId: object.id, kind: "vertex" }));
+  const box = getObjectBounds(object);
+  return [
+    { x: box.x, y: box.y, objectId: object.id, kind: "corner" },
+    { x: box.x + box.width, y: box.y, objectId: object.id, kind: "corner" },
+    { x: box.x + box.width, y: box.y + box.height, objectId: object.id, kind: "corner" },
+    { x: box.x, y: box.y + box.height, objectId: object.id, kind: "corner" },
+    { x: box.x + box.width / 2, y: box.y + box.height / 2, objectId: object.id, kind: "center" },
+  ];
+}
+
+export function getSelectionSnapPoints(objects: PlanObject[], ids?: string[]): PlanSnapPoint[] {
+  const box = getSelectionBounds(objects, ids);
+  if (!box) return [];
+  return [
+    { x: box.x, y: box.y, kind: "selection-corner" },
+    { x: box.x + box.width, y: box.y, kind: "selection-corner" },
+    { x: box.x + box.width, y: box.y + box.height, kind: "selection-corner" },
+    { x: box.x, y: box.y + box.height, kind: "selection-corner" },
+    { x: box.x + box.width / 2, y: box.y + box.height / 2, kind: "selection-center" },
+  ];
+}
+
+export function findNearestSnapPoint(point: PlanSnapPoint, candidates: PlanSnapPoint[], threshold: number) {
+  let best: (PlanSnapPoint & { distance: number }) | null = null;
+  for (const candidate of candidates) {
+    const distance = calculateDistancePx(point, candidate);
+    if (distance <= threshold && (!best || distance < best.distance)) best = { ...candidate, distance };
+  }
+  return best;
+}
+
+export function applyObjectSnap(point: PlanSnapPoint, candidates: PlanSnapPoint[], threshold: number) {
+  const target = findNearestSnapPoint(point, candidates, threshold);
+  if (!target) return { point, target: null, dx: 0, dy: 0 };
+  return { point: { x: target.x, y: target.y }, target, dx: target.x - point.x, dy: target.y - point.y };
+}
+
+export function getSnapGuides(sourcePoint: PlanSnapPoint, targetPoint: PlanSnapPoint): SnapGuide[] {
+  const guides: SnapGuide[] = [];
+  if (Math.abs(sourcePoint.x - targetPoint.x) < 0.001) guides.push({ orientation: "vertical", position: targetPoint.x, from: Math.min(sourcePoint.y, targetPoint.y), to: Math.max(sourcePoint.y, targetPoint.y) });
+  if (Math.abs(sourcePoint.y - targetPoint.y) < 0.001) guides.push({ orientation: "horizontal", position: targetPoint.y, from: Math.min(sourcePoint.x, targetPoint.x), to: Math.max(sourcePoint.x, targetPoint.x) });
+  return guides;
+}
+
+export function calculateTemporaryMeasurement(a: PlanPolygonPoint, b: PlanPolygonPoint, scale: PlanScaleConfig | null | undefined) {
+  const pixels = calculateDistancePx(a, b);
+  if (!hasValidScale(scale)) return `${trimNumber(pixels, 1)} px`;
   const realValue = (pixels / scale.pixels) * scale.realValue;
   const decimals = realValue >= 10 ? 1 : 2;
   return `${trimNumber(realValue, decimals)} ${scale.unit}`;
@@ -200,6 +544,28 @@ function normalizePlanObject(input: unknown, fallbackLayerId: string): PlanObjec
       strokeWidth: normalizePositiveNumber(input.strokeWidth, 2),
       fill: typeof input.fill === "string" ? input.fill : "transparent",
       label: typeof input.label === "string" ? input.label : "",
+      showArea: typeof input.showArea === "boolean" ? input.showArea : false,
+      manualAreaLabel: typeof input.manualAreaLabel === "string" ? input.manualAreaLabel : undefined,
+    };
+  }
+
+  if (input.type === "polygon") {
+    const points = Array.isArray(input.points)
+      ? input.points
+          .filter(isRecord)
+          .map((point) => ({ x: normalizeNumber(point.x, 0), y: normalizeNumber(point.y, 0) }))
+      : [];
+    if (points.length < 3) return null;
+    return {
+      ...base,
+      type: "polygon",
+      points,
+      stroke: normalizeColor(input.stroke, "#111827"),
+      strokeWidth: normalizePositiveNumber(input.strokeWidth, 2),
+      fill: typeof input.fill === "string" ? input.fill : "rgba(37, 99, 235, 0.12)",
+      label: typeof input.label === "string" ? input.label : "Zona",
+      showArea: typeof input.showArea === "boolean" ? input.showArea : true,
+      manualAreaLabel: typeof input.manualAreaLabel === "string" ? input.manualAreaLabel : undefined,
     };
   }
 
@@ -276,15 +642,68 @@ function normalizeScale(input: unknown, fallback: PlanScaleConfig | null): PlanS
     pixels,
     realValue,
     unit: normalizeUnit(input.unit, fallback?.unit || "m"),
+    calibratedFrom: normalizeCalibration(input.calibratedFrom),
   };
 }
 
-function normalizeBackground(input: unknown): PlanBackgroundConfig {
-  if (!isRecord(input)) return DEFAULT_BACKGROUND;
+function normalizeCalibration(input: unknown) {
+  if (!isRecord(input)) return undefined;
+  const pixelLength = normalizePositiveNumber(input.pixelLength, 0);
+  const realLength = normalizePositiveNumber(input.realLength, 0);
+  if (!pixelLength || !realLength) return undefined;
+  return {
+    objectId: typeof input.objectId === "string" ? input.objectId : undefined,
+    pixelLength,
+    realLength,
+    unit: normalizeUnit(input.unit, "m"),
+    calibratedAt: typeof input.calibratedAt === "string" ? input.calibratedAt : "",
+  };
+}
+
+function normalizeGrid(input: unknown, fallback: PlanGridConfig): PlanGridConfig {
+  if (!isRecord(input)) return fallback;
+  return {
+    enabled: input.enabled !== false,
+    size: normalizePositiveNumber(input.size, fallback.size),
+    snap: input.snap !== false,
+  };
+}
+
+function normalizeSnap(input: unknown, fallback: PlanSnapConfig): PlanSnapConfig {
+  if (!isRecord(input)) return fallback;
+  return {
+    enabled: input.enabled !== false,
+    toGrid: input.toGrid !== false,
+    toObjects: input.toObjects !== false,
+    threshold: normalizePositiveNumber(input.threshold, fallback.threshold),
+  };
+}
+
+function normalizeView(input: unknown, fallback: PlanViewConfig): PlanViewConfig {
+  if (!isRecord(input)) return fallback;
+  return {
+    showRulers: input.showRulers !== false,
+    showGuides: input.showGuides !== false,
+  };
+}
+
+function normalizeBackground(input: unknown, fallback: PlanBackgroundConfig = DEFAULT_BACKGROUND): PlanBackgroundConfig {
+  if (!isRecord(input)) return fallback;
   return {
     url: typeof input.url === "string" ? input.url : "",
     locked: input.locked !== false,
     opacity: clamp(normalizeNumber(input.opacity, 1), 0, 1),
+    fit: input.fit === "cover" || input.fit === "stretch" || input.fit === "original" || input.fit === "contain" ? input.fit : fallback.fit,
+    source: normalizeBackgroundSource(input.source, fallback.source),
+  };
+}
+
+function normalizeBackgroundSource(input: unknown, fallback: PlanBackgroundConfig["source"]) {
+  if (!isRecord(input)) return fallback;
+  return {
+    type: input.type === "upload" ? "upload" as const : "url" as const,
+    fileName: typeof input.fileName === "string" ? input.fileName : "",
+    uploadedAt: typeof input.uploadedAt === "string" ? input.uploadedAt : "",
   };
 }
 
@@ -309,7 +728,29 @@ function normalizeObjectSource(input: unknown) {
 }
 
 function normalizeUnit(input: unknown, fallback: PlanUnit): PlanUnit {
-  return input === "m" || input === "cm" || input === "mm" || input === "px" ? input : fallback;
+  return input === "m" || input === "cm" || input === "mm" || input === "km" || input === "in" || input === "ft" || input === "px" ? input : fallback;
+}
+
+function isFinitePoint(point: PlanPolygonPoint) {
+  return Number.isFinite(point.x) && Number.isFinite(point.y);
+}
+
+function signedPolygonArea(points: PlanPolygonPoint[]) {
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const current = points[i];
+    const next = points[(i + 1) % points.length];
+    sum += current.x * next.y - next.x * current.y;
+  }
+  return sum / 2;
+}
+
+function direction(a: PlanPolygonPoint, b: PlanPolygonPoint, c: PlanPolygonPoint) {
+  return (c.x - a.x) * (b.y - a.y) - (c.y - a.y) * (b.x - a.x);
+}
+
+function onSegment(a: PlanPolygonPoint, b: PlanPolygonPoint, c: PlanPolygonPoint) {
+  return Math.min(a.x, b.x) <= c.x && c.x <= Math.max(a.x, b.x) && Math.min(a.y, b.y) <= c.y && c.y <= Math.max(a.y, b.y);
 }
 
 function parseMaybeJson(input: unknown) {

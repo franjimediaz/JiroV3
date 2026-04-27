@@ -5,6 +5,21 @@ import Selector from "./Selector";
 import type { Field, ModuleSchema, FieldType } from "@repo/types";
 import RichTextEditor from "./RichTextEditor";
 import React, { useEffect, useState } from "react";
+import {
+  MAX_FILE_SIZE_MB,
+  MAX_FILE_SIZE_BYTES,
+  MAX_IMAGE_SIZE_MB,
+  MAX_IMAGE_SIZE_BYTES,
+  ALLOWED_IMAGE_MIME_TYPES,
+  buildPublicSupabaseUrl,
+  deleteStoredFile,
+  getAcceptValue,
+  getAllowedTypesHint,
+  getSignedFileUrl,
+  uploadSingleFile,
+  validateSelectedFile,
+  type UploadedFileValue,
+} from "./fileUploadUtils";
 
 type Props = {
   field: Field;
@@ -17,16 +32,6 @@ type Props = {
   displayIcon?: string;
   displayColor?: string;
   formValues?: Record<string, any>;
-};
-type UploadedFileValue = {
-  bucket: string;
-  path: string;
-  url: string | null;
-  name: string;
-  size?: number;
-  mimeType?: string;
-  kind?: "file" | "image";
-  isPublic?: boolean;
 };
 type FileDisplayInfo = {
   icon: string;
@@ -745,19 +750,6 @@ function toInputDateTimeLocal(value?: string) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 // Funciones relacionadas con la gestión de archivos: validación, subida, eliminación, generación de URLs, etc.
-const MAX_IMAGE_SIZE_MB = 5;
-const MAX_FILE_SIZE_MB = 10;
-
-const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
-const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-
-const ALLOWED_IMAGE_MIME_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-];
-
 // Esta función formatea un tamaño en bytes a una cadena legible (B, KB, MB)
 function formatBytes(bytes?: number) {
   if (!bytes && bytes !== 0) return "";
@@ -858,7 +850,7 @@ function getFileDisplayInfo(
 }
 // Esta función valida un archivo seleccionado según su tipo (imagen o genérico) y devuelve un mensaje de error si no es válido, o null si es correcto
 
-function validateSelectedFile(
+function legacyValidateSelectedFile(
   file: File,
   field: Field,
   kind: "file" | "image"
@@ -889,14 +881,14 @@ function validateSelectedFile(
 
   return null;
 }
-function buildPublicSupabaseUrl(bucket: string, path: string) {
+function legacyBuildPublicSupabaseUrl(bucket: string, path: string) {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!base || !bucket || !path) return null;
   return `${base}/storage/v1/object/public/${bucket}/${path}`;
 }
 
 // Esta función se encarga de eliminar un archivo almacenado dado su bucket y path
-async function deleteStoredFile(fileValue?: UploadedFileValue | null) {
+async function legacyDeleteStoredFile(fileValue?: UploadedFileValue | null) {
   if (!fileValue?.bucket || !fileValue?.path) return { ok: true };
 
   const res = await fetch("/api/upload", {
@@ -919,7 +911,7 @@ async function deleteStoredFile(fileValue?: UploadedFileValue | null) {
   return data;
 }
 // Esta función se encarga de obtener una URL firmada para un archivo privado, dado su bucket y path
-async function getSignedFileUrl(bucket: string, path: string, expiresIn = 60) {
+async function legacyGetSignedFileUrl(bucket: string, path: string, expiresIn = 60) {
   const res = await fetch("/api/upload-url", {
     method: "POST",
     headers: {
@@ -940,7 +932,7 @@ async function getSignedFileUrl(bucket: string, path: string, expiresIn = 60) {
 
   return data.signedUrl as string;
 }
-function getAllowedTypesHint(field: Field, isImage: boolean) {
+function legacyGetAllowedTypesHint(field: Field, isImage: boolean) {
   if (field.allowedMimeTypes?.length) {
     return `Tipos permitidos: ${field.allowedMimeTypes.join(", ")}.`;
   }
@@ -951,7 +943,7 @@ function getAllowedTypesHint(field: Field, isImage: boolean) {
 
   return "";
 }
-function getAcceptValue(field: Field, isImage: boolean) {
+function legacyGetAcceptValue(field: Field, isImage: boolean) {
   const allowedMimeTypes = field.allowedMimeTypes || [];
 
   if (allowedMimeTypes.length > 0) {
@@ -966,7 +958,7 @@ function getAcceptValue(field: Field, isImage: boolean) {
 }
 
 // Esta función se encarga de subir un solo archivo al backend y obtener su URL
-async function uploadSingleFile(
+async function legacyUploadSingleFile(
   file: File,
   kind: "file" | "image",
   folder = "general",
