@@ -48,7 +48,7 @@ export default function PlanSymbolsPanel({ symbols, loading, error, configured, 
   }, [open]);
 
   return (
-    <div className={styles.panelSection}>
+    <div className={styles.panelSection} data-plan-editor-ignore-hotkeys="true">
       <h3 className={styles.panelTitle}>Simbolos</h3>
       {!configured ? (
         <div className={styles.hint}>Configura una fuente de simbolos en el modulo para usar este panel.</div>
@@ -78,7 +78,7 @@ export default function PlanSymbolsPanel({ symbols, loading, error, configured, 
 
           {open ? (
             <div className={styles.symbolModalBackdrop} onMouseDown={() => setOpen(false)}>
-              <div className={styles.symbolModal} role="dialog" aria-modal="true" aria-label="Biblioteca de simbolos" onMouseDown={(event) => event.stopPropagation()}>
+              <div className={styles.symbolModal} role="dialog" aria-modal="true" aria-label="Biblioteca de simbolos" data-plan-editor-ignore-hotkeys="true" onMouseDown={(event) => event.stopPropagation()}>
                 <div className={styles.symbolModalHeader}>
                   <div>
                     <h3 className={styles.panelTitle}>Biblioteca de simbolos</h3>

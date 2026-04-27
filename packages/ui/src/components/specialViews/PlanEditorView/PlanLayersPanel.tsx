@@ -73,7 +73,7 @@ export default function PlanLayersPanel({ document, readOnly, onChange }: Props)
   };
 
   return (
-    <div className={styles.panelSection}>
+    <div className={styles.panelSection} data-plan-editor-ignore-hotkeys="true">
       <div className={styles.settingsHeader}>
         <h3 className={styles.panelTitle}>Capas</h3>
         <button type="button" className={styles.linkButton} disabled={readOnly} onClick={addLayer}>

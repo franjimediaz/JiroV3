@@ -73,7 +73,7 @@ export default function PlanPropertiesPanel({
 
   if (!object) {
     return (
-      <aside className={styles.panel}>
+      <aside className={styles.panel} data-plan-editor-ignore-hotkeys="true">
         <h3 className={styles.panelTitle}>Propiedades</h3>
         <div className={styles.hint}>Selecciona un elemento del plano para editar sus propiedades.</div>
       </aside>
@@ -109,7 +109,7 @@ export default function PlanPropertiesPanel({
   };
 
   return (
-    <aside className={styles.panel}>
+    <aside className={styles.panel} data-plan-editor-ignore-hotkeys="true">
       <h3 className={styles.panelTitle}>Propiedades</h3>
 
       <div className={styles.meta}>

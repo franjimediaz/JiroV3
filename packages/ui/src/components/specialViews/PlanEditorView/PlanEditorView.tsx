@@ -14,6 +14,7 @@ import PlanToolbar from "./PlanToolbar";
 import type { LinkTargetRecord } from "./planDataSources";
 import { loadDefaultLayers, loadLinkTargetRecords, loadPlanBlocks, loadPlanSymbols, loadPlanTemplates } from "./planDataSources";
 import { exportPlanPdf, exportPlanPng } from "./planExport";
+import { isEditableHotkeyTarget } from "./planHotkeyUtils";
 import styles from "./PlanEditorView.module.css";
 import type { PlanBlockDefinition, PlanDocument, PlanEditorConfig, PlanLinkTargetConfig, PlanObject, PlanSymbolDefinition, PlanTemplateDefinition, PlanTool, PlanUnit } from "./planTypes";
 import { alignObjects, applyPlanTemplate, calibrateScaleFromLine, cleanPlanGroups, createDefaultPlanData, distributeObjects, groupObjects, insertPointInPolygonSegment, isPlanObjectEditable, normalizePlanData, pastePlanObjects, removePlanObject, shouldInitializeDefaultLayers, ungroupObjects, updatePlanGroup, updatePlanObject } from "./planUtils";
@@ -234,6 +235,7 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
   useEffect(() => {
     if (readOnly) return;
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isEditableHotkeyTarget(event.target)) return;
       const isUndo = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && !event.shiftKey;
       const isRedo =
         (event.ctrlKey || event.metaKey) &&

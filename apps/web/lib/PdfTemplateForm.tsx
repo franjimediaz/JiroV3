@@ -248,7 +248,7 @@ type PdfBlock =
       widthPct?: number;                 
       align?: "left" | "center" | "right"; 
     };
-      columns: { label: string; value: string; align?: "left" | "right" }[];
+      columns: { label: string; value: string; align?: "left" | "right"; renderer?: "text" | "plan"; options?: { width?: number; height?: number; includeGrid?: boolean; includeMeasurements?: boolean; includeAreas?: boolean; includeLayerLegend?: boolean; fit?: "contain" | "cover" | "stretch" } }[];
       rows?: Array<{
       // una entrada por columna; si es null/undefined => fallback a columns[i].value
       values: Array<string | null>;
@@ -1628,7 +1628,7 @@ function save() {
                       placeholder="Escribe aquí..."
                     />
                   <div className="form-text mt-2">
-                    Se guarda como HTML.
+                    Se guarda como HTML. Para insertar un plano usa <code>{"{{ renderPlan(campoPlano) }}"}</code> o <code>{"{{ renderPlan(record.campoPlano, width=600, height=400) }}"}</code>.
                   </div>
                   <div className="mt-3">
                     <BindingTokenHelper
@@ -1924,6 +1924,71 @@ function save() {
                                 <option value="left">Izquierda</option>
                                 <option value="right">Derecha</option>
                             </select>
+                            </div>
+
+                            <div className="col-12">
+                              <div className="border rounded-3 p-2 bg-light">
+                                <div className="form-check form-switch">
+                                  <input
+                                    className="form-check-input"
+                                    type="checkbox"
+                                    checked={(c as any).renderer === "plan"}
+                                    disabled={readOnly}
+                                    onChange={(e) => {
+                                      const next = selectedBlock.columns.slice();
+                                      next[idx] = {
+                                        ...next[idx],
+                                        renderer: e.target.checked ? "plan" : "text",
+                                        options: e.target.checked ? { width: 240, height: 160, includeGrid: false, includeMeasurements: true, includeAreas: true, fit: "contain", ...((next[idx] as any).options || {}) } : (next[idx] as any).options,
+                                      } as any;
+                                      updateBlock(selectedBlock.id, "table", { columns: next });
+                                    }}
+                                  />
+                                  <label className="form-check-label">Renderizar esta columna como plano</label>
+                                </div>
+                                {(c as any).renderer === "plan" ? (
+                                  <div className="row g-2 mt-1">
+                                    <div className="col-6 col-md-2">
+                                      <label className="form-label small mb-1">Ancho</label>
+                                      <input className="form-control form-control-sm" type="number" value={(c as any).options?.width ?? 240} disabled={readOnly} onChange={(e) => {
+                                        const next = selectedBlock.columns.slice();
+                                        next[idx] = { ...next[idx], options: { ...((next[idx] as any).options || {}), width: Number(e.target.value || 240) } } as any;
+                                        updateBlock(selectedBlock.id, "table", { columns: next });
+                                      }} />
+                                    </div>
+                                    <div className="col-6 col-md-2">
+                                      <label className="form-label small mb-1">Alto</label>
+                                      <input className="form-control form-control-sm" type="number" value={(c as any).options?.height ?? 160} disabled={readOnly} onChange={(e) => {
+                                        const next = selectedBlock.columns.slice();
+                                        next[idx] = { ...next[idx], options: { ...((next[idx] as any).options || {}), height: Number(e.target.value || 160) } } as any;
+                                        updateBlock(selectedBlock.id, "table", { columns: next });
+                                      }} />
+                                    </div>
+                                    <div className="col-12 col-md-3">
+                                      <label className="form-label small mb-1">Ajuste</label>
+                                      <select className="form-select form-select-sm" value={(c as any).options?.fit ?? "contain"} disabled={readOnly} onChange={(e) => {
+                                        const next = selectedBlock.columns.slice();
+                                        next[idx] = { ...next[idx], options: { ...((next[idx] as any).options || {}), fit: e.target.value } } as any;
+                                        updateBlock(selectedBlock.id, "table", { columns: next });
+                                      }}>
+                                        <option value="contain">contain</option>
+                                        <option value="cover">cover</option>
+                                        <option value="stretch">stretch</option>
+                                      </select>
+                                    </div>
+                                    {(["includeGrid", "includeMeasurements", "includeAreas", "includeLayerLegend"] as const).map((key) => (
+                                      <label key={key} className="col-6 col-md-2 form-check small mt-4">
+                                        <input className="form-check-input" type="checkbox" checked={(c as any).options?.[key] === true || (key !== "includeGrid" && (c as any).options?.[key] !== false)} disabled={readOnly} onChange={(e) => {
+                                          const next = selectedBlock.columns.slice();
+                                          next[idx] = { ...next[idx], options: { ...((next[idx] as any).options || {}), [key]: e.target.checked } } as any;
+                                          updateBlock(selectedBlock.id, "table", { columns: next });
+                                        }} />
+                                        <span className="form-check-label">{key}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
                             </div>
 
                             <div className="col-1">

@@ -6,6 +6,7 @@ import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Tra
 import styles from "./PlanEditorView.module.css";
 import type { PlanBlockDefinition, PlanDocument, PlanEditorOptions, PlanLineObject, PlanObject, PlanPolygonObject, PlanPolygonPoint, PlanRectObject, PlanSymbolDefinition, PlanTool } from "./planTypes";
 import { getPlanIconInfo, getSymbolCanvasText } from "./planIconUtils";
+import { isEditableHotkeyTarget } from "./planHotkeyUtils";
 import { calculateLineMeasure, calculateTemporaryMeasurement, getObjectAreaLabel, createPlanObjectId, getObjectSnapPoints, getPlanLayer, getPolygonCentroid, getSelectionBounds, getSelectionSnapPoints, getSnapGuides, getVisiblePlanObjects, isPlanObjectEditable, insertPlanBlock, moveObjectByDelta, moveObjectsByDelta, objectIntersectsRect, applyObjectSnap, projectPointOnSegment, shouldSnap, snapPoint, updatePlanObject, validatePolygon, type PlanBounds, type SnapGuide } from "./planUtils";
 
 type Props = {
@@ -398,6 +399,7 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isEditableHotkeyTarget(event.target)) return;
       if (readOnly || tool !== "polygon") return;
       if (event.key === "Enter") {
         event.preventDefault();
@@ -415,8 +417,7 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.code !== "Space") return;
-      const target = event.target as HTMLElement | null;
-      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (isEditableHotkeyTarget(event.target)) return;
       event.preventDefault();
       setSpacePressed(true);
     };

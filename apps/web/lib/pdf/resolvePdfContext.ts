@@ -63,6 +63,37 @@ function getSchemaFields(schema: ModuleSchema): any[] {
   return [];
 }
 
+function getSchemaSpecialViews(schema: ModuleSchema): any[] {
+  const s: any = schema as any;
+  const candidates = [
+    s.ui?.specialViews,
+    s.props?.ui?.specialViews,
+    s.specialViews,
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  return [];
+}
+
+function getPlanFieldsFromSchema(schema: ModuleSchema) {
+  const fields = new Set<string>();
+  for (const field of getSchemaFields(schema)) {
+    const name = typeof field?.name === "string" ? field.name.trim() : "";
+    if (!name) continue;
+    const renderer = field?.ui?.renderer || field?.renderer || field?.appareance?.renderer;
+    if (field?.type === "plan" || renderer === "plan" || renderer === "planEditor") fields.add(name);
+  }
+  for (const view of getSchemaSpecialViews(schema)) {
+    const type = view?.type || view?.kind || view?.config?.type;
+    const sourceField = view?.sourceField || view?.config?.sourceField;
+    if (type === "planEditor" && typeof sourceField === "string" && sourceField.trim()) {
+      fields.add(sourceField.trim());
+    }
+  }
+  return Array.from(fields);
+}
+
 function inferAliasFromFieldName(name: string) {
   if (name.endsWith("Id") && name.length > 2) return name.slice(0, -2);
   return name;
@@ -1010,6 +1041,13 @@ export async function resolvePdfContext(args: ResolveArgs) {
 
   const normalizedBranding = normalizeBranding(brandingResult.data);
   const recordWithClientFields = applyClientCardFields(record, py);
+  const allSchemas = await loadAllSchemasFromDb({ supabase });
+  const rootSchema = allSchemas[args.sourceTable] || await getSchemaCached({ supabase, cache, moduleSlug: args.sourceTable });
+  const relatedPlanFields: Record<string, string[]> = {};
+  for (const relation of args.related || []) {
+    const schema = allSchemas[relation.table];
+    relatedPlanFields[relation.key] = schema ? getPlanFieldsFromSchema(schema) : [];
+  }
 
   const baseCtx = {
     record: recordWithClientFields,
@@ -1019,6 +1057,10 @@ export async function resolvePdfContext(args: ResolveArgs) {
     empresa: normalizedBranding,
     firmaUrl: normalizedBranding.firmaUrl || "",
     now: new Date().toISOString(),
+    __planFields: {
+      record: getPlanFieldsFromSchema(rootSchema),
+      related: relatedPlanFields,
+    },
   };
 
   const datasets = args.template

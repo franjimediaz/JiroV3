@@ -18,7 +18,8 @@ async function transpilePdfModule(fileName, tempDir) {
   }).outputText
     .replaceAll('from "./pdfHtml"', 'from "./pdfHtml.mjs"')
     .replaceAll('from "./renderAdvancedBlocks"', 'from "./renderAdvancedBlocks.mjs"')
-    .replaceAll('from "./normalizePdfTemplate"', 'from "./normalizePdfTemplate.mjs"');
+    .replaceAll('from "./normalizePdfTemplate"', 'from "./normalizePdfTemplate.mjs"')
+    .replaceAll('from "./planRenderer"', 'from "./planRenderer.mjs"');
 
   const outFile = path.join(tempDir, fileName.replace(/\.ts$/, ".mjs"));
   await writeFile(outFile, output, "utf8");
@@ -31,11 +32,13 @@ async function loadPdfModules() {
   const tempDir = await mkdtemp(path.join(tempRoot, "run-"));
   await transpilePdfModule("pdfHtml.ts", tempDir);
   await transpilePdfModule("normalizePdfTemplate.ts", tempDir);
+  await transpilePdfModule("planRenderer.ts", tempDir);
   await transpilePdfModule("renderAdvancedBlocks.ts", tempDir);
   const renderPath = await transpilePdfModule("renderTemplateToHtml.ts", tempDir);
   const pdfHtml = await import(pathToFileURL(path.join(tempDir, "pdfHtml.mjs")).href);
+  const planRenderer = await import(pathToFileURL(path.join(tempDir, "planRenderer.mjs")).href);
   const renderer = await import(pathToFileURL(renderPath).href);
-  return { ...pdfHtml, ...renderer };
+  return { ...pdfHtml, ...planRenderer, ...renderer };
 }
 
 const modulesPromise = loadPdfModules();
@@ -128,4 +131,47 @@ test("renderTemplateToHtml applies safe HTML to headers, cards and sections", as
   assert.match(html, /<div class="cards-card-title"><strong>Tarjeta<\/strong><\/div>/);
   assert.match(html, /<div class="sec-title"><span>Info<\/span><\/div>/);
   assert.match(html, /<p>Bloque <strong>seguro<\/strong><\/p>/);
+});
+
+test("renderTemplateToHtml renders plan fields as images instead of raw JSON", async () => {
+  const { renderTemplateToHtml } = await modulesPromise;
+  const plan = { version: 8, canvas: { width: 200, height: 100, unit: "m", scale: { pixels: 100, realValue: 1, unit: "m" }, grid: { enabled: true, size: 20 } }, layers: [{ id: "l1", name: "Plano", visible: true, locked: false, order: 1 }], activeLayerId: "l1", objects: [{ id: "r1", type: "rect", layerId: "l1", x: 10, y: 10, width: 80, height: 40, stroke: "#111827", strokeWidth: 2, fill: "transparent", label: "Sala", showArea: true }] };
+  const html = renderTemplateToHtml(
+    { blocks: [{ type: "text", value: "<p>{{record.plano}}</p>" }] },
+    { record: { plano: plan }, __planFields: { record: ["plano"], related: {} } },
+  );
+  assert.match(html, /<img/);
+  assert.match(html, /data:image\/svg\+xml/);
+  assert.doesNotMatch(html, /"objects"/);
+});
+
+test("renderTemplateToHtml supports renderPlan calls and table plan columns", async () => {
+  const { renderTemplateToHtml } = await modulesPromise;
+  const plan = { version: 8, canvas: { width: 200, height: 100, unit: "m", grid: { enabled: true, size: 20 } }, objects: [{ id: "t1", type: "text", x: 20, y: 20, text: "Plano", fontSize: 16, fill: "#111827" }] };
+  const html = renderTemplateToHtml(
+    {
+      blocks: [
+        { type: "text", value: "{{ renderPlan(plano, width=300, height=180, includeGrid=false) }}" },
+        { type: "table", repeat: "related.estancias", columns: [{ label: "Plano", value: "{{item.plano}}", renderer: "plan", options: { width: 240, height: 160 } }] },
+      ],
+    },
+    { record: { plano: plan }, related: { estancias: [{ plano: plan }] }, __planFields: { record: ["plano"], related: { estancias: ["plano"] } } },
+  );
+  assert.equal((html.match(/pdf-plan-img/g) || []).length, 2);
+  assert.match(html, /width="300"/);
+  assert.match(html, /width="240"/);
+});
+
+test("plan renderer cache keys are stable and option-sensitive", async () => {
+  const { getPlanRenderCacheKey, createPlanRenderCache, renderPlanToDataUrl, normalizePlanForRender } = await modulesPromise;
+  const plan = { version: 8, canvas: { width: 100, height: 100 }, objects: [{ id: "x", type: "text", x: 1, y: 1, text: "X" }] };
+  assert.ok(normalizePlanForRender(JSON.stringify(plan)));
+  assert.equal(normalizePlanForRender("{bad json"), null);
+  assert.equal(getPlanRenderCacheKey(plan, { width: 100 }), getPlanRenderCacheKey({ objects: plan.objects, canvas: plan.canvas, version: 8 }, { width: 100 }));
+  assert.notEqual(getPlanRenderCacheKey(plan, { width: 100 }), getPlanRenderCacheKey(plan, { width: 101 }));
+  const cache = createPlanRenderCache();
+  const first = renderPlanToDataUrl(plan, { width: 100 }, cache);
+  const second = renderPlanToDataUrl(plan, { width: 100 }, cache);
+  assert.equal(first, second);
+  assert.equal(cache.size, 1);
 });

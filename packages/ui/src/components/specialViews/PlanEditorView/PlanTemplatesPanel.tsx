@@ -24,7 +24,7 @@ export default function PlanTemplatesPanel({ templates, loading, error, configur
   });
 
   return (
-    <aside className={styles.panel}>
+    <aside className={styles.panel} data-plan-editor-ignore-hotkeys="true">
       <h3 className={styles.panelTitle}>Plantillas</h3>
       {!configured ? <div className={styles.hint}>Configura templatesSource para cargar plantillas reutilizables.</div> : null}
       {error ? <div className={styles.errorText}>{error}</div> : null}

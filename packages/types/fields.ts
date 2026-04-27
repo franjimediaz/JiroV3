@@ -38,6 +38,7 @@ export type FieldType =
   | "iconpicker"
   | "file"
   | "image"
+  | "plan"
   | "selectorTabla"
   | "ReverseLink"
   | "formula";
@@ -338,6 +339,7 @@ export const VALID_FIELD_TYPES: FieldType[] = [
   "iconpicker",
   "file",
   "image",
+  "plan",
   "selectorTabla",
   "formula",
   "ReverseLink",

@@ -24,7 +24,7 @@ export default function PlanBlocksPanel({ blocks, loading, error, configured, se
   });
 
   return (
-    <aside className={styles.panel}>
+    <aside className={styles.panel} data-plan-editor-ignore-hotkeys="true">
       <h3 className={styles.panelTitle}>Bloques</h3>
       {!configured ? <div className={styles.hint}>Configura blocksSource para cargar bloques compuestos.</div> : null}
       {error ? <div className={styles.errorText}>{error}</div> : null}

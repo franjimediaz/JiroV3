@@ -10,6 +10,7 @@
 import { advancedBlocksCss, renderAdvancedBlock } from "./renderAdvancedBlocks";
 import { normalizePdfTemplate } from "./normalizePdfTemplate";
 import { resolveAndSanitizePdfHtml } from "./pdfHtml";
+import { createPlanRenderCache, renderPlanToHtml, type PdfPlanRenderOptions } from "./planRenderer";
 
 type AnyObj = Record<string, any>;
 const EURO_HTML = "&#8364;";
@@ -92,6 +93,12 @@ function getByPath(obj: any, path: string) {
   const direct = parts.reduce((acc: any, k: string) => (acc && k in acc ? acc[k] : undefined), obj);
   if (direct !== undefined) return direct;
 
+  if (parts.length === 1) {
+    const key = parts[0];
+    if (obj?.record && key in obj.record) return obj.record[key];
+    if (obj?.item && key in obj.item) return obj.item[key];
+  }
+
   if (parts.length === 2 && (parts[0] === "record" || parts[0] === "item")) {
     return lookupRelatedFallback(obj, parts[1]);
   }
@@ -99,12 +106,86 @@ function getByPath(obj: any, path: string) {
   return undefined;
 }
 
+function getPlanCache(ctx: AnyObj) {
+  if (!ctx.__planRenderCache) ctx.__planRenderCache = createPlanRenderCache();
+  return ctx.__planRenderCache;
+}
+
+function planFieldsForPath(ctx: AnyObj, path: string): string[] {
+  const planFields = ctx?.__planFields;
+  const clean = String(path || "").trim();
+  if (!planFields || typeof planFields !== "object") return [];
+  if (clean.startsWith("item.")) return Array.isArray(ctx.__planFieldsForItem) ? ctx.__planFieldsForItem : [];
+  if (clean.startsWith("record.") || !clean.includes(".")) return Array.isArray(planFields.record) ? planFields.record : [];
+  if (clean.startsWith("related.")) {
+    const [, key] = clean.split(".");
+    return Array.isArray(planFields.related?.[key]) ? planFields.related[key] : [];
+  }
+  return [];
+}
+
+function isPlanFieldPath(ctx: AnyObj, path: string) {
+  const clean = String(path || "").trim();
+  const field = clean.includes(".") ? clean.split(".").pop() || "" : clean;
+  return !!field && planFieldsForPath(ctx, clean).includes(field);
+}
+
+function parseRenderPlanOptions(raw: string): PdfPlanRenderOptions {
+  const options: PdfPlanRenderOptions = {};
+  const parts = raw.split(",").map((part) => part.trim()).filter(Boolean);
+  for (const part of parts) {
+    const [keyRaw, valueRaw] = part.split("=").map((item) => item.trim());
+    const key = keyRaw as keyof PdfPlanRenderOptions;
+    if (!key || valueRaw === undefined) continue;
+    const value = valueRaw.replace(/^["']|["']$/g, "");
+    if (key === "width" || key === "height" || key === "pixelRatio") {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed > 0) (options as AnyObj)[key] = parsed;
+    } else if (key === "includeBackground" || key === "includeGrid" || key === "includeMeasurements" || key === "includeAreas" || key === "includeLayerLegend" || key === "includeHiddenLayers") {
+      (options as AnyObj)[key] = value !== "false" && value !== "0";
+    } else if (key === "fit" && ["contain", "cover", "stretch"].includes(value)) {
+      options.fit = value as PdfPlanRenderOptions["fit"];
+    } else if (key === "backgroundColor" || key === "placeholder") {
+      (options as AnyObj)[key] = value;
+    }
+  }
+  return options;
+}
+
+function renderPlanExpression(expression: string, ctx: AnyObj) {
+  const match = expression.match(/^(?:renderPlan|plan)\((.*)\)$/);
+  if (!match) return null;
+  const args = match[1].split(",");
+  const path = String(args.shift() || "").trim();
+  const value = getByPath(ctx, path);
+  return renderPlanToHtml(value, parseRenderPlanOptions(args.join(",")), getPlanCache(ctx));
+}
+
+function renderValueMaybePlan(path: string, value: any, ctx: AnyObj, options?: PdfPlanRenderOptions, forcePlan = false) {
+  if (forcePlan || isPlanFieldPath(ctx, path)) {
+    return renderPlanToHtml(value, options, getPlanCache(ctx));
+  }
+  return value === undefined || value === null ? "" : String(value);
+}
+
+function getItemPlanFields(ctx: AnyObj, repeatPath: string) {
+  const clean = String(repeatPath || "").trim();
+  if (clean.startsWith("related.")) {
+    const key = clean.split(".")[1];
+    return Array.isArray(ctx.__planFields?.related?.[key]) ? ctx.__planFields.related[key] : [];
+  }
+  if (clean.startsWith("datasets.")) return [];
+  return Array.isArray(ctx.__planFields?.item) ? ctx.__planFields.item : [];
+}
+
 function tpl(input: any, ctx: AnyObj) {
   if (typeof input !== "string") return input;
   return repairMojibake(input.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, raw) => {
     const key = String(raw).trim();
+    const renderedPlan = renderPlanExpression(key, ctx);
+    if (renderedPlan !== null) return renderedPlan;
     const val = getByPath(ctx, key);
-    return val === undefined || val === null ? "" : String(val);
+    return renderValueMaybePlan(key, val, ctx);
   }));
 }
 
@@ -180,8 +261,10 @@ function tplRaw(input: any, ctx: AnyObj) {
   // {{{ path }}} => raw (sin escapar)
   return repairMojibake(input.replace(/\{\{\{\s*([^}]+?)\s*\}\}\}/g, (_m, raw) => {
     const key = String(raw).trim();
+    const renderedPlan = renderPlanExpression(key, ctx);
+    if (renderedPlan !== null) return renderedPlan;
     const val = getByPath(ctx, key);
-    return val === undefined || val === null ? "" : String(val);
+    return renderValueMaybePlan(key, val, ctx);
   }));
 }
 
@@ -193,8 +276,18 @@ function renderPdfHtml(input: any, ctx: AnyObj) {
   });
 }
 
-function renderCell(cellTpl: any, ctx: AnyObj) {
+function renderCell(cellTpl: any, ctx: AnyObj, column?: AnyObj) {
+  if (column?.renderer === "plan") {
+    const path = extractSingleBindingPath(cellTpl);
+    const value = path ? getByPath(ctx, path) : cellTpl;
+    return renderPlanToHtml(value, column.options || column.planOptions || {}, getPlanCache(ctx));
+  }
   return renderPdfHtml(cellTpl, ctx);
+}
+
+function extractSingleBindingPath(value: any) {
+  const match = typeof value === "string" ? value.trim().match(/^\{\{\s*([^}]+?)\s*\}\}$/) : null;
+  return match ? match[1].trim() : "";
 }
 
 
@@ -1014,7 +1107,7 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
     const cardsHtml = (
       typeof block.repeat === "string" && block.repeat.trim() && block.card
         ? (((getByPath(ctx, block.repeat) as any[]) || []).map((item: any) =>
-            renderCard(block.card, { ...ctx, item })
+            renderCard(block.card, { ...ctx, item, __planFieldsForItem: getItemPlanFields(ctx, block.repeat) })
           ))
         : staticCards.map((card: any) => renderCard(card, ctx))
     ).join("");
@@ -1117,7 +1210,7 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
                 const cellTpl = override === null || override === undefined ? (c.value ?? "") : override;
 
                 // En manual NO hay item, solo ctx (record/branding/now...)
-                const v = renderCell(cellTpl, ctx);
+                const v = renderCell(cellTpl, ctx, c);
                 
                 const tdInline = colStyleToInline(colStyle);
                 return `<td${tdInline}>${v}</td>`;
@@ -1129,11 +1222,11 @@ function renderBlock(block: any, ctx: AnyObj, theme: ReturnType<typeof normalize
       : 
         repeatRows
           .map((row: any) => {
-            const rowCtx = { ...ctx, item: row };
+            const rowCtx = { ...ctx, item: row, __planFieldsForItem: getItemPlanFields(ctx, repeatPath) };
             const tds = cols
               .map((c: any) => {
                 const colStyle: ColumnStyle = c.style && typeof c.style === "object" ? c.style : {};
-                const v = renderCell(c.value ?? "", rowCtx);
+                const v = renderCell(c.value ?? "", rowCtx, c);
                 const tdInline = colStyleToInline(colStyle);
                 return `<td${tdInline}>${v}</td>`;
               })
@@ -1283,6 +1376,8 @@ export function renderTemplateToHtml(template: any, ctx: AnyObj) {
   .txt-rich th, .txt-rich td { border: 1px solid var(--tbl-border); padding: 6px; }
   .txt-rich th { background: var(--tbl-headbg); color: var(--tbl-headfg); }
   .txt-rich img, .rte img, .card-html img, .hdr img { max-width: 100%; height: auto; }
+  .pdf-plan-img { display: block; border: 1px solid var(--tbl-border); border-radius: 8px; background: #fff; }
+  .pdf-plan-placeholder { color: var(--muted); font-size: 12px; }
 
   /* Section */
   .sec { margin-top: 14px; }

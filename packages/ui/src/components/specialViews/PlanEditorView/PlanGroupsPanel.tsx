@@ -14,7 +14,7 @@ type Props = {
 
 export default function PlanGroupsPanel({ document, selectedIds, readOnly, onGroup, onUngroup, onUpdateGroup }: Props) {
   return (
-    <aside className={styles.panel}>
+    <aside className={styles.panel} data-plan-editor-ignore-hotkeys="true">
       <div className={styles.settingsHeader}>
         <h3 className={styles.panelTitle}>Grupos</h3>
         <button type="button" className={styles.button} disabled={readOnly || selectedIds.length < 2} onClick={onGroup}>

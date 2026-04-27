@@ -12,6 +12,7 @@ export const VALID_FIELD_TYPES = [
     "color",
     "file",
     "image",
+    "plan",
     "selectorTabla",
     "formula",
 ];

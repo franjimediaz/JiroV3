@@ -19,7 +19,7 @@ export type Compute = {
     }>;
     persist: "none" | "onSave" | "always";
 };
-export type FieldType = "text" | "textarea" | "number" | "money" | "percent" | "date" | "datetime" | "boolean" | "select" | "multiselect" | "color" | "file" | "image" | "selectorTabla" | "formula";
+export type FieldType = "text" | "textarea" | "number" | "money" | "percent" | "date" | "datetime" | "boolean" | "select" | "multiselect" | "color" | "file" | "image" | "plan" | "selectorTabla" | "formula";
 export type Appareance = "List" | "Always" | "Zoom";
 export type SelectorRef = {
     moduleSlug: string;

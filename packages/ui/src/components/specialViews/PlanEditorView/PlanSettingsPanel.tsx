@@ -77,7 +77,7 @@ export default function PlanSettingsPanel({ document, readOnly, uploader, calibr
   };
 
   return (
-    <div className={styles.settings}>
+    <div className={styles.settings} data-plan-editor-ignore-hotkeys="true">
       <div className={styles.settingsBlock}>
         <div className={styles.settingsHeader}>
           <h3 className={styles.panelTitle}>Escala</h3>
