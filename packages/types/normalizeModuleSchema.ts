@@ -236,16 +236,15 @@ function normalizePlanLinkTargets(input: unknown) {
   if (!Array.isArray(input)) return [];
   return input
     .filter(isRecord)
-    .map((target) => ({
-      label: toString(target.label),
+    .map((target, index) => ({
+      label: toString(target.label, `Nuevo destino ${index + 1}`) || `Nuevo destino ${index + 1}`,
       moduleSlug: toString(target.moduleSlug),
       table: toString(target.table),
       valueField: toString(target.valueField, "id") || "id",
-      displayField: toString(target.displayField, "id") || "id",
+      displayField: toString(target.displayField, "nombre") || "nombre",
       filters: Array.isArray(target.filters) ? target.filters : [],
       sort: Array.isArray(target.sort) ? target.sort : [],
-    }))
-    .filter((target) => target.label && target.moduleSlug);
+    }));
 }
 
 export function normalizeSpecialViews(config: unknown): NormalizedSpecialView[] {

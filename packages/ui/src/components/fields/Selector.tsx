@@ -72,7 +72,7 @@ export default function SelectorTabla({
   multiple = false,
   label,
   placeholder = "Seleccionar",
-  limit = 20,
+  limit = 50,
   hasStyle = false,
   styleIconField = "icon",
   styleColorField = "color",

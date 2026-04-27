@@ -2,9 +2,10 @@
 
 import { Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import Konva from "konva";
-import { Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
+import { Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
 import styles from "./PlanEditorView.module.css";
 import type { PlanDocument, PlanLineObject, PlanObject, PlanRectObject, PlanSymbolDefinition, PlanTool } from "./planTypes";
+import { getPlanIconInfo, getSymbolCanvasText } from "./planIconUtils";
 import { calculateLineMeasure, createPlanObjectId, getPlanLayer, getVisiblePlanObjects, isPlanObjectEditable, updatePlanObject } from "./planUtils";
 
 type Props = {
@@ -335,37 +336,16 @@ function renderObject(args: {
   }
 
   if (object.type === "symbol") {
-    const color = object.symbolColor || "#111827";
-    const text = object.symbolIcon || object.symbolLabel || object.symbolId;
     return (
-      <Fragment key={object.id}>
-        <Text
-          {...common}
-          x={object.x}
-          y={object.y}
-          width={object.size * 2.6}
-          height={object.size + 10}
-          text={text}
-          fill={selected ? "#2563eb" : color}
-          fontSize={object.symbolIcon ? object.size : Math.max(12, Math.round(object.size * 0.45))}
-          fontStyle="bold"
-          align="center"
-          verticalAlign="middle"
-          onDragEnd={(event) => onMove(object.id, { x: event.target.x(), y: event.target.y() } as Partial<PlanObject>)}
-        />
-        {object.symbolIcon && object.symbolLabel ? (
-          <Text
-            x={object.x}
-            y={object.y + object.size + 6}
-            width={object.size * 2.6}
-            text={object.symbolLabel}
-            fill={color}
-            fontSize={11}
-            align="center"
-            listening={false}
-          />
-        ) : null}
-      </Fragment>
+      <PlanSymbolNode
+        key={object.id}
+        object={object}
+        selected={selected}
+        readOnly={readOnly}
+        setRef={setRef}
+        onSelect={onSelect}
+        onMove={onMove}
+      />
     );
   }
 
@@ -380,6 +360,96 @@ function renderObject(args: {
       fontSize={object.fontSize}
       onDragEnd={(event) => onMove(object.id, { x: event.target.x(), y: event.target.y() } as Partial<PlanObject>)}
     />
+  );
+}
+
+function PlanSymbolNode({
+  object,
+  selected,
+  readOnly,
+  setRef,
+  onSelect,
+  onMove,
+}: {
+  object: Extract<PlanObject, { type: "symbol" }>;
+  selected: boolean;
+  readOnly?: boolean;
+  setRef: (node: Konva.Node | null) => void;
+  onSelect: (objectId: string) => void;
+  onMove: (objectId: string, patch: Partial<PlanObject>) => void;
+}) {
+  const icon = getPlanIconInfo(object.symbolIcon);
+  const image = useImage(icon.kind === "image" ? icon.value : "");
+  const color = selected ? "#2563eb" : object.symbolColor || "#111827";
+  const markerSize = object.size;
+  const labelWidth = object.size * 2.8;
+  const label = object.symbolLabel || object.symbolId;
+  const canvasText = getSymbolCanvasText(object.symbolIcon, label, object.symbolId);
+
+  return (
+    <Group
+      ref={setRef}
+      x={object.x}
+      y={object.y}
+      draggable={!readOnly && !object.locked}
+      onClick={() => onSelect(object.id)}
+      onTap={() => onSelect(object.id)}
+      onDragEnd={(event) => onMove(object.id, { x: event.target.x(), y: event.target.y() } as Partial<PlanObject>)}
+    >
+      {image ? (
+        <KonvaImage image={image} x={0} y={0} width={markerSize} height={markerSize} />
+      ) : icon.kind === "emoji" || icon.kind === "text" ? (
+        <Text
+          x={0}
+          y={0}
+          width={labelWidth}
+          height={markerSize + 8}
+          text={canvasText}
+          fill={color}
+          fontSize={icon.kind === "emoji" ? markerSize : Math.max(12, Math.round(markerSize * 0.45))}
+          fontStyle="bold"
+          align="center"
+          verticalAlign="middle"
+        />
+      ) : (
+        <>
+          <Rect
+            x={(labelWidth - markerSize) / 2}
+            y={0}
+            width={markerSize}
+            height={markerSize}
+            cornerRadius={8}
+            stroke={color}
+            strokeWidth={2}
+            fill="#f9fafb"
+          />
+          <Text
+            x={0}
+            y={0}
+            width={labelWidth}
+            height={markerSize}
+            text={canvasText}
+            fill={color}
+            fontSize={Math.max(11, Math.round(markerSize * 0.42))}
+            fontStyle="bold"
+            align="center"
+            verticalAlign="middle"
+          />
+        </>
+      )}
+      {label ? (
+        <Text
+          x={0}
+          y={markerSize + 6}
+          width={labelWidth}
+          text={label}
+          fill={color}
+          fontSize={11}
+          align="center"
+          listening={false}
+        />
+      ) : null}
+    </Group>
   );
 }
 

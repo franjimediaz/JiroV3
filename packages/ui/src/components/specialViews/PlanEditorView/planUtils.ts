@@ -65,6 +65,26 @@ export function createDefaultPlanDocument(options?: PlanEditorOptions): PlanDocu
   return createDefaultPlanData(options);
 }
 
+export function shouldInitializeDefaultLayers(input: unknown) {
+  const raw = parseMaybeJson(input);
+  if (!isRecord(raw)) return true;
+  return !Array.isArray(raw.layers) || raw.layers.length === 0;
+}
+
+export function mergeDefaultLayersIfNeeded(plan: PlanDocument, externalLayers: PlanLayer[]) {
+  if (!externalLayers.length || plan.layers.length > 1 || plan.layers[0]?.id !== DEFAULT_LAYER_ID || plan.objects.length > 0) {
+    return plan;
+  }
+
+  const layers = normalizeLayers(externalLayers);
+  return {
+    ...plan,
+    layers,
+    activeLayerId: layers[0]?.id || plan.activeLayerId,
+    objects: plan.objects.map((object) => ({ ...object, layerId: layers[0]?.id || object.layerId })),
+  };
+}
+
 export function normalizePlanData(input: unknown, options?: PlanEditorOptions): PlanDocument {
   const fallback = createDefaultPlanData(options);
   const raw = parseMaybeJson(input);

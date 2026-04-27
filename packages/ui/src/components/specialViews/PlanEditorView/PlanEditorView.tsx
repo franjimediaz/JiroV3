@@ -13,7 +13,7 @@ import { loadDefaultLayers, loadLinkTargetRecords, loadPlanSymbols } from "./pla
 import { exportPlanPdf, exportPlanPng } from "./planExport";
 import styles from "./PlanEditorView.module.css";
 import type { PlanDocument, PlanEditorConfig, PlanLinkTargetConfig, PlanObject, PlanSymbolDefinition, PlanTool } from "./planTypes";
-import { createDefaultPlanData, normalizePlanData, removePlanObject, updatePlanObject } from "./planUtils";
+import { createDefaultPlanData, isPlanObjectEditable, normalizePlanData, removePlanObject, shouldInitializeDefaultLayers, updatePlanObject } from "./planUtils";
 
 type Props = {
   config: PlanEditorConfig;
@@ -103,7 +103,7 @@ export default function PlanEditorView({ config, value, mode, dataProvider, onCh
     if (readOnly) return;
     if (!config.sourceField || value !== undefined && value !== null && value !== "") return;
     if (config.options?.defaultLayersSource?.enabled && defaultLayersLoading) return;
-    onChange(createDefaultPlanData(config.options, defaultLayers));
+    onChange(createDefaultPlanData(config.options, shouldInitializeDefaultLayers(value) ? defaultLayers : []));
   }, [config.options, config.sourceField, defaultLayers, defaultLayersLoading, onChange, readOnly, value]);
 
   useEffect(() => {
@@ -210,7 +210,7 @@ export default function PlanEditorView({ config, value, mode, dataProvider, onCh
           linkTargets={config.options?.linkTargets || []}
           linkRecords={linkRecords}
           loadingLinkRecords={linkRecordsLoading}
-          readOnly={readOnly}
+          readOnly={readOnly || !isPlanObjectEditable(document, selectedObject, readOnly)}
           onChange={updateSelected}
           onLoadLinkRecords={loadRecordsForTarget}
         />

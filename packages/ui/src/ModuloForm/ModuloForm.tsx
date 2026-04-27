@@ -402,7 +402,22 @@ function PlanEditorConfigPanel({
             type="button"
             className={styles.btn}
             disabled={readOnly}
-            onClick={() => updateOptions({ linkTargets: [...linkTargets, { label: "", moduleSlug: "", table: "", valueField: "id", displayField: "id", filters: [], sort: [] }] })}
+            onClick={() =>
+              updateOptions({
+                linkTargets: [
+                  ...linkTargets,
+                  {
+                    label: "Nuevo destino",
+                    moduleSlug: "",
+                    table: "",
+                    valueField: "id",
+                    displayField: "nombre",
+                    filters: [],
+                    sort: [],
+                  },
+                ],
+              })
+            }
           >
             Anadir destino
           </button>
@@ -436,9 +451,73 @@ function PlanEditorConfigPanel({
                   />
                 </div>
                 <PlanFieldSelect label="valueField" value={target.valueField || "id"} fields={fieldOptions} disabled={readOnly || !target.moduleSlug} onChange={(field) => updateLinkTarget(index, { valueField: field })} />
-                <PlanFieldSelect label="displayField" value={target.displayField || "id"} fields={fieldOptions} disabled={readOnly || !target.moduleSlug} onChange={(field) => updateLinkTarget(index, { displayField: field })} />
+                <PlanFieldSelect label="displayField" value={target.displayField || "nombre"} fields={fieldOptions} disabled={readOnly || !target.moduleSlug} onChange={(field) => updateLinkTarget(index, { displayField: field })} />
+                <label>
+                  <span className={styles.label}>table</span>
+                  <input className={styles.input} value={target.table || ""} disabled={readOnly} onChange={(e) => updateLinkTarget(index, { table: e.target.value })} />
+                </label>
+              </div>
+              <div className={styles.grid} style={{ marginTop: 10 }}>
+                <label>
+                  <span className={styles.label}>filters JSON</span>
+                  <textarea
+                    className={styles.textarea}
+                    rows={3}
+                    value={JSON.stringify(target.filters || [], null, 2)}
+                    disabled={readOnly}
+                    onChange={(e) => {
+                      try {
+                        const filters = JSON.parse(e.target.value || "[]");
+                        updateLinkTarget(index, { filters: Array.isArray(filters) ? filters : [] });
+                      } catch {
+                        // Mientras escribe JSON inválido no rompemos la configuración actual.
+                      }
+                    }}
+                  />
+                </label>
+                <label>
+                  <span className={styles.label}>sort JSON</span>
+                  <textarea
+                    className={styles.textarea}
+                    rows={3}
+                    value={JSON.stringify(target.sort || [], null, 2)}
+                    disabled={readOnly}
+                    onChange={(e) => {
+                      try {
+                        const sort = JSON.parse(e.target.value || "[]");
+                        updateLinkTarget(index, { sort: Array.isArray(sort) ? sort : [] });
+                      } catch {
+                        // Mientras escribe JSON inválido no rompemos la configuración actual.
+                      }
+                    }}
+                  />
+                </label>
               </div>
               <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className={styles.btn}
+                  disabled={readOnly || index === 0}
+                  onClick={() => {
+                    const next = [...linkTargets];
+                    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                    updateOptions({ linkTargets: next });
+                  }}
+                >
+                  Subir
+                </button>
+                <button
+                  type="button"
+                  className={styles.btn}
+                  disabled={readOnly || index === linkTargets.length - 1}
+                  onClick={() => {
+                    const next = [...linkTargets];
+                    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                    updateOptions({ linkTargets: next });
+                  }}
+                >
+                  Bajar
+                </button>
                 <button type="button" className={styles.btn} disabled={readOnly} onClick={() => updateOptions({ linkTargets: linkTargets.filter((_, targetIndex) => targetIndex !== index) })}>
                   Eliminar destino
                 </button>
