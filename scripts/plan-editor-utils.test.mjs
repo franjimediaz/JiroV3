@@ -32,11 +32,16 @@ const historyUtilsPath = await transpileUtility(
   "packages/ui/src/components/specialViews/PlanEditorView/planHistoryUtils.ts",
   "planHistoryUtils.mjs"
 );
+const planExportPath = await transpileUtility(
+  "packages/ui/src/components/specialViews/PlanEditorView/planExport.ts",
+  "planExport.mjs"
+);
 
 const planUtils = await import(pathToFileURL(planUtilsPath).href);
 const historyUtils = await import(pathToFileURL(historyUtilsPath).href);
+const planExport = await import(pathToFileURL(planExportPath).href);
 
-test("normalizePlanData migrates version 5 documents to version 7", () => {
+test("normalizePlanData migrates version 5 documents to version 8", () => {
   const plan = planUtils.normalizePlanData({
     version: 5,
     canvas: { width: 400, height: 300, unit: "m", grid: { enabled: true, size: 10, snap: true }, scale: { pixels: 245.5, realValue: 2.45, unit: "m", calibratedFrom: { objectId: "obj_1", pixelLength: 245.5, realLength: 2.45, unit: "m", calibratedAt: "2026-04-27T00:00:00.000Z" } } },
@@ -46,19 +51,22 @@ test("normalizePlanData migrates version 5 documents to version 7", () => {
     objects: [],
   });
 
-  assert.equal(plan.version, 7);
+  assert.equal(plan.version, 8);
   assert.equal(plan.background.fit, "cover");
   assert.equal(plan.canvas.grid.size, 10);
   assert.equal(plan.canvas.scale.calibratedFrom.objectId, "obj_1");
 });
 
-test("normalizePlanData creates a valid version 7 document without version", () => {
+test("normalizePlanData creates a valid version 8 document without version", () => {
   const plan = planUtils.normalizePlanData({});
-  assert.equal(plan.version, 7);
+  assert.equal(plan.version, 8);
   assert.equal(plan.layers.length, 1);
   assert.equal(plan.canvas.grid.snap, true);
   assert.equal(plan.canvas.snap.toObjects, true);
+  assert.equal(plan.canvas.snap.toGrid, true);
   assert.equal(plan.canvas.view.showRulers, true);
+  assert.deepEqual(plan.groups, []);
+  assert.deepEqual(plan.metadata, {});
 });
 
 test("normalizePlanData assigns fallback layer to objects without layerId", () => {
@@ -89,6 +97,20 @@ test("area helpers handle scale and invalid scale", () => {
   assert.equal(planUtils.calculatePolygonArea([{ x: 0, y: 0 }, { x: 100, y: 0 }], scale), null);
   assert.equal(planUtils.hasValidScale({ pixels: 0, realValue: 1, unit: "m" }), false);
   assert.equal(planUtils.formatArea(null, "m"), "Sin escala");
+});
+
+test("rect real-size helpers convert pixels and real units", () => {
+  const scale = { pixels: 100, realValue: 1, unit: "m" };
+  assert.equal(planUtils.pixelsToReal(320, scale), 3.2);
+  assert.equal(planUtils.realToPixels(2.1, scale), 210);
+  assert.deepEqual(planUtils.getRectRealSize({ width: 320, height: 210 }, scale), { width: 3.2, height: 2.1, area: 6.720000000000001, unit: "m" });
+  const rect = { id: "r", type: "rect", x: 0, y: 0, width: 10, height: 10, stroke: "#111", strokeWidth: 1, fill: "transparent", label: "", showArea: true };
+  const updated = planUtils.updateRectFromRealSize(rect, 3.2, 2.1, scale);
+  assert.equal(updated.width, 320);
+  assert.equal(updated.height, 210);
+  assert.equal(planUtils.calculateRectArea(updated, scale), 6.720000000000001);
+  assert.equal(planUtils.pixelsToReal(100, { pixels: 0, realValue: 1, unit: "m" }), null);
+  assert.equal(planUtils.parsePlanDecimal("3,20"), 3.2);
 });
 
 test("snap helpers round to grid", () => {
@@ -184,7 +206,91 @@ test("moveObjectsByDelta moves only editable selected objects", () => {
   assert.equal(moved[1].x, 0);
 });
 
+test("clipboard duplication creates new ids and supports active layer", () => {
+  const plan = planUtils.normalizePlanData({
+    layers: [{ id: "active", name: "Active", visible: true, locked: false, order: 1 }, { id: "old", name: "Old", visible: true, locked: false, order: 2 }],
+    activeLayerId: "active",
+    objects: [{ id: "a", layerId: "old", type: "rect", x: 0, y: 0, width: 10, height: 10, stroke: "#111", strokeWidth: 1, fill: "transparent", label: "", showArea: true }],
+  });
+  const result = planUtils.pastePlanObjects(plan, [plan.objects[0]], { pasteIntoActiveLayer: true, pasteOffset: { x: 20, y: 20 } });
+  assert.notEqual(result.objects[0].id, "a");
+  assert.equal(result.objects[0].layerId, "active");
+  assert.equal(result.objects[0].x, 20);
+});
+
+test("groups create, update, ungroup and clean object references", () => {
+  const plan = planUtils.normalizePlanData({
+    objects: [
+      { id: "a", type: "text", x: 0, y: 0, text: "A", fontSize: 10, fill: "#111" },
+      { id: "b", type: "text", x: 10, y: 0, text: "B", fontSize: 10, fill: "#111" },
+    ],
+  });
+  const grouped = planUtils.groupObjects(plan, ["a", "b"]);
+  assert.equal(grouped.groups.length, 1);
+  const locked = planUtils.updatePlanGroup(grouped, grouped.groups[0].id, { locked: true });
+  assert.equal(planUtils.isPlanObjectEditable(locked, locked.objects[0], false), false);
+  const cleaned = planUtils.cleanPlanGroups({ ...locked, objects: locked.objects.filter((object) => object.id !== "b") });
+  assert.equal(cleaned.groups.length, 0);
+  assert.equal(planUtils.ungroupObjects(grouped, grouped.groups[0].id).groups.length, 0);
+});
+
+test("alignObjects and distributeObjects move editable selections", () => {
+  const objects = [
+    { id: "a", type: "rect", x: 0, y: 0, width: 10, height: 10, stroke: "#111", strokeWidth: 1, fill: "transparent", label: "", showArea: true },
+    { id: "b", type: "rect", x: 50, y: 20, width: 10, height: 10, stroke: "#111", strokeWidth: 1, fill: "transparent", label: "", showArea: true },
+    { id: "c", type: "rect", x: 100, y: 40, width: 10, height: 10, stroke: "#111", strokeWidth: 1, fill: "transparent", label: "", showArea: true },
+  ];
+  const aligned = planUtils.alignObjects(objects, ["a", "b", "c"], "left");
+  assert.deepEqual(aligned.map((object) => object.x), [0, 0, 0]);
+  const distributed = planUtils.distributeObjects([{ ...objects[0], x: 0 }, { ...objects[1], x: 70 }, { ...objects[2], x: 100 }], ["a", "b", "c"], "horizontal");
+  assert.equal(distributed[1].x, 50);
+});
+
+test("templates and blocks clone objects and strip links when configured", () => {
+  const base = planUtils.normalizePlanData({
+    layers: [{ id: "base", name: "Base", visible: true, locked: false, order: 1 }],
+    activeLayerId: "base",
+    objects: [],
+  });
+  const template = {
+    layers: [{ id: "tpl", name: "Base", visible: true, locked: false, order: 1 }],
+    activeLayerId: "tpl",
+    objects: [{ id: "linked", layerId: "tpl", type: "text", x: 0, y: 0, text: "T", fontSize: 10, fill: "#111", linkedTo: { table: "x", recordId: "1" } }],
+  };
+  const inserted = planUtils.applyPlanTemplate(base, template, { mode: "insert", preserveLinks: false, mergeLayersByName: true, templateId: "tpl_1", templateName: "Tpl" });
+  assert.equal(inserted.layers.length, 1);
+  assert.equal(inserted.objects.length, 1);
+  assert.equal(inserted.objects[0].linkedTo, undefined);
+  assert.equal(inserted.metadata.templateName, "Tpl");
+  const blockResult = planUtils.insertPlanBlock(base, { objects: template.objects, anchor: { x: 0, y: 0 } }, { x: 30, y: 40 }, { preserveLinks: false });
+  assert.notEqual(blockResult.objects[0].id, "linked");
+  assert.equal(blockResult.objects[0].linkedTo, undefined);
+  assert.equal(blockResult.objects[0].x, 30);
+});
+
 test("temporary measurement uses scale or pixels", () => {
   assert.equal(planUtils.calculateTemporaryMeasurement({ x: 0, y: 0 }, { x: 300, y: 400 }, { pixels: 100, realValue: 1, unit: "m" }), "5 m");
   assert.equal(planUtils.calculateTemporaryMeasurement({ x: 0, y: 0 }, { x: 3, y: 4 }, null), "5 px");
+});
+
+test("export helpers classify plan editor overlays as non-exportable", () => {
+  assert.equal(planExport.isPlanExportOverlayName("plan-editor-selection"), true);
+  assert.equal(planExport.isPlanExportOverlayName("plan-editor-guides"), true);
+  assert.equal(planExport.isPlanExportOverlayName("plan-editor-measurements"), true);
+  assert.equal(planExport.isPlanExportOverlayName("real-plan-object"), false);
+});
+
+test("export metadata fields use configurable labels and tolerate missing values", () => {
+  assert.deepEqual(
+    planExport.getMetadataLines([{ label: "Cliente", field: "clienteNombre" }, { label: "Obra", field: "nombre" }, { label: "Falta", field: "missing" }], { clienteNombre: "Acme", nombre: "Nave" }),
+    ["Cliente: Acme", "Obra: Nave", "Falta: "]
+  );
+});
+
+test("PlanSymbolsPanel keeps the permanent panel compact and uses a modal library", async () => {
+  const source = await readFile(path.join(repoRoot, "packages/ui/src/components/specialViews/PlanEditorView/PlanSymbolsPanel.tsx"), "utf8");
+  assert.match(source, /Elegir simbolo/);
+  assert.match(source, /symbolModal/);
+  assert.match(source, /Biblioteca de simbolos/);
+  assert.match(source, /selectedSymbolSummary/);
 });

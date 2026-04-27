@@ -1,10 +1,12 @@
 import type { DataProvider } from "../../../engines/computeEngine";
 import type {
   PlanDynamicSourceConfig,
+  PlanBlockDefinition,
   PlanLayer,
   PlanLinkTargetConfig,
   PlanObjectSource,
   PlanSymbolDefinition,
+  PlanTemplateDefinition,
 } from "./planTypes";
 
 type RecordLike = Record<string, unknown>;
@@ -25,6 +27,18 @@ export async function loadDefaultLayers(config: PlanDynamicSourceConfig | undefi
   if (!isEnabledSource(config)) return [];
   const rows = await loadRows(config, dataProvider);
   return rows.map((row, index) => normalizeLayerRecord(row, config, index + 1)).filter(Boolean) as PlanLayer[];
+}
+
+export async function loadPlanTemplates(config: PlanDynamicSourceConfig | undefined, dataProvider?: DataProvider) {
+  if (!isEnabledSource(config)) return [];
+  const rows = await loadRows(config, dataProvider);
+  return rows.map((row) => normalizeTemplateRecord(row, config)).filter(Boolean) as PlanTemplateDefinition[];
+}
+
+export async function loadPlanBlocks(config: PlanDynamicSourceConfig | undefined, dataProvider?: DataProvider) {
+  if (!isEnabledSource(config)) return [];
+  const rows = await loadRows(config, dataProvider);
+  return rows.map((row) => normalizeBlockRecord(row, config)).filter(Boolean) as PlanBlockDefinition[];
 }
 
 export async function loadLinkTargetRecords(config: PlanLinkTargetConfig, dataProvider?: DataProvider, searchText?: string): Promise<LinkTargetRecord[]> {
@@ -90,6 +104,41 @@ export function normalizeLayerRecord(record: unknown, mapping: PlanDynamicSource
   };
 }
 
+export function normalizeTemplateRecord(record: unknown, mapping: PlanDynamicSourceConfig & { descriptionField?: string; planJsonField?: string }): PlanTemplateDefinition | null {
+  if (!isRecord(record)) return null;
+  const valueField = mapping.valueField || "id";
+  const labelField = mapping.labelField || mapping.displayField || valueField;
+  const planField = mapping.planJsonField || "planJson";
+  const id = toText(record[valueField]);
+  if (!id) return null;
+  return {
+    id,
+    label: toText(record[labelField]) || id,
+    description: mapping.descriptionField ? toText(record[mapping.descriptionField]) || undefined : undefined,
+    category: mapping.categoryField ? toText(record[mapping.categoryField]) || undefined : undefined,
+    plan: parseMaybeJson(record[planField]),
+    raw: record,
+  };
+}
+
+export function normalizeBlockRecord(record: unknown, mapping: PlanDynamicSourceConfig & { descriptionField?: string; blockJsonField?: string }): PlanBlockDefinition | null {
+  if (!isRecord(record)) return null;
+  const valueField = mapping.valueField || "id";
+  const labelField = mapping.labelField || mapping.displayField || valueField;
+  const blockField = mapping.blockJsonField || "blockJson";
+  const id = toText(record[valueField]);
+  if (!id) return null;
+  return {
+    id,
+    label: toText(record[labelField]) || id,
+    description: mapping.descriptionField ? toText(record[mapping.descriptionField]) || undefined : undefined,
+    category: mapping.categoryField ? toText(record[mapping.categoryField]) || undefined : undefined,
+    icon: mapping.iconField ? toText(record[mapping.iconField]) || undefined : undefined,
+    block: parseMaybeJson(record[blockField]),
+    raw: record,
+  };
+}
+
 async function loadRows(config: PlanDynamicSourceConfig, dataProvider?: DataProvider) {
   if (!dataProvider?.list || !config.moduleSlug) return [];
   const result = await dataProvider.list({
@@ -128,4 +177,13 @@ function toText(value: unknown) {
 function toNumber(value: unknown, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseMaybeJson(value: unknown) {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }

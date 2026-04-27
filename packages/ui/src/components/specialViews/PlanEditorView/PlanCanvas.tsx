@@ -4,9 +4,9 @@ import { Fragment, forwardRef, useEffect, useImperativeHandle, useMemo, useRef, 
 import Konva from "konva";
 import { Circle, Group, Image as KonvaImage, Layer, Line, Rect, Stage, Text, Transformer } from "react-konva";
 import styles from "./PlanEditorView.module.css";
-import type { PlanDocument, PlanLineObject, PlanObject, PlanPolygonObject, PlanPolygonPoint, PlanRectObject, PlanSymbolDefinition, PlanTool } from "./planTypes";
+import type { PlanBlockDefinition, PlanDocument, PlanEditorOptions, PlanLineObject, PlanObject, PlanPolygonObject, PlanPolygonPoint, PlanRectObject, PlanSymbolDefinition, PlanTool } from "./planTypes";
 import { getPlanIconInfo, getSymbolCanvasText } from "./planIconUtils";
-import { calculateLineMeasure, calculateTemporaryMeasurement, getObjectAreaLabel, createPlanObjectId, getObjectSnapPoints, getPlanLayer, getPolygonCentroid, getSelectionBounds, getSelectionSnapPoints, getSnapGuides, getVisiblePlanObjects, isPlanObjectEditable, moveObjectByDelta, moveObjectsByDelta, objectIntersectsRect, applyObjectSnap, projectPointOnSegment, shouldSnap, snapPoint, updatePlanObject, validatePolygon, type PlanBounds, type SnapGuide } from "./planUtils";
+import { calculateLineMeasure, calculateTemporaryMeasurement, getObjectAreaLabel, createPlanObjectId, getObjectSnapPoints, getPlanLayer, getPolygonCentroid, getSelectionBounds, getSelectionSnapPoints, getSnapGuides, getVisiblePlanObjects, isPlanObjectEditable, insertPlanBlock, moveObjectByDelta, moveObjectsByDelta, objectIntersectsRect, applyObjectSnap, projectPointOnSegment, shouldSnap, snapPoint, updatePlanObject, validatePolygon, type PlanBounds, type SnapGuide } from "./planUtils";
 
 type Props = {
   document: PlanDocument;
@@ -15,6 +15,9 @@ type Props = {
   selectedIds?: string[];
   readOnly?: boolean;
   activeSymbol: PlanSymbolDefinition | null;
+  activeBlock?: PlanBlockDefinition | null;
+  blockOptions?: PlanEditorOptions["blocks"];
+  measurementOptions?: PlanEditorOptions["measurement"];
   editingPolygonId?: string | null;
   selectedVertexIndex?: number | null;
   onChange: (document: PlanDocument) => void;
@@ -32,10 +35,11 @@ export type PlanCanvasHandle = {
 };
 
 const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
-  { document, tool, selectedId, selectedIds = selectedId ? [selectedId] : [], readOnly, activeSymbol, editingPolygonId, selectedVertexIndex, onChange, onSelect, onSelectionChange, onSelectVertex, onMovePolygonVertex, onInsertPolygonVertex },
+  { document, tool, selectedId, selectedIds = selectedId ? [selectedId] : [], readOnly, activeSymbol, activeBlock, blockOptions, measurementOptions, editingPolygonId, selectedVertexIndex, onChange, onSelect, onSelectionChange, onSelectVertex, onMovePolygonVertex, onInsertPolygonVertex },
   ref
 ) {
   const stageRef = useRef<Konva.Stage | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const transformerRef = useRef<Konva.Transformer | null>(null);
   const shapeRefs = useRef<Record<string, Konva.Node | null>>({});
   const [draft, setDraft] = useState<DraftObject>(null);
@@ -50,6 +54,7 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
   const [measurements, setMeasurements] = useState<Array<{ id: string; a: PlanPolygonPoint; b: PlanPolygonPoint }>>([]);
   const [zoom, setZoom] = useState(1);
   const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
+  const [spacePressed, setSpacePressed] = useState(false);
   const backgroundImage = useImage(document.background?.url || "");
   const visibleObjects = useMemo(() => getVisiblePlanObjects(document), [document]);
 
@@ -62,6 +67,9 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
     [document.objects, editingPolygonId]
   );
   const selectionBounds = useMemo(() => getSelectionBounds(visibleObjects, selectedIds), [visibleObjects, selectedIds]);
+  const measurementEnabled = measurementOptions?.enabled !== false;
+  const allowConvertMeasurement = measurementOptions?.allowConvertToLine !== false;
+  const canPan = tool === "pan" || spacePressed;
 
   useImperativeHandle(ref, () => ({
     getStage: () => stageRef.current,
@@ -101,7 +109,7 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
     const sourcePoints = getSelectionSnapPoints(moved);
     const candidates = getSnapCandidates(ids);
     for (const point of sourcePoints) {
-      const snapped = applyObjectSnap(point, candidates, document.canvas.snap.threshold);
+      const snapped = applyObjectSnap(point, candidates, document.canvas.snap.threshold / zoom);
       if (snapped.target) {
         return { dx: dx + snapped.dx, dy: dy + snapped.dy, guides: getSnapGuides({ x: point.x + snapped.dx, y: point.y + snapped.dy }, snapped.target) };
       }
@@ -111,16 +119,40 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
 
   const moveSelection = (ids: string[], dx: number, dy: number) => {
     const snapped = snapDeltaForSelection(ids, dx, dy);
-    setSnapGuides(snapped.guides);
-    onChange({ ...document, objects: moveObjectsByDelta(document.objects, ids, snapped.dx, snapped.dy, { layers: document.layers, readOnly }) });
+    onChange({ ...document, objects: moveObjectsByDelta(document.objects, ids, snapped.dx, snapped.dy, { layers: document.layers, readOnly, groups: document.groups }) });
+    setSnapGuides([]);
+  };
+
+  const previewMoveSelection = (ids: string[], dx: number, dy: number) => {
+    setSnapGuides(snapDeltaForSelection(ids, dx, dy).guides);
+  };
+
+  const snapPointer = (point: PlanPolygonPoint, excludeIds: string[] = []) => {
+    const gridPoint = normalizePointer(document, point);
+    if (!document.canvas.snap.enabled || !document.canvas.snap.toObjects) {
+      setSnapGuides([]);
+      return gridPoint;
+    }
+    const snapped = applyObjectSnap(
+      { ...gridPoint, kind: "pointer" },
+      getSnapCandidates(excludeIds),
+      document.canvas.snap.threshold / zoom
+    );
+    if (!snapped.target) {
+      setSnapGuides([]);
+      return gridPoint;
+    }
+    setSnapGuides(getSnapGuides(snapped.point, snapped.target));
+    return snapped.point;
   };
 
   const handleStagePointerDown = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    if (canPan || (event.evt as MouseEvent).button === 1) return;
     if (readOnly) return;
     const stage = stageRef.current;
     const rawPoint = getPlanPointer();
     if (!rawPoint) return;
-    const point = normalizePointer(document, rawPoint);
+    const point = snapPointer(rawPoint);
     const activeLayer = getPlanLayer(document, document.activeLayerId);
     const canDrawOnLayer = !readOnly && activeLayer.visible !== false && !activeLayer.locked;
 
@@ -205,7 +237,18 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
       });
     }
 
-    if (tool === "measure") {
+    if (tool === "block" && activeBlock) {
+      const result = insertPlanBlock(document, activeBlock.block, point, {
+        insertIntoActiveLayer: blockOptions?.insertIntoActiveLayer !== false,
+        preserveLinks: blockOptions?.preserveLinks === true,
+      });
+      onChange(result.document);
+      onSelectionChange?.(result.objects.map((object) => object.id), result.objects[0]?.id || null);
+      onSelect(result.objects[0]?.id || null);
+      return;
+    }
+
+    if (tool === "measure" && measurementEnabled) {
       if (!measurementStart) {
         setMeasurementStart(point);
         setMeasurementEnd(point);
@@ -243,7 +286,7 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
     if (readOnly) return;
     const rawPoint = getPlanPointer();
     if (!rawPoint) return;
-    const point = normalizePointer(document, rawPoint);
+    const point = snapPointer(rawPoint);
 
     if (selectionStart && selectionDraft) {
       setSelectionDraft(normalizeBounds(selectionStart, point));
@@ -298,6 +341,45 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
     setDraft(null);
   };
 
+  const convertLastMeasurementToLine = () => {
+    if (readOnly || !allowConvertMeasurement || !measurements.length) return;
+    const activeLayer = getPlanLayer(document, document.activeLayerId);
+    if (activeLayer.visible === false || activeLayer.locked) return;
+    const measurement = measurements[measurements.length - 1];
+    onChange({
+      ...document,
+      objects: [
+        ...document.objects,
+        {
+          id: createPlanObjectId(),
+          layerId: activeLayer.id,
+          type: "line",
+          x1: measurement.a.x,
+          y1: measurement.a.y,
+          x2: measurement.b.x,
+          y2: measurement.b.y,
+          stroke: "#7c3aed",
+          strokeWidth: 2,
+          label: "Medicion",
+          showMeasure: true,
+        },
+      ],
+    });
+    setMeasurements((current) => current.slice(0, -1));
+  };
+
+  const fitToScreen = () => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const padding = document.canvas.view.showRulers ? 96 : 64;
+    const nextZoom = Math.max(
+      0.25,
+      Math.min(4, Math.min((wrap.clientWidth - padding) / document.canvas.width, (wrap.clientHeight - padding) / document.canvas.height))
+    );
+    setZoom(Number.isFinite(nextZoom) ? nextZoom : 1);
+    setStagePosition({ x: 0, y: 0 });
+  };
+
   const finishPolygon = () => {
     if (readOnly || !draftPolygon) return;
     if (draftPolygon.points.length >= 3) commitObject(draftPolygon);
@@ -330,8 +412,27 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [draftPolygon, readOnly, tool]);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space") return;
+      const target = event.target as HTMLElement | null;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      event.preventDefault();
+      setSpacePressed(true);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") setSpacePressed(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
+
   return (
-    <div className={styles.canvasWrap}>
+    <div ref={wrapRef} className={styles.canvasWrap}>
       {document.canvas.view.showRulers ? <PlanRulers document={document} zoom={zoom} /> : null}
       <div className={styles.stageInner}>
         <Stage
@@ -350,13 +451,27 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
           scaleY={zoom}
           x={stagePosition.x}
           y={stagePosition.y}
-          draggable={tool === "pan"}
+          draggable={canPan}
           onDragEnd={(event) => setStagePosition({ x: event.target.x(), y: event.target.y() })}
           onWheel={(event) => {
             if (!event.evt.ctrlKey && !event.evt.metaKey) return;
             event.evt.preventDefault();
+            const pointer = stageRef.current?.getPointerPosition();
             const direction = event.evt.deltaY > 0 ? -1 : 1;
-            setZoom((current) => Math.max(0.25, Math.min(4, current + direction * 0.1)));
+            const nextZoom = Math.max(0.25, Math.min(4, zoom + direction * 0.1));
+            if (!pointer) {
+              setZoom(nextZoom);
+              return;
+            }
+            const mousePointTo = {
+              x: (pointer.x - stagePosition.x) / zoom,
+              y: (pointer.y - stagePosition.y) / zoom,
+            };
+            setZoom(nextZoom);
+            setStagePosition({
+              x: pointer.x - mousePointTo.x * nextZoom,
+              y: pointer.y - mousePointTo.y * nextZoom,
+            });
           }}
         >
           {backgroundImage ? (
@@ -373,7 +488,7 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
           <Layer>
             {visibleObjects.map((object) => renderObject({
               object,
-              selected: object.id === selectedId,
+              selected: selectedIds.includes(object.id),
               readOnly: readOnly || !isPlanObjectEditable(document, object, readOnly),
               scale: document.canvas.scale,
               document,
@@ -385,6 +500,7 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
               onMove: updateObject,
               selectedIds,
               onMoveSelection: moveSelection,
+              onPreviewMoveSelection: previewMoveSelection,
               editing: object.id === editingPolygonId,
             }))}
 
@@ -400,6 +516,7 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
               onMove: () => undefined,
               selectedIds: [],
               onMoveSelection: () => undefined,
+              onPreviewMoveSelection: () => undefined,
               editing: false,
             }) : null}
 
@@ -418,6 +535,7 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
               onMove: () => undefined,
               selectedIds: [],
               onMoveSelection: () => undefined,
+              onPreviewMoveSelection: () => undefined,
               editing: false,
             }) : null}
 
@@ -544,8 +662,9 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
         <button type="button" className={styles.button} onClick={() => setZoom((value) => Math.min(4, value + 0.1))}>+</button>
         <button type="button" className={styles.button} onClick={() => setZoom((value) => Math.max(0.25, value - 0.1))}>-</button>
         <button type="button" className={styles.button} onClick={() => { setZoom(1); setStagePosition({ x: 0, y: 0 }); }}>100%</button>
-        <button type="button" className={styles.button} onClick={() => { setZoom(0.75); setStagePosition({ x: 0, y: 0 }); }}>Ajustar</button>
+        <button type="button" className={styles.button} onClick={fitToScreen}>Ajustar</button>
         <button type="button" className={styles.button} onClick={() => setMeasurements([])} disabled={!measurements.length}>Limpiar medidas</button>
+        <button type="button" className={styles.button} onClick={convertLastMeasurementToLine} disabled={readOnly || !allowConvertMeasurement || !measurements.length}>Convertir medida</button>
       </div>
     </div>
   );
@@ -565,9 +684,10 @@ function renderObject(args: {
   onMove: (objectId: string, patch: Partial<PlanObject>) => void;
   selectedIds: string[];
   onMoveSelection: (objectIds: string[], dx: number, dy: number) => void;
+  onPreviewMoveSelection: (objectIds: string[], dx: number, dy: number) => void;
   editing?: boolean;
 }) {
-  const { object, selected, readOnly, scale, document, setRef, onSelect, onSelectionChange, onMove, selectedIds, onMoveSelection, editing } = args;
+  const { object, selected, readOnly, scale, document, setRef, onSelect, onSelectionChange, onMove, selectedIds, onMoveSelection, onPreviewMoveSelection, editing } = args;
   const common = {
     ref: setRef,
     draggable: !readOnly && !object.locked,
@@ -594,6 +714,10 @@ function renderObject(args: {
           stroke={selected ? "#2563eb" : isLocked ? "#6b7280" : object.stroke}
           strokeWidth={object.strokeWidth}
           lineCap="round"
+          onDragMove={(event) => {
+            const ids = selectedIds.includes(object.id) && selectedIds.length > 1 ? selectedIds : [object.id];
+            onPreviewMoveSelection(ids, event.target.x(), event.target.y());
+          }}
           onDragEnd={(event) => {
             const dx = event.target.x();
             const dy = event.target.y();
@@ -651,6 +775,10 @@ function renderObject(args: {
           stroke={selected ? "#2563eb" : isLocked ? "#6b7280" : object.stroke}
           strokeWidth={object.strokeWidth}
           fill={object.fill}
+          onDragMove={(event) => {
+            const ids = selectedIds.includes(object.id) && selectedIds.length > 1 ? selectedIds : [object.id];
+            onPreviewMoveSelection(ids, event.target.x() - object.x, event.target.y() - object.y);
+          }}
           onDragEnd={(event) => {
             if (selectedIds.includes(object.id) && selectedIds.length > 1) {
               onMoveSelection(selectedIds, event.target.x() - object.x, event.target.y() - object.y);
@@ -708,6 +836,10 @@ function renderObject(args: {
           strokeWidth={object.strokeWidth}
           dash={!validation.valid ? [8, 5] : editing ? [4, 4] : undefined}
           fill={object.fill}
+          onDragMove={(event) => {
+            const ids = selectedIds.includes(object.id) && selectedIds.length > 1 ? selectedIds : [object.id];
+            onPreviewMoveSelection(ids, event.target.x(), event.target.y());
+          }}
           onDragEnd={(event) => {
             const dx = event.target.x();
             const dy = event.target.y();
@@ -758,6 +890,7 @@ function renderObject(args: {
         onMove={(objectId, patch) => onMove(objectId, snapPatch(document, patch) as Partial<PlanObject>)}
         selectedIds={selectedIds}
         onMoveSelection={onMoveSelection}
+        onPreviewMoveSelection={onPreviewMoveSelection}
       />
     );
   }
@@ -771,6 +904,10 @@ function renderObject(args: {
       text={object.text}
       fill={selected ? "#2563eb" : object.fill}
       fontSize={object.fontSize}
+      onDragMove={(event) => {
+        const ids = selectedIds.includes(object.id) && selectedIds.length > 1 ? selectedIds : [object.id];
+        onPreviewMoveSelection(ids, event.target.x() - object.x, event.target.y() - object.y);
+      }}
       onDragEnd={(event) => {
         if (selectedIds.includes(object.id) && selectedIds.length > 1) {
           onMoveSelection(selectedIds, event.target.x() - object.x, event.target.y() - object.y);
@@ -798,6 +935,7 @@ function PlanSymbolNode({
   onMove,
   selectedIds,
   onMoveSelection,
+  onPreviewMoveSelection,
 }: {
   object: Extract<PlanObject, { type: "symbol" }>;
   selected: boolean;
@@ -808,6 +946,7 @@ function PlanSymbolNode({
   onMove: (objectId: string, patch: Partial<PlanObject>) => void;
   selectedIds: string[];
   onMoveSelection: (objectIds: string[], dx: number, dy: number) => void;
+  onPreviewMoveSelection: (objectIds: string[], dx: number, dy: number) => void;
 }) {
   const icon = getPlanIconInfo(object.symbolIcon);
   const image = useImage(icon.kind === "image" ? icon.value : "");
@@ -832,6 +971,10 @@ function PlanSymbolNode({
         onSelect(object.id);
       }}
       onTap={() => onSelect(object.id)}
+      onDragMove={(event) => {
+        const ids = selectedIds.includes(object.id) && selectedIds.length > 1 ? selectedIds : [object.id];
+        onPreviewMoveSelection(ids, event.target.x() - object.x, event.target.y() - object.y);
+      }}
       onDragEnd={(event) => {
         if (selectedIds.includes(object.id) && selectedIds.length > 1) {
           onMoveSelection(selectedIds, event.target.x() - object.x, event.target.y() - object.y);

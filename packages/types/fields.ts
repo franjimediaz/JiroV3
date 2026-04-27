@@ -86,6 +86,9 @@ export type PlanDynamicSourceConfig = {
   orderField?: string;
   lockedField?: string;
   visibleField?: string;
+  descriptionField?: string;
+  planJsonField?: string;
+  blockJsonField?: string;
   filters?: QueryFilter[];
   sort?: QuerySort[];
 };
@@ -147,6 +150,22 @@ export type PlanEditorSpecialViewConfig = {
       includeGrid?: boolean;
       includeLayerLegend?: boolean;
       pageOrientation?: "portrait" | "landscape";
+      metadataFields?: Array<{ label: string; field: string }>;
+    };
+    clipboard?: {
+      pasteIntoActiveLayer?: boolean;
+      pasteOffset?: { x?: number; y?: number };
+    };
+    templatesSource?: PlanDynamicSourceConfig;
+    templates?: {
+      applyMode?: "replace" | "insert";
+      preserveLinks?: boolean;
+      mergeLayersByName?: boolean;
+    };
+    blocksSource?: PlanDynamicSourceConfig;
+    blocks?: {
+      insertIntoActiveLayer?: boolean;
+      preserveLinks?: boolean;
     };
     exportTitle?: string;
     exportSubtitleField?: string;
@@ -163,6 +182,9 @@ export type PlanEditorSpecialViewConfig = {
     measurement?: {
       enabled?: boolean;
       allowConvertToLine?: boolean;
+    };
+    symbols?: {
+      selectorMode?: "modal";
     };
     symbolsSource?: PlanDynamicSourceConfig;
     defaultLayersSource?: PlanDynamicSourceConfig;

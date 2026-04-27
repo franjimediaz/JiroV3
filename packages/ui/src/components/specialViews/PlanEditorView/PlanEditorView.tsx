@@ -3,17 +3,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DataProvider } from "../../../engines/computeEngine";
 import PlanCanvas, { type PlanCanvasHandle } from "./PlanCanvas";
+import PlanBlocksPanel from "./PlanBlocksPanel";
 import PlanLayersPanel from "./PlanLayersPanel";
 import PlanPropertiesPanel from "./PlanPropertiesPanel";
 import PlanSettingsPanel from "./PlanSettingsPanel";
+import PlanGroupsPanel from "./PlanGroupsPanel";
 import PlanSymbolsPanel from "./PlanSymbolsPanel";
+import PlanTemplatesPanel from "./PlanTemplatesPanel";
 import PlanToolbar from "./PlanToolbar";
 import type { LinkTargetRecord } from "./planDataSources";
-import { loadDefaultLayers, loadLinkTargetRecords, loadPlanSymbols } from "./planDataSources";
+import { loadDefaultLayers, loadLinkTargetRecords, loadPlanBlocks, loadPlanSymbols, loadPlanTemplates } from "./planDataSources";
 import { exportPlanPdf, exportPlanPng } from "./planExport";
 import styles from "./PlanEditorView.module.css";
-import type { PlanDocument, PlanEditorConfig, PlanLinkTargetConfig, PlanObject, PlanSymbolDefinition, PlanTool, PlanUnit } from "./planTypes";
-import { calibrateScaleFromLine, createDefaultPlanData, insertPointInPolygonSegment, isPlanObjectEditable, normalizePlanData, removePlanObject, shouldInitializeDefaultLayers, updatePlanObject } from "./planUtils";
+import type { PlanBlockDefinition, PlanDocument, PlanEditorConfig, PlanLinkTargetConfig, PlanObject, PlanSymbolDefinition, PlanTemplateDefinition, PlanTool, PlanUnit } from "./planTypes";
+import { alignObjects, applyPlanTemplate, calibrateScaleFromLine, cleanPlanGroups, createDefaultPlanData, distributeObjects, groupObjects, insertPointInPolygonSegment, isPlanObjectEditable, normalizePlanData, pastePlanObjects, removePlanObject, shouldInitializeDefaultLayers, ungroupObjects, updatePlanGroup, updatePlanObject } from "./planUtils";
 import { usePlanHistory } from "./usePlanHistory";
 
 type Props = {
@@ -32,11 +35,19 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>([]);
   const [activeSymbol, setActiveSymbol] = useState<PlanSymbolDefinition | null>(null);
+  const [activeBlock, setActiveBlock] = useState<PlanBlockDefinition | null>(null);
+  const [clipboardObjects, setClipboardObjects] = useState<PlanObject[]>([]);
   const [editingPolygonId, setEditingPolygonId] = useState<string | null>(null);
   const [selectedVertexIndex, setSelectedVertexIndex] = useState<number | null>(null);
   const [symbols, setSymbols] = useState<PlanSymbolDefinition[]>([]);
   const [symbolsLoading, setSymbolsLoading] = useState(false);
   const [symbolsError, setSymbolsError] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<PlanTemplateDefinition[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [blocks, setBlocks] = useState<PlanBlockDefinition[]>([]);
+  const [blocksLoading, setBlocksLoading] = useState(false);
+  const [blocksError, setBlocksError] = useState<string | null>(null);
   const [defaultLayers, setDefaultLayers] = useState<PlanDocument["layers"]>([]);
   const [defaultLayersLoading, setDefaultLayersLoading] = useState(false);
   const [linkRecords, setLinkRecords] = useState<LinkTargetRecord[]>([]);
@@ -53,6 +64,54 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
   const updateSelection = (ids: string[], activeId: string | null = ids[0] || null) => {
     setSelectedObjectIds(ids);
     setSelectedId(activeId);
+  };
+
+  const getEditableSelectedObjects = () =>
+    document.objects.filter((object) => selectedObjectIds.includes(object.id) && isPlanObjectEditable(document, object, readOnly));
+
+  const copySelected = () => {
+    const selected = getEditableSelectedObjects();
+    if (!selected.length) return;
+    setClipboardObjects(selected.map((object) => ({ ...object } as PlanObject)));
+  };
+
+  const pasteFromClipboard = () => {
+    if (readOnly || !clipboardObjects.length) return;
+    const result = pastePlanObjects(document, clipboardObjects, {
+      pasteIntoActiveLayer: config.options?.clipboard?.pasteIntoActiveLayer !== false,
+      pasteOffset: config.options?.clipboard?.pasteOffset,
+    });
+    history.pushHistory(result.document);
+    updateSelection(result.objects.map((object) => object.id), result.objects[0]?.id || null);
+  };
+
+  const cutSelected = () => {
+    const selected = getEditableSelectedObjects();
+    if (!selected.length) return;
+    setClipboardObjects(selected.map((object) => ({ ...object } as PlanObject)));
+    history.pushHistory(cleanPlanGroups({ ...document, objects: document.objects.filter((object) => !selected.some((item) => item.id === object.id)) }));
+    updateSelection([]);
+  };
+
+  const duplicateSelected = () => {
+    const selected = getEditableSelectedObjects();
+    if (!selected.length) return;
+    const result = pastePlanObjects(document, selected, {
+      pasteIntoActiveLayer: config.options?.clipboard?.pasteIntoActiveLayer !== false,
+      pasteOffset: config.options?.clipboard?.pasteOffset,
+    });
+    history.pushHistory(result.document);
+    updateSelection(result.objects.map((object) => object.id), result.objects[0]?.id || null);
+  };
+
+  const alignSelection = (mode: Parameters<typeof alignObjects>[2]) => {
+    if (readOnly || selectedObjectIds.length < 2) return;
+    history.pushHistory({ ...document, objects: alignObjects(document.objects, selectedObjectIds, mode, { layers: document.layers, readOnly, groups: document.groups }) });
+  };
+
+  const distributeSelection = (direction: Parameters<typeof distributeObjects>[2]) => {
+    if (readOnly || selectedObjectIds.length < 3) return;
+    history.pushHistory({ ...document, objects: distributeObjects(document.objects, selectedObjectIds, direction, { layers: document.layers, readOnly, groups: document.groups }) });
   };
 
   useEffect(() => {
@@ -83,6 +142,60 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
       cancelled = true;
     };
   }, [config.options?.symbolsSource, dataProvider]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const source = config.options?.templatesSource;
+      if (!source?.enabled) {
+        setTemplates([]);
+        setTemplatesError(null);
+        setTemplatesLoading(false);
+        return;
+      }
+      setTemplatesLoading(true);
+      setTemplatesError(null);
+      try {
+        const next = await loadPlanTemplates(source, dataProvider);
+        if (!cancelled) setTemplates(next);
+      } catch (error) {
+        if (!cancelled) setTemplatesError((error as Error)?.message || "No se pudieron cargar las plantillas.");
+      } finally {
+        if (!cancelled) setTemplatesLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [config.options?.templatesSource, dataProvider]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const source = config.options?.blocksSource;
+      if (!source?.enabled) {
+        setBlocks([]);
+        setBlocksError(null);
+        setBlocksLoading(false);
+        return;
+      }
+      setBlocksLoading(true);
+      setBlocksError(null);
+      try {
+        const next = await loadPlanBlocks(source, dataProvider);
+        if (!cancelled) setBlocks(next);
+      } catch (error) {
+        if (!cancelled) setBlocksError((error as Error)?.message || "No se pudieron cargar los bloques.");
+      } finally {
+        if (!cancelled) setBlocksLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [config.options?.blocksSource, dataProvider]);
 
   useEffect(() => {
     let cancelled = false;
@@ -133,6 +246,22 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
         event.preventDefault();
         history.redo();
       }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c") {
+        event.preventDefault();
+        copySelected();
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "x") {
+        event.preventDefault();
+        cutSelected();
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") {
+        event.preventDefault();
+        pasteFromClipboard();
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        duplicateSelected();
+      }
       if (event.key === "Escape" && editingPolygonId) {
         event.preventDefault();
         setEditingPolygonId(null);
@@ -144,16 +273,16 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
       }
       if ((event.key === "Delete" || event.key === "Backspace") && selectedObjectIds.length) {
         event.preventDefault();
-        history.pushHistory({
+        history.pushHistory(cleanPlanGroups({
           ...document,
           objects: document.objects.filter((object) => !selectedObjectIds.includes(object.id) || !isPlanObjectEditable(document, object, readOnly)),
-        });
+        }));
         updateSelection([]);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [document, editingPolygonId, history, readOnly, selectedObjectIds]);
+  }, [document, editingPolygonId, history, readOnly, selectedObjectIds, clipboardObjects]);
 
   useEffect(() => {
     if (selectedId && !document.objects.some((object) => object.id === selectedId)) {
@@ -176,10 +305,10 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
   const deleteSelected = () => {
     if (readOnly || (!selectedId && !selectedObjectIds.length)) return;
     if (selectedObjectIds.length > 1) {
-      history.pushHistory({
+      history.pushHistory(cleanPlanGroups({
         ...document,
         objects: document.objects.filter((object) => !selectedObjectIds.includes(object.id) || !isPlanObjectEditable(document, object, readOnly)),
-      });
+      }));
       updateSelection([]);
       return;
     }
@@ -274,16 +403,34 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
           readOnly={readOnly}
           hasSelection={!!selectedObject || selectedObjectIds.length > 0}
           hasActiveSymbol={!!activeSymbol}
+          hasActiveBlock={!!activeBlock}
+          hasClipboard={clipboardObjects.length > 0}
+          selectionCount={selectedObjectIds.length}
           gridEnabled={document.canvas.grid.enabled}
           snapEnabled={document.canvas.grid.snap}
           canUndo={history.canUndo}
           canRedo={history.canRedo}
           calibrationActive={calibrationActive}
+          measurementEnabled={config.options?.measurement?.enabled !== false}
           onToolChange={handleToolChange}
           onDeleteSelected={deleteSelected}
           onClear={clearPlan}
           onUndo={history.undo}
           onRedo={history.redo}
+          onCopy={copySelected}
+          onCut={cutSelected}
+          onPaste={pasteFromClipboard}
+          onDuplicate={duplicateSelected}
+          onGroup={() => {
+            history.pushHistory(groupObjects(document, selectedObjectIds));
+          }}
+          onUngroup={() => {
+            const groupsToRemove = document.groups.filter((group) => group.objectIds.some((id) => selectedObjectIds.includes(id)));
+            if (!groupsToRemove.length) return;
+            history.pushHistory(groupsToRemove.reduce((plan, group) => ungroupObjects(plan, group.id), document));
+          }}
+          onAlign={alignSelection}
+          onDistribute={distributeSelection}
           onToggleGrid={() => history.pushHistory({ ...document, canvas: { ...document.canvas, grid: { ...document.canvas.grid, enabled: !document.canvas.grid.enabled } } })}
           onToggleSnap={() => history.pushHistory({ ...document, canvas: { ...document.canvas, grid: { ...document.canvas.grid, snap: !document.canvas.grid.snap } } })}
           onToggleCalibration={() => {
@@ -291,7 +438,7 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
             setCalibrationActive((current) => !current);
           }}
           onExportPng={() => exportPlanPng(canvasRef.current?.getStage() || null, `${config.sourceField || "plano"}.png`, { includeGrid: config.options?.export?.includeGrid === true })}
-          onExportPdf={() => void exportPlanPdf(canvasRef.current?.getStage() || null, document, config.options, getExportSubtitle(config.options?.exportSubtitleField, record))}
+          onExportPdf={() => void exportPlanPdf(canvasRef.current?.getStage() || null, document, config.options, getExportSubtitle(config.options?.exportSubtitleField, record), record)}
         />
 
         <PlanCanvas
@@ -302,6 +449,9 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
           selectedIds={selectedObjectIds.length ? selectedObjectIds : selectedId ? [selectedId] : []}
           readOnly={readOnly}
           activeSymbol={activeSymbol}
+          activeBlock={activeBlock}
+          blockOptions={config.options?.blocks}
+          measurementOptions={config.options?.measurement}
           editingPolygonId={editingPolygonId}
           selectedVertexIndex={selectedVertexIndex}
           onChange={history.pushHistory}
@@ -343,6 +493,44 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
             setActiveSymbol(symbol);
             if (symbol) setTool("symbol");
           }}
+        />
+        <PlanBlocksPanel
+          blocks={blocks}
+          loading={blocksLoading}
+          error={blocksError}
+          configured={!!config.options?.blocksSource?.enabled}
+          selectedBlockId={activeBlock?.id}
+          readOnly={readOnly}
+          onSelect={(block) => {
+            setActiveBlock(block);
+            if (block) setTool("block");
+          }}
+        />
+        <PlanTemplatesPanel
+          templates={templates}
+          loading={templatesLoading}
+          error={templatesError}
+          configured={!!config.options?.templatesSource?.enabled}
+          readOnly={readOnly}
+          hasContent={document.objects.length > 0}
+          onApply={(template) => {
+            history.pushHistory(applyPlanTemplate(document, template.plan, {
+              mode: config.options?.templates?.applyMode || "replace",
+              preserveLinks: config.options?.templates?.preserveLinks === true,
+              mergeLayersByName: config.options?.templates?.mergeLayersByName !== false,
+              templateId: template.id,
+              templateName: template.label,
+            }));
+            updateSelection([]);
+          }}
+        />
+        <PlanGroupsPanel
+          document={document}
+          selectedIds={selectedObjectIds}
+          readOnly={readOnly}
+          onGroup={() => history.pushHistory(groupObjects(document, selectedObjectIds))}
+          onUngroup={(groupId) => history.pushHistory(ungroupObjects(document, groupId))}
+          onUpdateGroup={(groupId, patch) => history.pushHistory(updatePlanGroup(document, groupId, patch))}
         />
         <PlanPropertiesPanel
           object={selectedObject}

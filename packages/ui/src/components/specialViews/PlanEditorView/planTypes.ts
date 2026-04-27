@@ -1,6 +1,6 @@
 import type { QueryFilter, QuerySort } from "@repo/types";
 
-export type PlanTool = "select" | "line" | "rect" | "text" | "symbol" | "polygon" | "measure" | "pan";
+export type PlanTool = "select" | "line" | "rect" | "text" | "symbol" | "block" | "polygon" | "measure" | "pan";
 
 export type PlanUnit = "m" | "cm" | "mm" | "km" | "in" | "ft" | "px";
 
@@ -166,12 +166,14 @@ export type PlanLayer = {
 };
 
 export type PlanDocument = {
-  version: 7;
+  version: 8;
   canvas: PlanCanvasConfig;
   background: PlanBackgroundConfig;
   layers: PlanLayer[];
   activeLayerId: string;
   objects: PlanObject[];
+  groups: PlanGroup[];
+  metadata: PlanDocumentMetadata;
 };
 
 export type PlanDynamicSourceConfig = {
@@ -213,6 +215,39 @@ export type PlanSymbolDefinition = {
   source?: PlanObjectSource;
 };
 
+export type PlanGroup = {
+  id: string;
+  label: string;
+  objectIds: string[];
+  locked: boolean;
+  collapsed: boolean;
+};
+
+export type PlanDocumentMetadata = {
+  templateId?: string;
+  templateName?: string;
+  createdFromTemplateAt?: string;
+};
+
+export type PlanTemplateDefinition = {
+  id: string;
+  label: string;
+  description?: string;
+  category?: string;
+  plan: unknown;
+  raw?: unknown;
+};
+
+export type PlanBlockDefinition = {
+  id: string;
+  label: string;
+  description?: string;
+  category?: string;
+  icon?: string;
+  block: unknown;
+  raw?: unknown;
+};
+
 export type PlanEditorOptions = Partial<Pick<PlanCanvasConfig, "width" | "height" | "unit" | "scale">> & {
   exportTitle?: string;
   exportSubtitleField?: string;
@@ -224,6 +259,28 @@ export type PlanEditorOptions = Partial<Pick<PlanCanvasConfig, "width" | "height
     includeGrid?: boolean;
     includeLayerLegend?: boolean;
     pageOrientation?: "portrait" | "landscape";
+    metadataFields?: Array<{ label: string; field: string }>;
+  };
+  clipboard?: {
+    pasteIntoActiveLayer?: boolean;
+    pasteOffset?: { x?: number; y?: number };
+  };
+  templatesSource?: PlanDynamicSourceConfig & {
+    descriptionField?: string;
+    planJsonField?: string;
+  };
+  templates?: {
+    applyMode?: "replace" | "insert";
+    preserveLinks?: boolean;
+    mergeLayersByName?: boolean;
+  };
+  blocksSource?: PlanDynamicSourceConfig & {
+    descriptionField?: string;
+    blockJsonField?: string;
+  };
+  blocks?: {
+    insertIntoActiveLayer?: boolean;
+    preserveLinks?: boolean;
   };
   calibration?: {
     enabled?: boolean;
@@ -240,6 +297,9 @@ export type PlanEditorOptions = Partial<Pick<PlanCanvasConfig, "width" | "height
   measurement?: {
     enabled?: boolean;
     allowConvertToLine?: boolean;
+  };
+  symbols?: {
+    selectorMode?: "modal";
   };
   symbolsSource?: PlanDynamicSourceConfig;
   defaultLayersSource?: PlanDynamicSourceConfig;

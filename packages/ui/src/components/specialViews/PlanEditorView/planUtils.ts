@@ -4,6 +4,7 @@ import type {
   PlanDocument,
   PlanEditorOptions,
   PlanGridConfig,
+  PlanGroup,
   PlanLayer,
   PlanLineObject,
   PlanLinkedRecord,
@@ -66,19 +67,21 @@ export const DEFAULT_PLAN_LAYER: PlanLayer = {
 };
 
 export const DEFAULT_PLAN_DOCUMENT: PlanDocument = {
-  version: 7,
+  version: 8,
   canvas: DEFAULT_CANVAS,
   background: DEFAULT_BACKGROUND,
   layers: [DEFAULT_PLAN_LAYER],
   activeLayerId: DEFAULT_LAYER_ID,
   objects: [],
+  groups: [],
+  metadata: {},
 };
 
 export function createDefaultPlanData(options?: PlanEditorOptions, initialLayers?: PlanLayer[]): PlanDocument {
   const layers = normalizeLayers(initialLayers);
   const canvasUnit = normalizeUnit(options?.unit, DEFAULT_CANVAS.unit);
   return {
-    version: 7,
+    version: 8,
     canvas: {
       width: normalizePositiveNumber(options?.width, DEFAULT_CANVAS.width),
       height: normalizePositiveNumber(options?.height, DEFAULT_CANVAS.height),
@@ -92,6 +95,8 @@ export function createDefaultPlanData(options?: PlanEditorOptions, initialLayers
     layers,
     activeLayerId: layers[0]?.id || DEFAULT_LAYER_ID,
     objects: [],
+    groups: [],
+    metadata: {},
   };
 }
 
@@ -132,11 +137,11 @@ export function normalizePlanData(input: unknown, options?: PlanEditorOptions): 
     : [];
 
   return {
-    version: 7,
+    version: 8,
     canvas: {
       width: normalizePositiveNumber(rawCanvas.width, fallback.canvas.width),
       height: normalizePositiveNumber(rawCanvas.height, fallback.canvas.height),
-      unit: rawCanvas.unit === "cm" || rawCanvas.unit === "mm" || rawCanvas.unit === "px" ? rawCanvas.unit : fallback.canvas.unit,
+      unit: normalizeUnit(rawCanvas.unit, fallback.canvas.unit),
       scale: normalizeScale(rawCanvas.scale, fallback.canvas.scale),
       grid: normalizeGrid(rawCanvas.grid, fallback.canvas.grid),
       snap: normalizeSnap(rawCanvas.snap ?? options?.snap, fallback.canvas.snap),
@@ -146,6 +151,8 @@ export function normalizePlanData(input: unknown, options?: PlanEditorOptions): 
     layers,
     activeLayerId,
     objects: objects as PlanObject[],
+    groups: normalizeGroups(raw.groups, (objects as PlanObject[]).map((object) => object.id)),
+    metadata: normalizeMetadata(raw.metadata),
   };
 }
 
@@ -157,6 +164,10 @@ export function createPlanObjectId() {
   return `obj_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
 }
 
+export function createPlanGroupId() {
+  return `group_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
+}
+
 export function updatePlanObject(document: PlanDocument, objectId: string, patch: Partial<PlanObject>): PlanDocument {
   return {
     ...document,
@@ -165,10 +176,10 @@ export function updatePlanObject(document: PlanDocument, objectId: string, patch
 }
 
 export function removePlanObject(document: PlanDocument, objectId: string): PlanDocument {
-  return {
+  return cleanPlanGroups({
     ...document,
     objects: document.objects.filter((object) => object.id !== objectId),
-  };
+  });
 }
 
 export function getPlanLayer(document: PlanDocument, layerId?: string) {
@@ -178,7 +189,7 @@ export function getPlanLayer(document: PlanDocument, layerId?: string) {
 export function isPlanObjectEditable(document: PlanDocument, object: PlanObject | null | undefined, readOnly?: boolean) {
   if (readOnly || !object?.id) return false;
   const layer = getPlanLayer(document, object.layerId);
-  return !object.locked && !layer.locked && layer.visible !== false;
+  return !object.locked && !layer.locked && layer.visible !== false && !isObjectInLockedGroup(document.groups, object.id);
 }
 
 export function getVisiblePlanObjects(document: PlanDocument) {
@@ -222,6 +233,43 @@ export function hasValidScale(scale: PlanScaleConfig | null | undefined): scale 
 }
 
 export const isValidScale = hasValidScale;
+
+export function pixelsToReal(px: number, scale: PlanScaleConfig | null | undefined) {
+  if (!hasValidScale(scale) || !Number.isFinite(px)) return null;
+  return (px / scale.pixels) * scale.realValue;
+}
+
+export function realToPixels(value: number, scale: PlanScaleConfig | null | undefined) {
+  if (!hasValidScale(scale) || !Number.isFinite(value) || value <= 0) return null;
+  return (value / scale.realValue) * scale.pixels;
+}
+
+export function getRectRealSize(rect: Pick<PlanRectObject, "width" | "height">, scale: PlanScaleConfig | null | undefined) {
+  const width = pixelsToReal(Math.abs(rect.width), scale);
+  const height = pixelsToReal(Math.abs(rect.height), scale);
+  if (width === null || height === null || !scale) return null;
+  return { width, height, area: width * height, unit: scale.unit };
+}
+
+export function updateRectFromRealSize<T extends PlanRectObject>(rect: T, realWidth: number, realHeight: number, scale: PlanScaleConfig | null | undefined): T {
+  const width = realToPixels(realWidth, scale);
+  const height = realToPixels(realHeight, scale);
+  if (width === null || height === null) return rect;
+  return { ...rect, width, height };
+}
+
+export function formatRealLength(value: number | null | undefined, unit: PlanUnit | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "Sin escala";
+  const decimals = value >= 100 ? 1 : value >= 10 ? 2 : 3;
+  return `${trimNumber(value, decimals)} ${unit || "m"}`;
+}
+
+export function parsePlanDecimal(value: string) {
+  const normalized = value.trim().replace(/\s/g, "").replace(",", ".");
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 export function calculateRectArea(rect: Pick<PlanRectObject, "width" | "height">, scale: PlanScaleConfig | null | undefined) {
   if (!hasValidScale(scale)) return null;
@@ -414,13 +462,13 @@ export function moveObjectByDelta(object: PlanObject, dx: number, dy: number): P
   return { ...object, x: object.x + dx, y: object.y + dy };
 }
 
-export function moveObjectsByDelta(objects: PlanObject[], ids: string[], dx: number, dy: number, context?: { layers?: PlanLayer[]; readOnly?: boolean }) {
+export function moveObjectsByDelta(objects: PlanObject[], ids: string[], dx: number, dy: number, context?: { layers?: PlanLayer[]; readOnly?: boolean; groups?: PlanGroup[] }) {
   const selected = new Set(ids);
   const layerMap = new Map((context?.layers || []).map((layer) => [layer.id, layer]));
   return objects.map((object) => {
     if (!selected.has(object.id)) return object;
     const layer = object.layerId ? layerMap.get(object.layerId) : context?.layers?.[0];
-    return canMoveObject(object, layer, context?.readOnly) ? moveObjectByDelta(object, dx, dy) : object;
+    return canMoveObject(object, layer, context?.readOnly) && !isObjectInLockedGroup(context?.groups || [], object.id) ? moveObjectByDelta(object, dx, dy) : object;
   });
 }
 
@@ -430,10 +478,16 @@ export function getObjectBounds(object: PlanObject): PlanBounds {
     const y = Math.min(object.y1, object.y2);
     return { x, y, width: Math.abs(object.x2 - object.x1), height: Math.abs(object.y2 - object.y1) };
   }
-  if (object.type === "rect") return { x: object.x, y: object.y, width: object.width, height: object.height };
+  if (object.type === "rect") return normalizeBounds({ x: object.x, y: object.y, width: object.width, height: object.height });
   if (object.type === "polygon") return getPolygonBoundingBox(object.points);
   if (object.type === "symbol") return { x: object.x, y: object.y, width: object.size, height: object.size };
   return { x: object.x, y: object.y, width: Math.max(1, object.text.length * object.fontSize * 0.55), height: object.fontSize };
+}
+
+function normalizeBounds(bounds: PlanBounds): PlanBounds {
+  const x = bounds.width < 0 ? bounds.x + bounds.width : bounds.x;
+  const y = bounds.height < 0 ? bounds.y + bounds.height : bounds.y;
+  return { x, y, width: Math.abs(bounds.width), height: Math.abs(bounds.height) };
 }
 
 export function getSelectionBounds(objects: PlanObject[], ids?: string[]): PlanBounds | null {
@@ -450,6 +504,63 @@ export function getSelectionBounds(objects: PlanObject[], ids?: string[]): PlanB
 export function objectIntersectsRect(object: PlanObject, rect: PlanBounds) {
   const box = getObjectBounds(object);
   return box.x >= rect.x && box.y >= rect.y && box.x + box.width <= rect.x + rect.width && box.y + box.height <= rect.y + rect.height;
+}
+
+export const isObjectInsideSelectionRect = objectIntersectsRect;
+
+export function filterEditableObjects(objects: PlanObject[], layers: PlanLayer[], readOnly?: boolean, groups: PlanGroup[] = []) {
+  const layerMap = new Map(layers.map((layer) => [layer.id, layer]));
+  return objects.filter((object) => canEditObject(object, object.layerId ? layerMap.get(object.layerId) : layers[0], readOnly) && !isObjectInLockedGroup(groups, object.id));
+}
+
+export function getObjectsBounds(objects: PlanObject[]) {
+  return getSelectionBounds(objects);
+}
+
+export type PlanAlignMode = "left" | "right" | "top" | "bottom" | "centerH" | "centerV";
+export type PlanDistributeDirection = "horizontal" | "vertical";
+
+export function alignObjects(objects: PlanObject[], ids: string[], mode: PlanAlignMode, context?: { layers?: PlanLayer[]; readOnly?: boolean; groups?: PlanGroup[] }) {
+  const selected = new Set(ids);
+  const editable = filterEditableObjects(objects.filter((object) => selected.has(object.id)), context?.layers || [], context?.readOnly, context?.groups || []);
+  if (editable.length < 2) return objects;
+  const selection = getSelectionBounds(editable);
+  if (!selection) return objects;
+  return objects.map((object) => {
+    if (!editable.some((item) => item.id === object.id)) return object;
+    const box = getObjectBounds(object);
+    const dx = mode === "left" ? selection.x - box.x : mode === "right" ? selection.x + selection.width - (box.x + box.width) : mode === "centerH" ? selection.x + selection.width / 2 - (box.x + box.width / 2) : 0;
+    const dy = mode === "top" ? selection.y - box.y : mode === "bottom" ? selection.y + selection.height - (box.y + box.height) : mode === "centerV" ? selection.y + selection.height / 2 - (box.y + box.height / 2) : 0;
+    return moveObjectByDelta(object, dx, dy);
+  });
+}
+
+export function distributeObjects(objects: PlanObject[], ids: string[], direction: PlanDistributeDirection, context?: { layers?: PlanLayer[]; readOnly?: boolean; groups?: PlanGroup[] }) {
+  const selected = new Set(ids);
+  const editable = filterEditableObjects(objects.filter((object) => selected.has(object.id)), context?.layers || [], context?.readOnly, context?.groups || []);
+  if (editable.length < 3) return objects;
+  const sorted = [...editable].sort((a, b) => {
+    const aBox = getObjectBounds(a);
+    const bBox = getObjectBounds(b);
+    return direction === "horizontal" ? aBox.x - bBox.x : aBox.y - bBox.y;
+  });
+  const first = getObjectBounds(sorted[0]);
+  const last = getObjectBounds(sorted[sorted.length - 1]);
+  const start = direction === "horizontal" ? first.x + first.width / 2 : first.y + first.height / 2;
+  const end = direction === "horizontal" ? last.x + last.width / 2 : last.y + last.height / 2;
+  const gap = (end - start) / (sorted.length - 1);
+  const deltas = new Map<string, { dx: number; dy: number }>();
+  sorted.forEach((object, index) => {
+    if (index === 0 || index === sorted.length - 1) return;
+    const box = getObjectBounds(object);
+    const current = direction === "horizontal" ? box.x + box.width / 2 : box.y + box.height / 2;
+    const delta = start + gap * index - current;
+    deltas.set(object.id, direction === "horizontal" ? { dx: delta, dy: 0 } : { dx: 0, dy: delta });
+  });
+  return objects.map((object) => {
+    const delta = deltas.get(object.id);
+    return delta ? moveObjectByDelta(object, delta.dx, delta.dy) : object;
+  });
 }
 
 export function getObjectSnapPoints(object: PlanObject): PlanSnapPoint[] {
@@ -505,6 +616,130 @@ export function calculateTemporaryMeasurement(a: PlanPolygonPoint, b: PlanPolygo
   const realValue = (pixels / scale.pixels) * scale.realValue;
   const decimals = realValue >= 10 ? 1 : 2;
   return `${trimNumber(realValue, decimals)} ${scale.unit}`;
+}
+
+export function clonePlanObjects(objects: PlanObject[], options?: { activeLayerId?: string; pasteIntoActiveLayer?: boolean; offset?: { x?: number; y?: number }; preserveLinks?: boolean }) {
+  const offset = options?.offset || { x: 20, y: 20 };
+  return objects.map((object) => {
+    const moved = moveObjectByDelta({ ...object, id: createPlanObjectId() } as PlanObject, offset.x || 0, offset.y || 0);
+    return {
+      ...moved,
+      layerId: options?.pasteIntoActiveLayer && options.activeLayerId ? options.activeLayerId : moved.layerId,
+      linkedTo: options?.preserveLinks === false ? undefined : moved.linkedTo,
+    } as PlanObject;
+  });
+}
+
+export function pastePlanObjects(document: PlanDocument, objects: PlanObject[], options?: { pasteIntoActiveLayer?: boolean; pasteOffset?: { x?: number; y?: number }; preserveLinks?: boolean }) {
+  const layerIds = new Set(document.layers.map((layer) => layer.id));
+  const clones = clonePlanObjects(objects, {
+    activeLayerId: document.activeLayerId,
+    pasteIntoActiveLayer: options?.pasteIntoActiveLayer !== false,
+    offset: options?.pasteOffset || { x: 20, y: 20 },
+    preserveLinks: options?.preserveLinks,
+  }).map((object) => ({
+    ...object,
+    layerId: options?.pasteIntoActiveLayer === false && object.layerId && layerIds.has(object.layerId) ? object.layerId : document.activeLayerId,
+  }));
+  return { document: { ...document, objects: [...document.objects, ...clones] }, objects: clones };
+}
+
+export function groupObjects(document: PlanDocument, ids: string[], label?: string) {
+  const uniqueIds = Array.from(new Set(ids)).filter((id) => document.objects.some((object) => object.id === id));
+  if (uniqueIds.length < 2) return document;
+  return {
+    ...document,
+    groups: [
+      ...document.groups.filter((group) => !uniqueIds.some((id) => group.objectIds.includes(id))),
+      {
+        id: createPlanGroupId(),
+        label: label || `Grupo ${document.groups.length + 1}`,
+        objectIds: uniqueIds,
+        locked: false,
+        collapsed: false,
+      },
+    ],
+  };
+}
+
+export function ungroupObjects(document: PlanDocument, groupId: string) {
+  return { ...document, groups: document.groups.filter((group) => group.id !== groupId) };
+}
+
+export function updatePlanGroup(document: PlanDocument, groupId: string, patch: Partial<PlanGroup>) {
+  return { ...document, groups: document.groups.map((group) => group.id === groupId ? { ...group, ...patch, objectIds: normalizeGroupObjectIds(patch.objectIds || group.objectIds, document.objects.map((object) => object.id)) } : group) };
+}
+
+export function cleanPlanGroups(document: PlanDocument) {
+  const objectIds = document.objects.map((object) => object.id);
+  return { ...document, groups: normalizeGroups(document.groups, objectIds) };
+}
+
+export function isObjectInLockedGroup(groups: PlanGroup[] | undefined, objectId: string) {
+  return !!groups?.some((group) => group.locked && group.objectIds.includes(objectId));
+}
+
+export function applyPlanTemplate(document: PlanDocument, templatePlan: unknown, options?: { mode?: "replace" | "insert"; preserveLinks?: boolean; mergeLayersByName?: boolean; templateId?: string; templateName?: string }) {
+  const normalizedTemplate = normalizePlanData(templatePlan);
+  if ((options?.mode || "replace") === "replace") {
+    return {
+      ...normalizedTemplate,
+      metadata: {
+        ...normalizedTemplate.metadata,
+        templateId: options?.templateId,
+        templateName: options?.templateName,
+        createdFromTemplateAt: new Date().toISOString(),
+      },
+    };
+  }
+  const layerResult = mergeTemplateLayers(document.layers, normalizedTemplate.layers, options?.mergeLayersByName !== false);
+  const inserted = clonePlanObjects(normalizedTemplate.objects, { offset: { x: 20, y: 20 }, preserveLinks: options?.preserveLinks === true }).map((object) => ({
+    ...object,
+    layerId: layerResult.layerIdMap.get(object.layerId || "") || document.activeLayerId,
+  }));
+  return {
+    ...document,
+    layers: layerResult.layers,
+    objects: [...document.objects, ...inserted],
+    metadata: {
+      ...document.metadata,
+      templateId: options?.templateId,
+      templateName: options?.templateName,
+      createdFromTemplateAt: new Date().toISOString(),
+    },
+  };
+}
+
+export function insertPlanBlock(document: PlanDocument, blockJson: unknown, at: PlanPolygonPoint = { x: 0, y: 0 }, options?: { insertIntoActiveLayer?: boolean; preserveLinks?: boolean }) {
+  const raw = parseMaybeJson(blockJson);
+  const rawObjects = isRecord(raw) && Array.isArray(raw.objects) ? raw.objects : [];
+  const anchor = isRecord(raw) && isRecord(raw.anchor) ? { x: normalizeNumber(raw.anchor.x, 0), y: normalizeNumber(raw.anchor.y, 0) } : { x: 0, y: 0 };
+  const objects = rawObjects.map((object) => normalizePlanObject(object, document.activeLayerId)).filter(Boolean) as PlanObject[];
+  const inserted = objects.map((object) => {
+    const moved = moveObjectByDelta({ ...object, id: createPlanObjectId() } as PlanObject, at.x - anchor.x, at.y - anchor.y);
+    return {
+      ...moved,
+      layerId: options?.insertIntoActiveLayer !== false ? document.activeLayerId : moved.layerId || document.activeLayerId,
+      linkedTo: options?.preserveLinks ? moved.linkedTo : undefined,
+    } as PlanObject;
+  });
+  return { document: { ...document, objects: [...document.objects, ...inserted] }, objects: inserted };
+}
+
+function mergeTemplateLayers(current: PlanLayer[], incoming: PlanLayer[], mergeByName: boolean) {
+  const layers = [...current];
+  const layerIdMap = new Map<string, string>();
+  for (const layer of incoming) {
+    const existing = mergeByName ? layers.find((item) => item.name.trim().toLowerCase() === layer.name.trim().toLowerCase()) : null;
+    if (existing) {
+      layerIdMap.set(layer.id, existing.id);
+      continue;
+    }
+    const id = `layer_${Math.random().toString(36).slice(2, 10)}`;
+    layers.push({ ...layer, id, order: layers.length + 1 });
+    layerIdMap.set(layer.id, id);
+  }
+  return { layers, layerIdMap };
 }
 
 function normalizePlanObject(input: unknown, fallbackLayerId: string): PlanObject | null {
@@ -608,6 +843,38 @@ export function normalizeLayers(input: unknown): PlanLayer[] {
   return layers.length
     ? layers.sort((a, b) => a.order - b.order)
     : [DEFAULT_PLAN_LAYER];
+}
+
+function normalizeGroups(input: unknown, validObjectIds: string[]): PlanGroup[] {
+  const groups = Array.isArray(input) ? input : [];
+  return groups
+    .filter(isRecord)
+    .map((group, index) => {
+      const objectIds = normalizeGroupObjectIds(group.objectIds, validObjectIds);
+      if (objectIds.length < 2) return null;
+      return {
+        id: typeof group.id === "string" && group.id.trim() ? group.id.trim() : createPlanGroupId(),
+        label: typeof group.label === "string" && group.label.trim() ? group.label.trim() : `Grupo ${index + 1}`,
+        objectIds,
+        locked: group.locked === true,
+        collapsed: group.collapsed === true,
+      };
+    })
+    .filter((group): group is PlanGroup => !!group);
+}
+
+function normalizeGroupObjectIds(input: unknown, validObjectIds: string[]) {
+  const valid = new Set(validObjectIds);
+  return Array.from(new Set(Array.isArray(input) ? input.filter((id): id is string => typeof id === "string" && valid.has(id)) : []));
+}
+
+function normalizeMetadata(input: unknown) {
+  if (!isRecord(input)) return {};
+  return {
+    templateId: typeof input.templateId === "string" ? input.templateId : undefined,
+    templateName: typeof input.templateName === "string" ? input.templateName : undefined,
+    createdFromTemplateAt: typeof input.createdFromTemplateAt === "string" ? input.createdFromTemplateAt : undefined,
+  };
 }
 
 function normalizeLayer(input: unknown, order: number): PlanLayer | null {

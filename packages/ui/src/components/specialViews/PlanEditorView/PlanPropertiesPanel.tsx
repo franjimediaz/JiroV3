@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import styles from "./PlanEditorView.module.css";
 import type { LinkTargetRecord } from "./planDataSources";
 import type { PlanDocument, PlanEditorOptions, PlanLayer, PlanLinkTargetConfig, PlanObject, PlanUnit } from "./planTypes";
-import { calculateLineMeasure, getObjectAreaLabel, validatePolygon } from "./planUtils";
+import { calculateLineMeasure, formatArea, formatRealLength, getObjectAreaLabel, getRectRealSize, parsePlanDecimal, realToPixels, updateRectFromRealSize, validatePolygon } from "./planUtils";
 
 type Props = {
   object: PlanObject | null;
@@ -53,6 +53,9 @@ export default function PlanPropertiesPanel({
   const [linkSearch, setLinkSearch] = useState("");
   const [calibrationLength, setCalibrationLength] = useState("");
   const [calibrationUnit, setCalibrationUnit] = useState<PlanUnit>(calibration?.defaultUnit || "m");
+  const [realWidthText, setRealWidthText] = useState("");
+  const [realHeightText, setRealHeightText] = useState("");
+  const [keepRectRatio, setKeepRectRatio] = useState(false);
   const selectedTarget = linkTargets[linkTargetIndex] || null;
   const allowedCalibrationUnits = calibration?.allowedUnits?.length ? calibration.allowedUnits : ["mm", "cm", "m", "km", "in", "ft"];
 
@@ -60,6 +63,13 @@ export default function PlanPropertiesPanel({
     if (!object || !selectedTarget) return;
     onLoadLinkRecords?.(selectedTarget, linkSearch);
   }, [object?.id, selectedTarget?.moduleSlug, linkSearch]);
+
+  useEffect(() => {
+    if (!object || object.type !== "rect") return;
+    const size = getRectRealSize(object, scale);
+    setRealWidthText(size ? String(Math.round(size.width * 1000) / 1000).replace(".", ",") : "");
+    setRealHeightText(size ? String(Math.round(size.height * 1000) / 1000).replace(".", ",") : "");
+  }, [object?.id, object?.type === "rect" ? object.width : undefined, object?.type === "rect" ? object.height : undefined, scale]);
 
   if (!object) {
     return (
@@ -74,6 +84,29 @@ export default function PlanPropertiesPanel({
   const polygonValidation = object.type === "polygon" && polygonValidationOptions?.enabled !== false
     ? validatePolygon(object.points, polygonValidationOptions?.epsilon || 0.5)
     : null;
+  const rectRealSize = object.type === "rect" ? getRectRealSize(object, scale) : null;
+  const applyRectRealSize = () => {
+    if (object.type !== "rect" || readOnly) return;
+    const currentReal = getRectRealSize(object, scale);
+    const nextWidth = parsePlanDecimal(realWidthText);
+    const nextHeight = parsePlanDecimal(realHeightText);
+    if (!currentReal || nextWidth === null || nextHeight === null || nextWidth <= 0 || nextHeight <= 0) return;
+    onChange(updateRectFromRealSize(object, nextWidth, nextHeight, scale) as Partial<PlanObject>);
+  };
+  const updateRealWidth = (value: string) => {
+    setRealWidthText(value);
+    if (!keepRectRatio || object.type !== "rect") return;
+    const parsed = parsePlanDecimal(value);
+    const current = getRectRealSize(object, scale);
+    if (parsed && current && current.width > 0) setRealHeightText(String(Math.round(parsed * (current.height / current.width) * 1000) / 1000).replace(".", ","));
+  };
+  const updateRealHeight = (value: string) => {
+    setRealHeightText(value);
+    if (!keepRectRatio || object.type !== "rect") return;
+    const parsed = parsePlanDecimal(value);
+    const current = getRectRealSize(object, scale);
+    if (parsed && current && current.height > 0) setRealWidthText(String(Math.round(parsed * (current.width / current.height) * 1000) / 1000).replace(".", ","));
+  };
 
   return (
     <aside className={styles.panel}>
@@ -231,16 +264,46 @@ export default function PlanPropertiesPanel({
           ) : object.type === "rect" || object.type === "polygon" ? (
             <>
               {object.type === "rect" ? (
-                <div className={styles.settingsGrid}>
-                  <label className={styles.field}>
-                    <span className={styles.label}>Ancho</span>
-                    <input className={styles.input} type="number" min={1} value={object.width} disabled={readOnly} onChange={(event) => onChange({ width: Number(event.target.value || 1) } as Partial<PlanObject>)} />
-                  </label>
-                  <label className={styles.field}>
-                    <span className={styles.label}>Alto</span>
-                    <input className={styles.input} type="number" min={1} value={object.height} disabled={readOnly} onChange={(event) => onChange({ height: Number(event.target.value || 1) } as Partial<PlanObject>)} />
-                  </label>
-                </div>
+                <>
+                  <div className={styles.settingsGrid}>
+                    <label className={styles.field}>
+                      <span className={styles.label}>Ancho px</span>
+                      <input className={styles.input} type="number" min={1} value={object.width} disabled={readOnly} onChange={(event) => onChange({ width: Number(event.target.value || 1) } as Partial<PlanObject>)} />
+                    </label>
+                    <label className={styles.field}>
+                      <span className={styles.label}>Alto px</span>
+                      <input className={styles.input} type="number" min={1} value={object.height} disabled={readOnly} onChange={(event) => onChange({ height: Number(event.target.value || 1) } as Partial<PlanObject>)} />
+                    </label>
+                    <label className={styles.checkboxRow}>
+                      <input type="checkbox" checked={keepRectRatio} disabled={readOnly || !rectRealSize} onChange={(event) => setKeepRectRatio(event.target.checked)} />
+                      <span>Mantener proporcion</span>
+                    </label>
+                  </div>
+                  <div className={styles.panelSection}>
+                    <h4 className={styles.sectionTitle}>Medidas reales</h4>
+                    {!rectRealSize ? <div className={styles.hint}>Configura la escala del plano para editar medidas reales.</div> : null}
+                    <div className={styles.settingsGrid}>
+                      <label className={styles.field}>
+                        <span className={styles.label}>Ancho real</span>
+                        <input className={styles.input} value={realWidthText} disabled={readOnly || !rectRealSize} onChange={(event) => updateRealWidth(event.target.value)} onBlur={applyRectRealSize} />
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.label}>Alto real</span>
+                        <input className={styles.input} value={realHeightText} disabled={readOnly || !rectRealSize} onChange={(event) => updateRealHeight(event.target.value)} onBlur={applyRectRealSize} />
+                      </label>
+                      <label className={styles.field}>
+                        <span className={styles.label}>Unidad</span>
+                        <input className={styles.input} value={scale?.unit || ""} disabled />
+                      </label>
+                    </div>
+                    <div className={styles.hint}>
+                      {rectRealSize ? `Ancho: ${formatRealLength(rectRealSize.width, rectRealSize.unit)} · Alto: ${formatRealLength(rectRealSize.height, rectRealSize.unit)} · Area: ${formatArea(rectRealSize.area, rectRealSize.unit)}` : `Tamano tecnico: ${Math.round(object.width)} x ${Math.round(object.height)} px`}
+                    </div>
+                    <button type="button" className={styles.button} disabled={readOnly || !rectRealSize || !realToPixels(parsePlanDecimal(realWidthText) || 0, scale) || !realToPixels(parsePlanDecimal(realHeightText) || 0, scale)} onClick={applyRectRealSize}>
+                      Aplicar medidas
+                    </button>
+                  </div>
+                </>
               ) : null}
 
               <label className={styles.field}>

@@ -188,9 +188,14 @@ export function normalizePlanEditorConfig(config: unknown): NormalizedPlanEditor
   const gridRaw = isRecord(options.grid) ? options.grid : {};
   const backgroundRaw = isRecord(options.background) ? options.background : {};
   const exportRaw = isRecord(options.export) ? options.export : {};
+  const clipboardRaw = isRecord(options.clipboard) ? options.clipboard : {};
+  const pasteOffsetRaw = isRecord(clipboardRaw.pasteOffset) ? clipboardRaw.pasteOffset : {};
+  const templatesRaw = isRecord(options.templates) ? options.templates : {};
+  const blocksRaw = isRecord(options.blocks) ? options.blocks : {};
   const snapRaw = isRecord(options.snap) ? options.snap : {};
   const viewRaw = isRecord(options.view) ? options.view : {};
   const measurementRaw = isRecord(options.measurement) ? options.measurement : {};
+  const symbolsRaw = isRecord(options.symbols) ? options.symbols : {};
   const scalePixels = Number(scaleRaw?.pixels);
   const scaleRealValue = Number(scaleRaw?.realValue);
   const gridSize = Number(gridRaw.size);
@@ -240,6 +245,25 @@ export function normalizePlanEditorConfig(config: unknown): NormalizedPlanEditor
         includeGrid: exportRaw.includeGrid === true,
         includeLayerLegend: exportRaw.includeLayerLegend !== false,
         pageOrientation: exportRaw.pageOrientation === "portrait" ? "portrait" : "landscape",
+        metadataFields: normalizePlanMetadataFields(exportRaw.metadataFields),
+      },
+      clipboard: {
+        pasteIntoActiveLayer: clipboardRaw.pasteIntoActiveLayer !== false,
+        pasteOffset: {
+          x: Number.isFinite(Number(pasteOffsetRaw.x)) ? Number(pasteOffsetRaw.x) : 20,
+          y: Number.isFinite(Number(pasteOffsetRaw.y)) ? Number(pasteOffsetRaw.y) : 20,
+        },
+      },
+      templatesSource: normalizePlanDynamicSource(options.templatesSource),
+      templates: {
+        applyMode: templatesRaw.applyMode === "insert" ? "insert" : "replace",
+        preserveLinks: templatesRaw.preserveLinks === true,
+        mergeLayersByName: templatesRaw.mergeLayersByName !== false,
+      },
+      blocksSource: normalizePlanDynamicSource(options.blocksSource),
+      blocks: {
+        insertIntoActiveLayer: blocksRaw.insertIntoActiveLayer !== false,
+        preserveLinks: blocksRaw.preserveLinks === true,
       },
       exportTitle: toString(options.exportTitle) || undefined,
       exportSubtitleField: toString(options.exportSubtitleField) || undefined,
@@ -248,6 +272,9 @@ export function normalizePlanEditorConfig(config: unknown): NormalizedPlanEditor
       measurement: {
         enabled: measurementRaw.enabled !== false,
         allowConvertToLine: measurementRaw.allowConvertToLine !== false,
+      },
+      symbols: {
+        selectorMode: symbolsRaw.selectorMode === "modal" ? "modal" : "modal",
       },
       symbolsSource: normalizePlanDynamicSource(options.symbolsSource),
       defaultLayersSource: normalizePlanDynamicSource(options.defaultLayersSource),
@@ -310,9 +337,23 @@ function normalizePlanDynamicSource(input: unknown) {
     orderField: toString(input.orderField) || undefined,
     lockedField: toString(input.lockedField) || undefined,
     visibleField: toString(input.visibleField) || undefined,
+    descriptionField: toString(input.descriptionField) || undefined,
+    planJsonField: toString(input.planJsonField) || undefined,
+    blockJsonField: toString(input.blockJsonField) || undefined,
     filters: Array.isArray(input.filters) ? input.filters : [],
     sort: Array.isArray(input.sort) ? input.sort : [],
   };
+}
+
+function normalizePlanMetadataFields(input: unknown) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .filter(isRecord)
+    .map((item) => ({
+      label: toString(item.label),
+      field: toString(item.field),
+    }))
+    .filter((item) => item.label && item.field);
 }
 
 function normalizePlanLinkTargets(input: unknown) {

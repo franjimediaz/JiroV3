@@ -1,13 +1,25 @@
 import type Konva from "konva";
 import type { PlanDocument, PlanEditorOptions } from "./planTypes";
 
+export const PLAN_EXPORT_OVERLAY_NAMES = [
+  "plan-editor-handles",
+  "plan-editor-transformer",
+  "plan-editor-selection",
+  "plan-editor-guides",
+  "plan-editor-measurements",
+] as const;
+
+export function isPlanExportOverlayName(name: string) {
+  return PLAN_EXPORT_OVERLAY_NAMES.includes(name as (typeof PLAN_EXPORT_OVERLAY_NAMES)[number]);
+}
+
 export function exportPlanPng(stage: Konva.Stage | null, fileName = "plano.png", options?: { includeGrid?: boolean }) {
   if (!stage || typeof window === "undefined") return;
   const dataUrl = captureStage(stage, options?.includeGrid !== false);
   downloadDataUrl(dataUrl, fileName);
 }
 
-export async function exportPlanPdf(stage: Konva.Stage | null, document: PlanDocument, options?: PlanEditorOptions, subtitle = "") {
+export async function exportPlanPdf(stage: Konva.Stage | null, document: PlanDocument, options?: PlanEditorOptions, subtitle = "", record?: Record<string, unknown>) {
   if (!stage || typeof window === "undefined") return;
   const exportOptions = options?.export || {};
   const title = options?.exportTitle || "Plano";
@@ -17,7 +29,8 @@ export async function exportPlanPdf(stage: Konva.Stage | null, document: PlanDoc
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const margin = 12;
-  const titleHeight = exportOptions.includeLayerLegend ? 26 : 20;
+  const metadataLines = getMetadataLines(exportOptions.metadataFields, record);
+  const titleHeight = (exportOptions.includeLayerLegend ? 26 : 20) + metadataLines.length * 5;
   const imageWidth = pageWidth - margin * 2;
   const imageHeight = pageHeight - margin * 2 - titleHeight;
 
@@ -33,8 +46,25 @@ export async function exportPlanPdf(stage: Konva.Stage | null, document: PlanDoc
     const visibleLayers = document.layers.filter((layer) => layer.visible !== false).map((layer) => layer.name).join(", ");
     pdf.text(`Capas visibles: ${visibleLayers || "-"}`, margin, margin + 18);
   }
+  metadataLines.forEach((line, index) => {
+    pdf.text(line, margin, margin + 24 + index * 5);
+  });
   pdf.addImage(dataUrl, "PNG", margin, margin + titleHeight, imageWidth, imageHeight, undefined, "FAST");
   pdf.save(`${sanitizeFileName(title || "plano")}.pdf`);
+}
+
+export function getMetadataLines(fields: PlanEditorOptions["export"] extends infer T ? T extends { metadataFields?: infer M } ? M | undefined : never : never, record?: Record<string, unknown>) {
+  if (!Array.isArray(fields) || !fields.length || !record) return [];
+  return fields
+    .map((item) => {
+      if (!item || typeof item !== "object") return "";
+      const label = "label" in item ? String(item.label || "").trim() : "";
+      const field = "field" in item ? String(item.field || "").trim() : "";
+      if (!label || !field) return "";
+      const value = record[field];
+      return `${label}: ${value === null || value === undefined ? "" : String(value)}`;
+    })
+    .filter(Boolean);
 }
 
 function captureStage(stage: Konva.Stage, includeGrid: boolean) {

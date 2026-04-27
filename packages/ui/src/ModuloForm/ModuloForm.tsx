@@ -329,8 +329,12 @@ function PlanEditorConfigPanel({
   const snapOptions = options.snap || { enabled: true, toGrid: true, toObjects: true, threshold: 8 };
   const viewOptions = options.view || { showRulers: true, showGuides: true };
   const measurementOptions = options.measurement || { enabled: true, allowConvertToLine: true };
+  const symbolsOptions = options.symbols || { selectorMode: "modal" as const };
+  const clipboardOptions = options.clipboard || { pasteIntoActiveLayer: true, pasteOffset: { x: 20, y: 20 } };
+  const templatesOptions = options.templates || { applyMode: "replace" as const, preserveLinks: false, mergeLayersByName: true };
+  const blocksOptions = options.blocks || { insertIntoActiveLayer: true, preserveLinks: false };
 
-  const updateSource = (key: "symbolsSource" | "defaultLayersSource", patch: Partial<PlanDynamicSourceConfig>) => {
+  const updateSource = (key: "symbolsSource" | "defaultLayersSource" | "templatesSource" | "blocksSource", patch: Partial<PlanDynamicSourceConfig>) => {
     const current = options[key] || {};
     updateOptions({ [key]: { ...current, ...patch } } as NonNullable<PlanEditorSpecialViewConfig["options"]>);
   };
@@ -422,6 +426,26 @@ function PlanEditorConfigPanel({
               <option value="portrait">portrait</option>
             </select>
           </label>
+        </div>
+        <div className={styles.card} style={{ marginTop: 10 }}>
+          <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
+            <strong>Metadatos PDF</strong>
+            <button type="button" className={styles.btn} disabled={readOnly} onClick={() => updateOptions({ export: { ...exportOptions, metadataFields: [...(exportOptions.metadataFields || []), { label: "Etiqueta", field: "" }] } })}>
+              Anadir metadata
+            </button>
+          </div>
+          {(exportOptions.metadataFields || []).map((item, index) => (
+            <div key={index} className={styles.grid} style={{ marginTop: 8 }}>
+              <label>
+                <span className={styles.label}>Label</span>
+                <input className={styles.input} value={item.label || ""} disabled={readOnly} onChange={(e) => updateOptions({ export: { ...exportOptions, metadataFields: (exportOptions.metadataFields || []).map((field, fieldIndex) => fieldIndex === index ? { ...field, label: e.target.value } : field) } })} />
+              </label>
+              <PlanFieldSelect label="Field" value={item.field || ""} fields={fields} disabled={readOnly} allowEmpty onChange={(field) => updateOptions({ export: { ...exportOptions, metadataFields: (exportOptions.metadataFields || []).map((metadata, fieldIndex) => fieldIndex === index ? { ...metadata, field } : metadata) } })} />
+              <button type="button" className={styles.btn} disabled={readOnly} onClick={() => updateOptions({ export: { ...exportOptions, metadataFields: (exportOptions.metadataFields || []).filter((_, fieldIndex) => fieldIndex !== index) } })}>
+                Eliminar
+              </button>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -527,6 +551,12 @@ function PlanEditorConfigPanel({
             <input type="checkbox" checked={measurementOptions.allowConvertToLine !== false} disabled={readOnly} onChange={(e) => updateOptions({ measurement: { ...measurementOptions, allowConvertToLine: e.target.checked } })} />
             <span>Permitir convertir medida</span>
           </label>
+          <label>
+            <span className={styles.label}>Selector de simbolos</span>
+            <select className={styles.input} value={symbolsOptions.selectorMode || "modal"} disabled={readOnly} onChange={(e) => updateOptions({ symbols: { ...symbolsOptions, selectorMode: e.target.value as "modal" } })}>
+              <option value="modal">Popup/modal</option>
+            </select>
+          </label>
         </div>
       </div>
 
@@ -540,6 +570,47 @@ function PlanEditorConfigPanel({
         mappingFields={["valueField", "labelField", "iconField", "colorField", "categoryField", "typeField"]}
       />
 
+      <div className={styles.card} style={{ marginTop: 12 }}>
+        <h5 style={{ marginTop: 0 }}>Productividad fase 8</h5>
+        <div className={styles.grid}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={clipboardOptions.pasteIntoActiveLayer !== false} disabled={readOnly} onChange={(e) => updateOptions({ clipboard: { ...clipboardOptions, pasteIntoActiveLayer: e.target.checked } })} />
+            <span>Pegar en capa activa</span>
+          </label>
+          <label>
+            <span className={styles.label}>Offset X pegado</span>
+            <input className={styles.input} type="number" value={clipboardOptions.pasteOffset?.x ?? 20} disabled={readOnly} onChange={(e) => updateOptions({ clipboard: { ...clipboardOptions, pasteOffset: { ...clipboardOptions.pasteOffset, x: Number(e.target.value || 20) } } })} />
+          </label>
+          <label>
+            <span className={styles.label}>Offset Y pegado</span>
+            <input className={styles.input} type="number" value={clipboardOptions.pasteOffset?.y ?? 20} disabled={readOnly} onChange={(e) => updateOptions({ clipboard: { ...clipboardOptions, pasteOffset: { ...clipboardOptions.pasteOffset, y: Number(e.target.value || 20) } } })} />
+          </label>
+          <label>
+            <span className={styles.label}>Modo plantillas</span>
+            <select className={styles.input} value={templatesOptions.applyMode || "replace"} disabled={readOnly} onChange={(e) => updateOptions({ templates: { ...templatesOptions, applyMode: e.target.value as "replace" | "insert" } })}>
+              <option value="replace">replace</option>
+              <option value="insert">insert</option>
+            </select>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={templatesOptions.preserveLinks === true} disabled={readOnly} onChange={(e) => updateOptions({ templates: { ...templatesOptions, preserveLinks: e.target.checked } })} />
+            <span>Plantillas conservan links</span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={templatesOptions.mergeLayersByName !== false} disabled={readOnly} onChange={(e) => updateOptions({ templates: { ...templatesOptions, mergeLayersByName: e.target.checked } })} />
+            <span>Fusionar capas por nombre</span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={blocksOptions.insertIntoActiveLayer !== false} disabled={readOnly} onChange={(e) => updateOptions({ blocks: { ...blocksOptions, insertIntoActiveLayer: e.target.checked } })} />
+            <span>Bloques en capa activa</span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input type="checkbox" checked={blocksOptions.preserveLinks === true} disabled={readOnly} onChange={(e) => updateOptions({ blocks: { ...blocksOptions, preserveLinks: e.target.checked } })} />
+            <span>Bloques conservan links</span>
+          </label>
+        </div>
+      </div>
+
       <PlanSourceEditor
         title="Capas iniciales desde modulo"
         value={options.defaultLayersSource}
@@ -548,6 +619,26 @@ function PlanEditorConfigPanel({
         ensureTableFields={ensureTableFields}
         onChange={(patch) => updateSource("defaultLayersSource", patch)}
         mappingFields={["valueField", "labelField", "colorField", "orderField", "lockedField", "visibleField"]}
+      />
+
+      <PlanSourceEditor
+        title="Plantillas reutilizables"
+        value={options.templatesSource}
+        fieldsByTable={fieldsByTable}
+        readOnly={readOnly}
+        ensureTableFields={ensureTableFields}
+        onChange={(patch) => updateSource("templatesSource", patch)}
+        mappingFields={["valueField", "labelField", "descriptionField", "planJsonField", "categoryField"]}
+      />
+
+      <PlanSourceEditor
+        title="Bloques reutilizables"
+        value={options.blocksSource}
+        fieldsByTable={fieldsByTable}
+        readOnly={readOnly}
+        ensureTableFields={ensureTableFields}
+        onChange={(patch) => updateSource("blocksSource", patch)}
+        mappingFields={["valueField", "labelField", "descriptionField", "blockJsonField", "categoryField", "iconField"]}
       />
 
       <div className={styles.card} style={{ marginTop: 12 }}>

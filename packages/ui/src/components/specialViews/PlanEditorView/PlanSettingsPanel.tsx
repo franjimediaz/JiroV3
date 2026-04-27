@@ -187,6 +187,10 @@ export default function PlanSettingsPanel({ document, readOnly, uploader, calibr
             <span>Snap activo</span>
           </label>
           <label className={styles.checkboxRow}>
+            <input type="checkbox" checked={document.canvas.snap.toGrid} disabled={readOnly || !document.canvas.snap.enabled} onChange={(event) => updateSnap({ toGrid: event.target.checked })} />
+            <span>A grid</span>
+          </label>
+          <label className={styles.checkboxRow}>
             <input type="checkbox" checked={document.canvas.snap.toObjects} disabled={readOnly || !document.canvas.snap.enabled} onChange={(event) => updateSnap({ toObjects: event.target.checked })} />
             <span>A objetos</span>
           </label>
