@@ -36,10 +36,15 @@ const planExportPath = await transpileUtility(
   "packages/ui/src/components/specialViews/PlanEditorView/planExport.ts",
   "planExport.mjs"
 );
+const planHotkeyUtilsPath = await transpileUtility(
+  "packages/ui/src/components/specialViews/PlanEditorView/planHotkeyUtils.ts",
+  "planHotkeyUtils.mjs"
+);
 
 const planUtils = await import(pathToFileURL(planUtilsPath).href);
 const historyUtils = await import(pathToFileURL(historyUtilsPath).href);
 const planExport = await import(pathToFileURL(planExportPath).href);
+const planHotkeyUtils = await import(pathToFileURL(planHotkeyUtilsPath).href);
 
 test("normalizePlanData migrates version 5 documents to version 8", () => {
   const plan = planUtils.normalizePlanData({
@@ -234,6 +239,39 @@ test("groups create, update, ungroup and clean object references", () => {
   assert.equal(planUtils.ungroupObjects(grouped, grouped.groups[0].id).groups.length, 0);
 });
 
+test("groupObjects only groups editable selected objects by default", () => {
+  const plan = planUtils.normalizePlanData({
+    layers: [
+      { id: "free", name: "Free", visible: true, locked: false, order: 1 },
+      { id: "locked", name: "Locked", visible: true, locked: true, order: 2 },
+    ],
+    activeLayerId: "free",
+    objects: [
+      { id: "a", layerId: "free", type: "text", x: 0, y: 0, text: "A", fontSize: 10, fill: "#111" },
+      { id: "b", layerId: "free", type: "text", x: 10, y: 0, text: "B", fontSize: 10, fill: "#111" },
+      { id: "c", layerId: "locked", type: "text", x: 20, y: 0, text: "C", fontSize: 10, fill: "#111" },
+    ],
+  });
+  assert.deepEqual(planUtils.getEditableSelectedObjectIds(plan, ["a", "b", "c"]), ["a", "b"]);
+  const grouped = planUtils.groupObjects(plan, ["a", "c"]);
+  assert.equal(grouped.groups.length, 0);
+  const groupedEditable = planUtils.groupObjects(plan, ["a", "b", "c"]);
+  assert.deepEqual(groupedEditable.groups[0].objectIds, ["a", "b"]);
+});
+
+test("cleanupGroupsAfterObjectDelete removes dangling group references without deleting objects", () => {
+  const plan = planUtils.normalizePlanData({
+    objects: [
+      { id: "a", type: "text", x: 0, y: 0, text: "A", fontSize: 10, fill: "#111" },
+      { id: "b", type: "text", x: 10, y: 0, text: "B", fontSize: 10, fill: "#111" },
+    ],
+  });
+  const grouped = planUtils.groupObjects(plan, ["a", "b"]);
+  const cleaned = planUtils.cleanupGroupsAfterObjectDelete({ ...grouped, objects: grouped.objects.filter((object) => object.id !== "b") });
+  assert.equal(cleaned.objects.length, 1);
+  assert.equal(cleaned.groups.length, 0);
+});
+
 test("alignObjects and distributeObjects move editable selections", () => {
   const objects = [
     { id: "a", type: "rect", x: 0, y: 0, width: 10, height: 10, stroke: "#111", strokeWidth: 1, fill: "transparent", label: "", showArea: true },
@@ -293,4 +331,47 @@ test("PlanSymbolsPanel keeps the permanent panel compact and uses a modal librar
   assert.match(source, /symbolModal/);
   assert.match(source, /Biblioteca de simbolos/);
   assert.match(source, /selectedSymbolSummary/);
+});
+
+test("isEditableHotkeyTarget ignores inputs, selects, contenteditable and marked containers", () => {
+  const previousHTMLElement = globalThis.HTMLElement;
+  class FakeElement {
+    constructor(tagName, options = {}) {
+      this.tagName = tagName;
+      this.isContentEditable = options.isContentEditable || false;
+      this.closestResult = options.closestResult || null;
+    }
+    closest(selector) {
+      return selector === this.closestSelector ? this.closestResult : null;
+    }
+  }
+  globalThis.HTMLElement = FakeElement;
+  try {
+    assert.equal(planHotkeyUtils.isEditableHotkeyTarget(new FakeElement("INPUT")), true);
+    assert.equal(planHotkeyUtils.isEditableHotkeyTarget(new FakeElement("TEXTAREA")), true);
+    assert.equal(planHotkeyUtils.isEditableHotkeyTarget(new FakeElement("SELECT")), true);
+    assert.equal(planHotkeyUtils.isEditableHotkeyTarget(new FakeElement("DIV", { isContentEditable: true })), true);
+    const marked = new FakeElement("DIV", { closestResult: {} });
+    marked.closestSelector = "[data-plan-editor-ignore-hotkeys='true']";
+    assert.equal(planHotkeyUtils.isEditableHotkeyTarget(marked), true);
+    assert.equal(planHotkeyUtils.isEditableHotkeyTarget(new FakeElement("BUTTON")), false);
+  } finally {
+    globalThis.HTMLElement = previousHTMLElement;
+  }
+});
+
+test("PlanCanvas does not make the Stage draggable for object movement", async () => {
+  const source = await readFile(path.join(repoRoot, "packages/ui/src/components/specialViews/PlanEditorView/PlanCanvas.tsx"), "utf8");
+  const stageOpen = source.slice(source.indexOf("<Stage"), source.indexOf(">", source.indexOf("<Stage")));
+  assert.doesNotMatch(stageOpen, /draggable=/);
+  assert.match(source, /panningRef/);
+  assert.match(source, /canPan \|\| nativeEvent\.button === 1/);
+});
+
+test("PlanToolbar uses action menus and no duplicated grid or snap buttons", async () => {
+  const source = await readFile(path.join(repoRoot, "packages/ui/src/components/specialViews/PlanEditorView/PlanToolbar.tsx"), "utf8");
+  assert.match(source, /Alinear izquierda/);
+  assert.match(source, /Distribuir horizontal/);
+  assert.doesNotMatch(source, />\s*Grid\s*</);
+  assert.doesNotMatch(source, />\s*Snap\s*</);
 });

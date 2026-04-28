@@ -513,6 +513,16 @@ export function filterEditableObjects(objects: PlanObject[], layers: PlanLayer[]
   return objects.filter((object) => canEditObject(object, object.layerId ? layerMap.get(object.layerId) : layers[0], readOnly) && !isObjectInLockedGroup(groups, object.id));
 }
 
+export function getEditableSelectedObjectIds(document: PlanDocument, ids: string[], readOnly?: boolean) {
+  const selected = new Set(ids);
+  return filterEditableObjects(
+    document.objects.filter((object) => selected.has(object.id)),
+    document.layers,
+    readOnly,
+    document.groups
+  ).map((object) => object.id);
+}
+
 export function getObjectsBounds(objects: PlanObject[]) {
   return getSelectionBounds(objects);
 }
@@ -644,8 +654,9 @@ export function pastePlanObjects(document: PlanDocument, objects: PlanObject[], 
   return { document: { ...document, objects: [...document.objects, ...clones] }, objects: clones };
 }
 
-export function groupObjects(document: PlanDocument, ids: string[], label?: string) {
-  const uniqueIds = Array.from(new Set(ids)).filter((id) => document.objects.some((object) => object.id === id));
+export function groupObjects(document: PlanDocument, ids: string[], label?: string, options?: { readOnly?: boolean; editableOnly?: boolean }) {
+  const sourceIds = options?.editableOnly === false ? ids : getEditableSelectedObjectIds(document, ids, options?.readOnly);
+  const uniqueIds = Array.from(new Set(sourceIds)).filter((id) => document.objects.some((object) => object.id === id));
   if (uniqueIds.length < 2) return document;
   return {
     ...document,
@@ -674,6 +685,8 @@ export function cleanPlanGroups(document: PlanDocument) {
   const objectIds = document.objects.map((object) => object.id);
   return { ...document, groups: normalizeGroups(document.groups, objectIds) };
 }
+
+export const cleanupGroupsAfterObjectDelete = cleanPlanGroups;
 
 export function isObjectInLockedGroup(groups: PlanGroup[] | undefined, objectId: string) {
   return !!groups?.some((group) => group.locked && group.objectIds.includes(objectId));

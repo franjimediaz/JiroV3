@@ -56,6 +56,8 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
   const [zoom, setZoom] = useState(1);
   const [stagePosition, setStagePosition] = useState({ x: 0, y: 0 });
   const [spacePressed, setSpacePressed] = useState(false);
+  const panningRef = useRef(false);
+  const lastPanPointerRef = useRef<PlanPolygonPoint | null>(null);
   const backgroundImage = useImage(document.background?.url || "");
   const visibleObjects = useMemo(() => getVisiblePlanObjects(document), [document]);
 
@@ -148,7 +150,16 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
   };
 
   const handleStagePointerDown = (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
-    if (canPan || (event.evt as MouseEvent).button === 1) return;
+    const nativeEvent = event.evt as MouseEvent;
+    if (canPan || nativeEvent.button === 1) {
+      const pointer = stageRef.current?.getPointerPosition();
+      if (pointer) {
+        panningRef.current = true;
+        lastPanPointerRef.current = pointer;
+        nativeEvent.preventDefault();
+      }
+      return;
+    }
     if (readOnly) return;
     const stage = stageRef.current;
     const rawPoint = getPlanPointer();
@@ -284,6 +295,18 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
   };
 
   const handleStagePointerMove = () => {
+    if (panningRef.current) {
+      const pointer = stageRef.current?.getPointerPosition();
+      const previous = lastPanPointerRef.current;
+      if (pointer && previous) {
+        setStagePosition((position) => ({
+          x: position.x + pointer.x - previous.x,
+          y: position.y + pointer.y - previous.y,
+        }));
+        lastPanPointerRef.current = pointer;
+      }
+      return;
+    }
     if (readOnly) return;
     const rawPoint = getPlanPointer();
     if (!rawPoint) return;
@@ -319,6 +342,12 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
   };
 
   const handleStagePointerUp = () => {
+    if (panningRef.current) {
+      panningRef.current = false;
+      lastPanPointerRef.current = null;
+      return;
+    }
+
     if (selectionDraft) {
       const ids = visibleObjects.filter((object) => objectIntersectsRect(object, selectionDraft)).map((object) => object.id);
       onSelectionChange?.(ids, ids[0] || null);
@@ -432,6 +461,21 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
     };
   }, []);
 
+  useEffect(() => {
+    const stopPanning = () => {
+      panningRef.current = false;
+      lastPanPointerRef.current = null;
+    };
+    window.addEventListener("mouseup", stopPanning);
+    window.addEventListener("touchend", stopPanning);
+    window.addEventListener("blur", stopPanning);
+    return () => {
+      window.removeEventListener("mouseup", stopPanning);
+      window.removeEventListener("touchend", stopPanning);
+      window.removeEventListener("blur", stopPanning);
+    };
+  }, []);
+
   return (
     <div ref={wrapRef} className={styles.canvasWrap}>
       {document.canvas.view.showRulers ? <PlanRulers document={document} zoom={zoom} /> : null}
@@ -452,8 +496,6 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
           scaleY={zoom}
           x={stagePosition.x}
           y={stagePosition.y}
-          draggable={canPan}
-          onDragEnd={(event) => setStagePosition({ x: event.target.x(), y: event.target.y() })}
           onWheel={(event) => {
             if (!event.evt.ctrlKey && !event.evt.metaKey) return;
             event.evt.preventDefault();
@@ -490,7 +532,7 @@ const PlanCanvas = forwardRef<PlanCanvasHandle, Props>(function PlanCanvas(
             {visibleObjects.map((object) => renderObject({
               object,
               selected: selectedIds.includes(object.id),
-              readOnly: readOnly || !isPlanObjectEditable(document, object, readOnly),
+              readOnly: readOnly || canPan || !isPlanObjectEditable(document, object, readOnly),
               scale: document.canvas.scale,
               document,
               setRef: (node) => {

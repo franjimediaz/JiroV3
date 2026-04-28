@@ -17,7 +17,7 @@ import { exportPlanPdf, exportPlanPng } from "./planExport";
 import { isEditableHotkeyTarget } from "./planHotkeyUtils";
 import styles from "./PlanEditorView.module.css";
 import type { PlanBlockDefinition, PlanDocument, PlanEditorConfig, PlanLinkTargetConfig, PlanObject, PlanSymbolDefinition, PlanTemplateDefinition, PlanTool, PlanUnit } from "./planTypes";
-import { alignObjects, applyPlanTemplate, calibrateScaleFromLine, cleanPlanGroups, createDefaultPlanData, distributeObjects, groupObjects, insertPointInPolygonSegment, isPlanObjectEditable, normalizePlanData, pastePlanObjects, removePlanObject, shouldInitializeDefaultLayers, ungroupObjects, updatePlanGroup, updatePlanObject } from "./planUtils";
+import { alignObjects, applyPlanTemplate, calibrateScaleFromLine, cleanPlanGroups, createDefaultPlanData, distributeObjects, getEditableSelectedObjectIds, groupObjects, insertPointInPolygonSegment, isPlanObjectEditable, normalizePlanData, pastePlanObjects, removePlanObject, shouldInitializeDefaultLayers, ungroupObjects, updatePlanGroup, updatePlanObject } from "./planUtils";
 import { usePlanHistory } from "./usePlanHistory";
 
 type Props = {
@@ -69,6 +69,10 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
 
   const getEditableSelectedObjects = () =>
     document.objects.filter((object) => selectedObjectIds.includes(object.id) && isPlanObjectEditable(document, object, readOnly));
+  const editableSelectedObjectIds = useMemo(
+    () => getEditableSelectedObjectIds(document, selectedObjectIds, readOnly),
+    [document, readOnly, selectedObjectIds]
+  );
 
   const copySelected = () => {
     const selected = getEditableSelectedObjects();
@@ -106,12 +110,12 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
   };
 
   const alignSelection = (mode: Parameters<typeof alignObjects>[2]) => {
-    if (readOnly || selectedObjectIds.length < 2) return;
+    if (readOnly || editableSelectedObjectIds.length < 2) return;
     history.pushHistory({ ...document, objects: alignObjects(document.objects, selectedObjectIds, mode, { layers: document.layers, readOnly, groups: document.groups }) });
   };
 
   const distributeSelection = (direction: Parameters<typeof distributeObjects>[2]) => {
-    if (readOnly || selectedObjectIds.length < 3) return;
+    if (readOnly || editableSelectedObjectIds.length < 3) return;
     history.pushHistory({ ...document, objects: distributeObjects(document.objects, selectedObjectIds, direction, { layers: document.layers, readOnly, groups: document.groups }) });
   };
 
@@ -407,9 +411,7 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
           hasActiveSymbol={!!activeSymbol}
           hasActiveBlock={!!activeBlock}
           hasClipboard={clipboardObjects.length > 0}
-          selectionCount={selectedObjectIds.length}
-          gridEnabled={document.canvas.grid.enabled}
-          snapEnabled={document.canvas.grid.snap}
+          selectionCount={editableSelectedObjectIds.length}
           canUndo={history.canUndo}
           canRedo={history.canRedo}
           calibrationActive={calibrationActive}
@@ -424,7 +426,7 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
           onPaste={pasteFromClipboard}
           onDuplicate={duplicateSelected}
           onGroup={() => {
-            history.pushHistory(groupObjects(document, selectedObjectIds));
+            history.pushHistory(groupObjects(document, selectedObjectIds, undefined, { readOnly }));
           }}
           onUngroup={() => {
             const groupsToRemove = document.groups.filter((group) => group.objectIds.some((id) => selectedObjectIds.includes(id)));
@@ -433,8 +435,6 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
           }}
           onAlign={alignSelection}
           onDistribute={distributeSelection}
-          onToggleGrid={() => history.pushHistory({ ...document, canvas: { ...document.canvas, grid: { ...document.canvas.grid, enabled: !document.canvas.grid.enabled } } })}
-          onToggleSnap={() => history.pushHistory({ ...document, canvas: { ...document.canvas, grid: { ...document.canvas.grid, snap: !document.canvas.grid.snap } } })}
           onToggleCalibration={() => {
             if (config.options?.calibration?.enabled === false) return;
             setCalibrationActive((current) => !current);
@@ -530,7 +530,7 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
           document={document}
           selectedIds={selectedObjectIds}
           readOnly={readOnly}
-          onGroup={() => history.pushHistory(groupObjects(document, selectedObjectIds))}
+          onGroup={() => history.pushHistory(groupObjects(document, selectedObjectIds, undefined, { readOnly }))}
           onUngroup={(groupId) => history.pushHistory(ungroupObjects(document, groupId))}
           onUpdateGroup={(groupId, patch) => history.pushHistory(updatePlanGroup(document, groupId, patch))}
         />

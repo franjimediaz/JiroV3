@@ -162,6 +162,27 @@ test("renderTemplateToHtml supports renderPlan calls and table plan columns", as
   assert.match(html, /width="240"/);
 });
 
+test("renderTemplateToHtml renders related plan fields from item schema metadata", async () => {
+  const { renderTemplateToHtml } = await modulesPromise;
+  const plan = { version: 8, canvas: { width: 120, height: 80, unit: "m", grid: { enabled: true, size: 20 } }, objects: [{ id: "r1", type: "rect", x: 5, y: 5, width: 40, height: 20, stroke: "#111827", strokeWidth: 2, fill: "transparent", showArea: false }] };
+  const html = renderTemplateToHtml(
+    { blocks: [{ type: "table", repeat: "related.estancias", columns: [{ label: "Plano", value: "{{item.plano}}" }] }] },
+    { related: { estancias: [{ plano: plan }] }, __planFields: { record: [], related: { estancias: ["plano"] } } },
+  );
+  assert.match(html, /pdf-plan-img/);
+  assert.doesNotMatch(html, /"objects"/);
+});
+
+test("renderPlan returns a controlled placeholder for empty or invalid plans", async () => {
+  const { renderTemplateToHtml } = await modulesPromise;
+  const html = renderTemplateToHtml(
+    { blocks: [{ type: "text", value: "{{ renderPlan(record.plano, placeholder='Sin plano') }}" }] },
+    { record: { plano: null }, __planFields: { record: ["plano"], related: {} } },
+  );
+  assert.match(html, /pdf-plan-placeholder/);
+  assert.match(html, /Sin plano/);
+});
+
 test("plan renderer cache keys are stable and option-sensitive", async () => {
   const { getPlanRenderCacheKey, createPlanRenderCache, renderPlanToDataUrl, normalizePlanForRender } = await modulesPromise;
   const plan = { version: 8, canvas: { width: 100, height: 100 }, objects: [{ id: "x", type: "text", x: 1, y: 1, text: "X" }] };

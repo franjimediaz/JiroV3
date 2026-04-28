@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import styles from "./PlanEditorView.module.css";
 import type { PlanTool } from "./planTypes";
 
@@ -11,8 +12,6 @@ type Props = {
   hasActiveBlock?: boolean;
   hasClipboard?: boolean;
   selectionCount?: number;
-  gridEnabled: boolean;
-  snapEnabled: boolean;
   canUndo: boolean;
   canRedo: boolean;
   calibrationActive?: boolean;
@@ -30,8 +29,6 @@ type Props = {
   onUngroup: () => void;
   onAlign: (mode: "left" | "right" | "top" | "bottom" | "centerH" | "centerV") => void;
   onDistribute: (direction: "horizontal" | "vertical") => void;
-  onToggleGrid: () => void;
-  onToggleSnap: () => void;
   onToggleCalibration: () => void;
   onExportPng: () => void;
   onExportPdf: () => void;
@@ -55,8 +52,6 @@ export default function PlanToolbar({
   hasActiveBlock,
   hasClipboard,
   selectionCount = 0,
-  gridEnabled,
-  snapEnabled,
   canUndo,
   canRedo,
   calibrationActive,
@@ -74,14 +69,44 @@ export default function PlanToolbar({
   onUngroup,
   onAlign,
   onDistribute,
-  onToggleGrid,
-  onToggleSnap,
   onToggleCalibration,
   onExportPng,
   onExportPdf,
 }: Props) {
+  const [openMenu, setOpenMenu] = useState<"align" | "distribute" | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const canAlign = !readOnly && selectionCount >= 2;
+  const canDistribute = !readOnly && selectionCount >= 3;
+
+  useEffect(() => {
+    if (!openMenu) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (toolbarRef.current?.contains(event.target as Node)) return;
+      setOpenMenu(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenMenu(null);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openMenu]);
+
+  const runAlign = (mode: Parameters<Props["onAlign"]>[0]) => {
+    onAlign(mode);
+    setOpenMenu(null);
+  };
+
+  const runDistribute = (direction: Parameters<Props["onDistribute"]>[0]) => {
+    onDistribute(direction);
+    setOpenMenu(null);
+  };
+
   return (
-    <div className={styles.toolbar}>
+    <div className={styles.toolbar} ref={toolbarRef}>
       {TOOLS.map((item) => (
         <button
           key={item.id}
@@ -146,21 +171,47 @@ export default function PlanToolbar({
         Desagrupar
       </button>
 
-      <select className={styles.input} style={{ width: 130 }} disabled={readOnly || selectionCount < 2} defaultValue="" onChange={(event) => { if (event.target.value) onAlign(event.target.value as "left" | "right" | "top" | "bottom" | "centerH" | "centerV"); event.target.value = ""; }}>
-        <option value="">Alinear</option>
-        <option value="left">Izquierda</option>
-        <option value="right">Derecha</option>
-        <option value="top">Arriba</option>
-        <option value="bottom">Abajo</option>
-        <option value="centerH">Centro H</option>
-        <option value="centerV">Centro V</option>
-      </select>
+      <div className={styles.toolbarMenu}>
+        <button
+          type="button"
+          className={styles.button}
+          onClick={() => setOpenMenu((current) => current === "align" ? null : "align")}
+          disabled={!canAlign}
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "align"}
+        >
+          Alinear
+        </button>
+        {openMenu === "align" ? (
+          <div className={styles.toolbarMenuList} role="menu">
+            <button type="button" role="menuitem" onClick={() => runAlign("left")}>Alinear izquierda</button>
+            <button type="button" role="menuitem" onClick={() => runAlign("right")}>Alinear derecha</button>
+            <button type="button" role="menuitem" onClick={() => runAlign("top")}>Alinear arriba</button>
+            <button type="button" role="menuitem" onClick={() => runAlign("bottom")}>Alinear abajo</button>
+            <button type="button" role="menuitem" onClick={() => runAlign("centerH")}>Alinear centro horizontal</button>
+            <button type="button" role="menuitem" onClick={() => runAlign("centerV")}>Alinear centro vertical</button>
+          </div>
+        ) : null}
+      </div>
 
-      <select className={styles.input} style={{ width: 130 }} disabled={readOnly || selectionCount < 3} defaultValue="" onChange={(event) => { if (event.target.value) onDistribute(event.target.value as "horizontal" | "vertical"); event.target.value = ""; }}>
-        <option value="">Distribuir</option>
-        <option value="horizontal">Horizontal</option>
-        <option value="vertical">Vertical</option>
-      </select>
+      <div className={styles.toolbarMenu}>
+        <button
+          type="button"
+          className={styles.button}
+          onClick={() => setOpenMenu((current) => current === "distribute" ? null : "distribute")}
+          disabled={!canDistribute}
+          aria-haspopup="menu"
+          aria-expanded={openMenu === "distribute"}
+        >
+          Distribuir
+        </button>
+        {openMenu === "distribute" ? (
+          <div className={styles.toolbarMenuList} role="menu">
+            <button type="button" role="menuitem" onClick={() => runDistribute("horizontal")}>Distribuir horizontal</button>
+            <button type="button" role="menuitem" onClick={() => runDistribute("vertical")}>Distribuir vertical</button>
+          </div>
+        ) : null}
+      </div>
 
       <button type="button" className={`${styles.button} ${styles.buttonDanger}`} onClick={onDeleteSelected} disabled={readOnly || !hasSelection}>
         Eliminar
@@ -168,14 +219,6 @@ export default function PlanToolbar({
 
       <button type="button" className={styles.button} onClick={onClear} disabled={readOnly}>
         Limpiar
-      </button>
-
-      <button type="button" className={`${styles.button} ${gridEnabled ? styles.buttonActive : ""}`} onClick={onToggleGrid} disabled={readOnly}>
-        Grid
-      </button>
-
-      <button type="button" className={`${styles.button} ${snapEnabled ? styles.buttonActive : ""}`} onClick={onToggleSnap} disabled={readOnly || !gridEnabled}>
-        Snap
       </button>
 
       <button type="button" className={`${styles.button} ${calibrationActive ? styles.buttonActive : ""}`} onClick={onToggleCalibration} disabled={readOnly}>
