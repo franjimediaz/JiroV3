@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { renderTemplateToHtml } from "@/lib/pdf/renderTemplateToHtml";
 import { parseTemplateRow } from "../_helpers";
 import { buildPdfTemplatePreviewContext } from "@/lib/pdf/pdfTemplatePreview";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,6 +23,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "templateId requerido" }, { status: 400 });
     }
 
+    await requireModulePermission("pdf_templates", "ver");
     const supabase = await createClient();
     const { data: tplRow, error } = await supabase
       .from("pdf_templates")

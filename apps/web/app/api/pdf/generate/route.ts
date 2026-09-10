@@ -5,6 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { resolvePdfContext } from "@/lib/pdf/resolvePdfContext";
 import { renderTemplateToHtml } from "@/lib/pdf/renderTemplateToHtml";
 import { htmlToPdfBuffer } from "@/lib/pdf/htmlToPdf";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
+import { handleApiError } from "@/lib/auth/handleApiError";
+import { getRequestId } from "@/lib/security/requestId";
+import { enforceRateLimit, getClientIp } from "@/lib/security/rateLimit";
 import {
   parseTemplateRow,
   deriveLabelResolversFromTemplate,
@@ -48,7 +52,11 @@ async function readErrorPayload(response: Response) {
 }
 
 export async function GET(req: Request) {
+  const requestId = getRequestId(req);
   try {
+    const ip = getClientIp(req);
+    await enforceRateLimit({ key: `pdf-generate:${ip}`, limit: 30, windowMs: 60_000 });
+
     const { searchParams } = new URL(req.url);
     const slug = searchParams.get("template");
     const recordId = searchParams.get("id");
@@ -62,6 +70,7 @@ export async function GET(req: Request) {
       );
     }
 
+    await requireModulePermission("pdf_templates", "exportar");
     const supabase = await createClient();
 
     // 1) Cargar plantilla activa
@@ -140,7 +149,6 @@ export async function GET(req: Request) {
           upstreamError = payload.error;
           upstreamDetails = payload.details;
           console.error("PDF upstream service responded with error", {
-            serviceUrl,
             upstreamStatus,
             upstreamStatusText,
             upstreamError,
@@ -158,9 +166,7 @@ export async function GET(req: Request) {
         upstreamError =
           error?.cause?.message || error?.message || "PDF service fetch failed";
         console.error("PDF upstream service fetch failed", {
-          serviceUrl,
           upstreamError,
-          errorStack: error?.stack || null,
           template: slug,
           recordId,
           sourceTable: tplRow.source_table,
@@ -179,16 +185,7 @@ export async function GET(req: Request) {
           {
             ok: false,
             error: localError?.message || "No se pudo generar el PDF",
-            details: {
-              upstreamError,
-              upstreamStatus,
-              upstreamStatusText,
-              upstreamDetails,
-              template: slug,
-              recordId,
-              sourceTable: tplRow.source_table,
-              localError: localError?.stack || localError?.message || null,
-            },
+            details: { upstreamStatus, upstreamStatusText, template: slug },
           },
           { status: 500 },
         );
@@ -210,14 +207,7 @@ export async function GET(req: Request) {
         },
       },
     );
-  } catch (e: any) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: e?.message || "Error generate",
-        details: e?.cause?.message || null,
-      },
-      { status: 500 },
-    );
+  } catch (error) {
+    return handleApiError(error, requestId, { route: "/api/pdf/generate", method: "GET" });
   }
 }

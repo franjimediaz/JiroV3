@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 
 const ALLOWED_AGG_OPS = new Set(["sum", "avg", "min", "max", "count"]);
 const ALLOWED_WHERE_OPS = new Set(["=", "!=", ">", "<", ">=", "<=", "in"]);
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
     if (legacySourceTable && legacySourceTable !== resolved.table && legacySourceTable !== resolved.slug) {
       return NextResponse.json({ ok: false, detail: `sourceTable legacy no permitido: ${legacySourceTable}` }, { status: 400 });
     }
+    await requireModulePermission(resolved.permissionsKey, "ver");
 
     const declaredFields = new Set((resolved.schema.fields || []).map((schemaField) => schemaField.name));
     if (op !== "count" && !declaredFields.has(field)) {

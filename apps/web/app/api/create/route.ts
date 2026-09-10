@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 
 type Body = {
   moduleSlug?: string;
@@ -10,13 +10,6 @@ type Body = {
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createClient();
-
-    const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) {
-      return NextResponse.json({ ok: false, detail: "No autenticado" }, { status: 401 });
-    }
-
     const body = (await req.json()) as Body;
     const moduleSlug = body.moduleSlug?.trim();
     const legacyTable = body.table?.trim();
@@ -37,6 +30,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, detail: `Tabla legacy no permitida: ${legacyTable}` }, { status: 400 });
     }
 
+    const { supabase } = await requireModulePermission(resolved.permissionsKey, "crear");
+
     const allowedFields = new Set(
       (resolved.schema.fields || [])
         .filter((field) => field.virtual !== true)
@@ -45,9 +40,27 @@ export async function POST(req: Request) {
     const unknownFields = Object.keys(payload).filter(
       (key) => !allowedFields.has(key) && key !== resolved.primaryKey && key !== "id"
     );
+    const serverControlledFields = [
+      "tenant_id",
+      "organization_id",
+      "created_by",
+      "updated_by",
+      "owner_id",
+      "role_id",
+      "is_admin",
+      "created_at",
+      "updated_at",
+    ];
+    const controlledFields = Object.keys(payload).filter((key) => serverControlledFields.includes(key));
     if (unknownFields.length > 0) {
       return NextResponse.json(
         { ok: false, detail: `Campos no declarados en schema: ${unknownFields.join(", ")}` },
+        { status: 400 }
+      );
+    }
+    if (controlledFields.length > 0) {
+      return NextResponse.json(
+        { ok: false, detail: `Campos controlados por servidor no permitidos: ${controlledFields.join(", ")}` },
         { status: 400 }
       );
     }

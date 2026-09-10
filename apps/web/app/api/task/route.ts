@@ -2,6 +2,7 @@
 // app/api/task/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -10,6 +11,7 @@ export async function GET(req: Request) {
   const end = searchParams.get("end");
   if (!proyectoId) return NextResponse.json({ ok: false, detail: "proyectoId requerido" }, { status: 400 });
 
+  await requireModulePermission("task", "ver");
   const supabase = await createClient();
 
   let q = supabase

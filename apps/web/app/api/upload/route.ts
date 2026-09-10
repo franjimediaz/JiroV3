@@ -1,184 +1,147 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { configuredPermission, requirePermission } from "@/lib/auth/requirePermission";
+import { handleApiError } from "@/lib/auth/handleApiError";
+import { badRequest, forbidden } from "@/lib/auth/apiError";
+import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
+import { getClientIp, enforceRateLimit } from "@/lib/security/rateLimit";
+import { getRequestId } from "@/lib/security/requestId";
+import { buildServerStoragePath, isPathInUserScope } from "@/lib/security/safeStoragePath";
+import { FILE_POLICIES, parseUploadKind, validateFileAgainstPolicy } from "@/lib/validation/upload";
+import { asRecord, requiredString } from "@/lib/validation/common";
 
+export const runtime = "nodejs";
 
-type UploadKind = "file" | "image";
+function permission(name: "create" | "delete") {
+  return configuredPermission(`FILES_${name.toUpperCase()}_PERMISSION`, `files.${name}`);
+}
 
-const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+function bucketForKind(kind: keyof typeof FILE_POLICIES) {
+  const policy = FILE_POLICIES[kind];
+  return process.env[policy.bucketEnv] || policy.fallbackBucket;
+}
 
-const ALLOWED_IMAGE_MIME_TYPES = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-];
-
-
-function sanitizeFileName(name: string) {
-  return name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/[^a-zA-Z0-9._-]/g, "")
-    .toLowerCase();
+function allowedBuckets() {
+  return new Set(Object.keys(FILE_POLICIES).map((kind) => bucketForKind(kind as keyof typeof FILE_POLICIES)));
 }
 
 export async function POST(req: Request) {
+  const requestId = getRequestId(req);
+  let actorId: string | null = null;
+
   try {
+    const ip = getClientIp(req);
+    await enforceRateLimit({ key: `upload:${ip}`, limit: 30, windowMs: 60_000 });
+
+    const ctx = await requirePermission(permission("create"));
+    actorId = ctx.user.id;
+    await enforceRateLimit({ key: `upload:${ctx.user.id}`, limit: 20, windowMs: 60_000 });
+
     const formData = await req.formData();
-
     const file = formData.get("file");
-    const kind = (formData.get("kind") as UploadKind | null) ?? "file";
-    const folder = (formData.get("folder") as string | null) ?? "general";
-    
+    const kind = parseUploadKind(formData.get("kind"));
+    const moduleSlug = typeof formData.get("moduleSlug") === "string" ? String(formData.get("moduleSlug")) : undefined;
+    const recordId = typeof formData.get("recordId") === "string" ? String(formData.get("recordId")) : undefined;
 
-    if (!(file instanceof File)) {
-      return NextResponse.json(
-        { error: "No se recibió ningún archivo válido" },
-        { status: 400 }
-      );
+    if (formData.has("bucket") || formData.has("folder") || formData.has("allowedMimeTypes")) {
+      throw badRequest("Parametros de storage no permitidos");
     }
+    if (!(file instanceof File)) throw badRequest("No se recibio ningun archivo valido");
 
-    const isImage = kind === "image";
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const mimeType = validateFileAgainstPolicy(file, buffer, kind);
+    const bucket = bucketForKind(kind);
+    const path = buildServerStoragePath({
+      userId: ctx.user.id,
+      kind,
+      fileName: file.name,
+      moduleSlug,
+      recordId,
+    });
 
-    if (isImage) {
-      if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
-        return NextResponse.json(
-          { error: "Formato de imagen no permitido" },
-          { status: 400 }
-        );
-      }
+    const { error: uploadError } = await supabaseAdmin.storage.from(bucket).upload(path, buffer, {
+      contentType: mimeType,
+      upsert: false,
+    });
 
-      if (file.size > MAX_IMAGE_SIZE_BYTES) {
-        return NextResponse.json(
-          { error: "La imagen supera el tamaño máximo permitido" },
-          { status: 400 }
-        );
-      }
-    } else {
-      if (file.size > MAX_FILE_SIZE_BYTES) {
-        return NextResponse.json(
-          { error: "El archivo supera el tamaño máximo permitido" },
-          { status: 400 }
-        );
-      }
-    }
+    if (uploadError) throw new Error("Storage upload failed");
 
-    const bucket = isImage
-      ? process.env.NEXT_PUBLIC_SUPABASE_PUBLIC_BUCKET || "crm-public"
-      : process.env.NEXT_PUBLIC_SUPABASE_PRIVATE_BUCKET || "crm-private";
-    
-    const isPublic = isImage;
-
-    const ext = file.name.includes(".")
-      ? file.name.split(".").pop()
-      : "";
-    const safeName = sanitizeFileName(file.name.replace(/\.[^/.]+$/, ""));
-    const finalName = ext
-      ? `${Date.now()}-${randomUUID()}-${safeName}.${ext}`
-      : `${Date.now()}-${randomUUID()}-${safeName}`;
-
-    const path = `${folder}/${finalName}`;
-
-    const arrayBuffer = await file.arrayBuffer();
-    const fileBuffer = Buffer.from(arrayBuffer);
-
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from(bucket)
-      .upload(path, fileBuffer, {
-        contentType: file.type || undefined,
-        upsert: false,
-      });
-
-    if (uploadError) {
-      return NextResponse.json(
-        { error: uploadError.message },
-        { status: 500 }
-      );
-    }
-
-    let url: string | null = null;
-
-    if (isImage) {
-      const { data } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
-      url = data.publicUrl;
-    }
-    const allowedMimeTypesRaw = formData.get("allowedMimeTypes");
-    let allowedMimeTypes: string[] = [];
-
-    if (typeof allowedMimeTypesRaw === "string" && allowedMimeTypesRaw.trim()) {
-      try {
-        allowedMimeTypes = JSON.parse(allowedMimeTypesRaw);
-      } catch {
-        allowedMimeTypes = [];
-      }
-    }
-
-    if (allowedMimeTypes.length > 0) {
-      if (!allowedMimeTypes.includes(file.type)) {
-        return NextResponse.json(
-          { error: `Tipo MIME no permitido: ${file.type || "desconocido"}` },
-          { status: 400 }
-        );
-      }
-    } else if (isImage) {
-      if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
-        return NextResponse.json(
-          { error: "Formato de imagen no permitido" },
-          { status: 400 }
-        );
-      }
-    }
+    await writeAuditEvent({
+      actorUserId: ctx.user.id,
+      action: "file.upload",
+      resourceType: "storage.objects",
+      resourceId: path,
+      requestId,
+      success: true,
+      metadata: { bucket, kind, size: file.size, mimeType },
+    });
 
     return NextResponse.json({
       ok: true,
       bucket,
       path,
-      url,
       name: file.name,
       size: file.size,
-      mimeType: file.type,
+      mimeType,
       kind,
-      isPublic,
+      isPublic: kind === "image",
+      requestId,
     });
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error?.message || "Error interno al subir archivo" },
-      { status: 500 }
-    );
+  } catch (error) {
+    await writeAuditEvent({
+      actorUserId: actorId,
+      action: "file.upload",
+      requestId,
+      success: false,
+      metadata: { reason: error instanceof Error ? error.message : "unknown" },
+    });
+    return handleApiError(error, requestId, { route: "/api/upload", method: "POST", actorId });
   }
 }
+
 export async function DELETE(req: Request) {
+  const requestId = getRequestId(req);
+  let actorId: string | null = null;
+
   try {
-    const body = await req.json();
-    const bucket = body?.bucket;
-    const path = body?.path;
+    const ip = getClientIp(req);
+    await enforceRateLimit({ key: `delete-file:${ip}`, limit: 30, windowMs: 60_000 });
 
-    if (!bucket || !path) {
-      return Response.json(
-        { error: "bucket y path son obligatorios" },
-        { status: 400 }
-      );
+    const ctx = await requirePermission(permission("delete"));
+    actorId = ctx.user.id;
+    await enforceRateLimit({ key: `delete-file:${ctx.user.id}`, limit: 20, windowMs: 60_000 });
+
+    const body = asRecord(await req.json().catch(() => null));
+    const bucket = requiredString(body.bucket, "bucket", 120);
+    const path = requiredString(body.path, "path", 500);
+
+    if (!allowedBuckets().has(bucket)) throw badRequest("bucket no permitido");
+    if (path.includes("..") || path.startsWith("/") || !isPathInUserScope(path, ctx.user.id)) {
+      throw forbidden("No tienes permiso para eliminar este archivo");
     }
 
-    const { error } = await supabaseAdmin.storage
-      .from(bucket)
-      .remove([path]);
+    const { error } = await supabaseAdmin.storage.from(bucket).remove([path]);
+    if (error) throw new Error("Storage delete failed");
 
-    if (error) {
-      return Response.json(
-        { error: error.message },
-        { status: 500 }
-      );
-    }
+    await writeAuditEvent({
+      actorUserId: ctx.user.id,
+      action: "file.delete",
+      resourceType: "storage.objects",
+      resourceId: path,
+      requestId,
+      success: true,
+      metadata: { bucket },
+    });
 
-    return Response.json({ ok: true });
-  } catch (error: any) {
-    return Response.json(
-      { error: error?.message || "Error al eliminar archivo" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: true, requestId });
+  } catch (error) {
+    await writeAuditEvent({
+      actorUserId: actorId,
+      action: "file.delete",
+      requestId,
+      success: false,
+      metadata: { reason: error instanceof Error ? error.message : "unknown" },
+    });
+    return handleApiError(error, requestId, { route: "/api/upload", method: "DELETE", actorId });
   }
 }

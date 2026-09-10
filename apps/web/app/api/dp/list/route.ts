@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -18,6 +19,7 @@ export async function GET(req: Request) {
   if (!resolved.table) {
     return NextResponse.json({ error: "Este modulo no es un modulo de datos" }, { status: 400 });
   }
+  await requireModulePermission(resolved.permissionsKey, "ver");
   const declaredFields = new Set((resolved.schema.fields || []).map((field) => field.name));
   const selectedDisplayField = declaredFields.has(displayField) ? displayField : resolved.displayField || "id";
 

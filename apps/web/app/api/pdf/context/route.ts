@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolvePdfContext } from "@/lib/pdf/resolvePdfContext";
 import { parseTemplateRow, deriveLabelResolversFromTemplate } from "../_helpers";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,6 +34,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "template e id requeridos" }, { status: 400 });
     }
 
+    await requireModulePermission("pdf_templates", "ver");
     const supabase = await createClient();
     const { data: tplRow, error } = await supabase
       .from("pdf_templates")
@@ -69,6 +71,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "sourceTable y recordId requeridos" }, { status: 400 });
     }
 
+    await requireModulePermission("pdf_templates", "ver");
     const ctx = await buildContext({
       sourceTable,
       recordId,

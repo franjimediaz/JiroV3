@@ -8,6 +8,7 @@ import {
   filterRowsWithDefaultFilters,
   resolveDefaultFiltersForQuery,
 } from "@/lib/moduleDefaultFilters";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 
 type ListFilter = QueryFilter;
 type ListSort = { field: string; dir: "asc" | "desc" };
@@ -74,6 +75,8 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    await requireModulePermission(moduleSlug, "ver");
 
     const runtimeContext = await buildModuleDefaultFilterRuntimeContext(supabase);
     const defaultFilters = resolveDefaultFiltersForQuery(props?.db?.defaultFilters, runtimeContext);
