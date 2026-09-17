@@ -1,11 +1,18 @@
 /** @type {import('next').NextConfig} */
+const isDev = process.env.NODE_ENV === "development";
+const scriptSrc = [
+  "'self'",
+  "'unsafe-inline'",
+  ...(isDev ? ["'unsafe-eval'"] : []),
+].join(" ");
+
 const csp = [
   "default-src 'self'",
   "connect-src 'self' https://*.supabase.co",
   "img-src 'self' data: blob: https://*.supabase.co",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
-  "script-src 'self' 'unsafe-inline'",
+  `script-src ${scriptSrc}`,
   "frame-ancestors 'self'",
   "base-uri 'self'",
   "form-action 'self'",
