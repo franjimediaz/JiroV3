@@ -1,5 +1,5 @@
 import { forbidden } from "./apiError";
-import { requireUser, type CurrentUserContext } from "./getCurrentUser";
+import { requireUser, type CurrentUserContext, type RolePerms } from "./getCurrentUser";
 
 export const ACTION_PERMISSION_MAP = {
   read: "ver",
@@ -36,11 +36,16 @@ export function normalizePermissionAction(value: string) {
   return ACTION_PERMISSION_MAP[key as keyof typeof ACTION_PERMISSION_MAP] || key;
 }
 
-export function hasPermission(ctx: CurrentUserContext, permission: string) {
+export function resolvePermissionParts(permission: string) {
   const [moduleRaw, actionRaw = "ver"] = permission.split(".");
-  const moduleName = normalizeModule(moduleRaw);
-  const action = normalizePermissionAction(actionRaw);
-  const perms = ctx.role?.perms || {};
+  return {
+    moduleName: normalizeModule(moduleRaw),
+    action: normalizePermissionAction(actionRaw),
+  };
+}
+
+function matchesRolePerms(perms: RolePerms, moduleName: string, action: string) {
+  if (!perms || typeof perms !== "object") return false;
 
   const wildcard = perms["*"];
   if (wildcard === true) return true;
@@ -51,8 +56,56 @@ export function hasPermission(ctx: CurrentUserContext, permission: string) {
   return Boolean(modulePerms && typeof modulePerms === "object" && (modulePerms["*"] === true || modulePerms[action] === true));
 }
 
+export function hasPermission(ctx: CurrentUserContext, permission: string) {
+  const { moduleName, action } = resolvePermissionParts(permission);
+  const perms = ctx.role?.perms || {};
+
+  return matchesRolePerms(perms, moduleName, action);
+}
+
+async function canByDatabasePolicy(ctx: CurrentUserContext, moduleName: string, action: string) {
+  const { data, error } = await (ctx.supabase as any).rpc("can", {
+    modulo: moduleName,
+    accion: action,
+  });
+
+  if (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("permission rpc failed", {
+        uid: ctx.user.id,
+        role_id: ctx.profile.role_id,
+        role_slug: ctx.role?.slug ?? ctx.profile.role,
+        moduleSlug: moduleName,
+        normalizedAction: action,
+        error: error.message,
+      });
+    }
+    return false;
+  }
+
+  return data === true;
+}
+
 export async function requirePermission(permission: string) {
   const ctx = await requireUser();
-  if (!hasPermission(ctx, permission)) throw forbidden();
+  const { moduleName, action } = resolvePermissionParts(permission);
+  let permissionMatched = hasPermission(ctx, permission);
+
+  if (!permissionMatched) {
+    permissionMatched = await canByDatabasePolicy(ctx, moduleName, action);
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    console.info("permission check", {
+      uid: ctx.user.id,
+      role_id: ctx.profile.role_id,
+      role_slug: ctx.role?.slug ?? ctx.profile.role,
+      moduleSlug: moduleName,
+      normalizedAction: action,
+      permissionMatched,
+    });
+  }
+
+  if (!permissionMatched) throw forbidden();
   return ctx;
 }

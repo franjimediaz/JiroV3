@@ -90,6 +90,11 @@ describe("security hardening regression checks", () => {
     assert.match(permissions, /update:\s*"actualizar"/);
     assert.match(permissions, /delete:\s*"eliminar"/);
     assert.match(permissions, /normalizePermissionAction\(actionRaw\)/);
+    assert.match(permissions, /modulePerms\["\*"\] === true \|\| modulePerms\[action\] === true/);
+    assert.match(permissions, /rpc\("can"/);
+    assert.match(permissions, /modulo:\s*moduleName/);
+    assert.match(permissions, /accion:\s*action/);
+    assert.match(permissions, /permissionMatched = await canByDatabasePolicy/);
     assert.match(modulePermission, /normalizePermissionAction\(action\)/);
 
     assert.match(listRoute, /requireModulePermission\(moduleSlug,\s*"ver"\)/);
@@ -102,6 +107,13 @@ describe("security hardening regression checks", () => {
     assert.match(permissions, /requireUser\(\)/);
     assert.match(currentUser, /throw unauthorized\(\)/);
     assert.match(permissions, /throw forbidden\(\)/);
+    assert.match(currentUser, /\.select\("uid, email, role_id, role"\)/);
+    assert.doesNotMatch(currentUser, /\.select\("id, uid, email, role_id, role"\)/);
+    assert.match(currentUser, /\.eq\("uid", user\.id\)/);
+    assert.match(currentUser, /if \(profile\.role_id\)/);
+    assert.match(currentUser, /\.from\("rol"\)/);
+    assert.match(currentUser, /\.eq\("id", profile\.role_id\)/);
+    assert.doesNotMatch(currentUser, /\.eq\("slug", profile\.role\)/);
     assert.match(proxy, /isApiPath\(pathname\)/);
     assert.match(proxy, /NextResponse\.json\(/);
     assert.match(proxy, /status:\s*401/);
