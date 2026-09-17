@@ -1,5 +1,5 @@
-import { requirePermission } from "./requirePermission";
+import { normalizePermissionAction, requirePermission } from "./requirePermission";
 
 export function requireModulePermission(moduleSlug: string, action: string) {
-  return requirePermission(`${moduleSlug}.${action}`);
+  return requirePermission(`${moduleSlug}.${normalizePermissionAction(action)}`);
 }

@@ -76,6 +76,37 @@ describe("security hardening regression checks", () => {
     assert.doesNotMatch(handler, /errorStack/);
   });
 
+  it("aligns module read authorization with Spanish role permissions and 401/403 semantics", () => {
+    const permissions = source("apps/web/lib/auth/requirePermission.ts");
+    const modulePermission = source("apps/web/lib/auth/requireModulePermission.ts");
+    const currentUser = source("apps/web/lib/auth/getCurrentUser.ts");
+    const listRoute = source("apps/web/app/api/list/route.ts");
+    const dpListRoute = source("apps/web/app/api/dp/list/route.ts");
+    const proxy = source("apps/web/proxy.ts");
+
+    assert.match(permissions, /ACTION_PERMISSION_MAP/);
+    assert.match(permissions, /read:\s*"ver"/);
+    assert.match(permissions, /create:\s*"crear"/);
+    assert.match(permissions, /update:\s*"actualizar"/);
+    assert.match(permissions, /delete:\s*"eliminar"/);
+    assert.match(permissions, /normalizePermissionAction\(actionRaw\)/);
+    assert.match(modulePermission, /normalizePermissionAction\(action\)/);
+
+    assert.match(listRoute, /requireModulePermission\(moduleSlug,\s*"ver"\)/);
+    assert.match(listRoute, /handleApiError\(error,\s*requestId,\s*\{ route: "\/api\/list"/);
+    assert.doesNotMatch(listRoute, /catch \(error[\s\S]*status:\s*500[\s\S]*\)/);
+
+    assert.match(dpListRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);
+    assert.match(dpListRoute, /handleApiError\(error,\s*requestId,\s*\{ route: "\/api\/dp\/list"/);
+
+    assert.match(permissions, /requireUser\(\)/);
+    assert.match(currentUser, /throw unauthorized\(\)/);
+    assert.match(permissions, /throw forbidden\(\)/);
+    assert.match(proxy, /isApiPath\(pathname\)/);
+    assert.match(proxy, /NextResponse\.json\(/);
+    assert.match(proxy, /status:\s*401/);
+  });
+
   it("keeps PDF generation isolated behind auth, resource allowlists, size limits, and concurrency limits", () => {
     const pdfService = source("pdf-service/server.js");
     const pdfRoute = source("apps/web/app/api/pdf/generate/route.ts");

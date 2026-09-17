@@ -1,7 +1,7 @@
 import { forbidden } from "./apiError";
 import { requireUser, type CurrentUserContext } from "./getCurrentUser";
 
-const ACTION_ALIASES: Record<string, string> = {
+export const ACTION_PERMISSION_MAP = {
   read: "ver",
   view: "ver",
   list: "ver",
@@ -13,7 +13,7 @@ const ACTION_ALIASES: Record<string, string> = {
   update: "actualizar",
   delete: "eliminar",
   remove: "eliminar",
-};
+} as const satisfies Record<string, string>;
 
 const CONFIGURABLE_PERMISSION_PATTERN = /^[a-z0-9_-]+\.[a-z0-9_.-]+$/i;
 
@@ -31,15 +31,15 @@ function normalizeModule(value: string) {
   return out;
 }
 
-function normalizeAction(value: string) {
+export function normalizePermissionAction(value: string) {
   const key = value.trim().toLowerCase();
-  return ACTION_ALIASES[key] || key;
+  return ACTION_PERMISSION_MAP[key as keyof typeof ACTION_PERMISSION_MAP] || key;
 }
 
 export function hasPermission(ctx: CurrentUserContext, permission: string) {
   const [moduleRaw, actionRaw = "ver"] = permission.split(".");
   const moduleName = normalizeModule(moduleRaw);
-  const action = normalizeAction(actionRaw);
+  const action = normalizePermissionAction(actionRaw);
   const perms = ctx.role?.perms || {};
 
   const wildcard = perms["*"];

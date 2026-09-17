@@ -17,6 +17,10 @@ function isPublicPath(pathname: string) {
   return false;
 }
 
+function isApiPath(pathname: string) {
+  return pathname === "/api" || pathname.startsWith("/api/");
+}
+
 export default async function proxy(request: NextRequest) {
   // Response base que usaremos para propagar las cookies actualizadas
   const res = NextResponse.next({
@@ -49,6 +53,19 @@ export default async function proxy(request: NextRequest) {
 
   // Si no hay sesión y la ruta NO es pública → mandamos a /login
   if (!user && !isPublicPath(pathname)) {
+    if (isApiPath(pathname)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: "No autenticado",
+          },
+        },
+        { status: 401 }
+      );
+    }
+
     const redirectUrl = nextUrl.clone();
     redirectUrl.pathname = "/login";
 

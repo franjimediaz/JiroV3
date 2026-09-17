@@ -325,7 +325,15 @@ export async function preloadRelationDisplayCache(params: {
           statusPatch[cacheKey] = "failed";
         }
       }
-    } catch {
+    } catch (error) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("relationDisplay lookup failed", {
+          moduleSlug: bucket.config.moduleSlug,
+          ids,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+
       for (const id of ids) {
         statusPatch[getRelationCacheKey(bucket.config, id)] = "failed";
       }
