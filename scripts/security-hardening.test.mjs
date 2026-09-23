@@ -142,10 +142,17 @@ describe("security hardening regression checks", () => {
 
     assert.match(writer, /supabaseAdmin/);
     assert.match(writer, /audit_events/);
+    assert.match(writer, /sanitizeAuditMetadata/);
+    assert.match(writer, /SENSITIVE_KEY_PATTERN/);
+    assert.match(writer, /module: args\.module \?\? inferModule\(args\.action\)/);
     assert.match(migration, /enable row level security/i);
-    assert.match(migration, /audit_events_no_client_select/);
-    assert.match(migration, /to authenticated/);
-    assert.match(migration, /using \(false\)/);
+    assert.match(migration, /module text null/);
+    assert.match(migration, /request_id text not null/);
+    assert.match(migration, /revoke all on public\.audit_events from anon/);
+    assert.match(migration, /revoke all on public\.audit_events from authenticated/);
+    assert.match(migration, /grant select, insert on public\.audit_events to service_role/);
+    assert.doesNotMatch(migration, /using \(true\)/i);
+    assert.doesNotMatch(migration, /with check \(true\)/i);
     assert.match(docs, /audit_events/);
     assert.match(docs, /metadata table/i);
   });
