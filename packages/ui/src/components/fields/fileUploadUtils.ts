@@ -21,24 +21,19 @@ export const ALLOWED_IMAGE_MIME_TYPES = [
   "image/jpeg",
   "image/png",
   "image/webp",
-  "image/gif",
 ];
+
+export const ALLOWED_FILE_MIME_TYPES = ["application/pdf", "text/plain"];
 
 export function validateSelectedFile(
   file: File,
-  field: Pick<Field, "allowedMimeTypes">,
+  _field: Pick<Field, "allowedMimeTypes">,
   kind: "file" | "image"
 ) {
-  const allowedMimeTypes = field.allowedMimeTypes || [];
+  const allowedMimeTypes = kind === "image" ? ALLOWED_IMAGE_MIME_TYPES : ALLOWED_FILE_MIME_TYPES;
 
-  if (allowedMimeTypes.length > 0) {
-    if (!allowedMimeTypes.includes(file.type)) {
-      return `Tipo de archivo no permitido: ${file.type || "desconocido"}`;
-    }
-  } else if (kind === "image") {
-    if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
-      return "Formato de imagen no permitido. Usa JPG, PNG, WEBP o GIF.";
-    }
+  if (!allowedMimeTypes.includes(file.type)) {
+    return `Tipo de archivo no permitido: ${file.type || "desconocido"}`;
   }
 
   if (kind === "image" && file.size > MAX_IMAGE_SIZE_BYTES) {
@@ -103,44 +98,33 @@ export async function getSignedFileUrl(bucket: string, path: string, expiresIn =
   return data.signedUrl as string;
 }
 
-export function getAllowedTypesHint(field: Pick<Field, "allowedMimeTypes">, isImage: boolean) {
-  if (field.allowedMimeTypes?.length) {
-    return `Tipos permitidos: ${field.allowedMimeTypes.join(", ")}.`;
-  }
-
+export function getAllowedTypesHint(_field: Pick<Field, "allowedMimeTypes">, isImage: boolean) {
   if (isImage) {
-    return "Formatos: JPG, PNG, WEBP, GIF.";
+    return "Formatos: JPG, PNG, WEBP.";
   }
 
-  return "";
+  return "Formatos: PDF, TXT.";
 }
 
-export function getAcceptValue(field: Pick<Field, "allowedMimeTypes">, isImage: boolean) {
-  const allowedMimeTypes = field.allowedMimeTypes || [];
-
-  if (allowedMimeTypes.length > 0) {
-    return allowedMimeTypes.join(",");
-  }
-
+export function getAcceptValue(_field: Pick<Field, "allowedMimeTypes">, isImage: boolean) {
   if (isImage) {
     return ALLOWED_IMAGE_MIME_TYPES.join(",");
   }
 
-  return undefined;
+  return ALLOWED_FILE_MIME_TYPES.join(",");
 }
 
 export async function uploadSingleFile(
   file: File,
   kind: "file" | "image",
   folder = "general",
-  allowedMimeTypes: string[] = [],
+  _allowedMimeTypes: string[] = [],
   endpoint = "/api/upload"
 ): Promise<UploadedFileValue> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("kind", kind);
   formData.append("folder", folder);
-  formData.append("allowedMimeTypes", JSON.stringify(allowedMimeTypes));
 
   const res = await fetch(endpoint, {
     method: "POST",
