@@ -11,10 +11,12 @@ type Props = {
   uploader?: PlanBackgroundUploaderConfig;
   calibration?: PlanEditorOptions["calibration"];
   uploadFolder?: string;
+  moduleSlug?: string;
+  recordId?: string;
   onChange: (document: PlanDocument) => void;
 };
 
-export default function PlanSettingsPanel({ document, readOnly, uploader, calibration, uploadFolder, onChange }: Props) {
+export default function PlanSettingsPanel({ document, readOnly, uploader, calibration, uploadFolder, moduleSlug, recordId, onChange }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [backgroundError, setBackgroundError] = useState("");
@@ -45,7 +47,11 @@ export default function PlanSettingsPanel({ document, readOnly, uploader, calibr
     setUploading(true);
     setBackgroundError("");
     try {
-      const uploaded = await uploadSingleFile(file, "image", uploader?.folder || uploadFolder || "plan-backgrounds", [], uploadEndpoint);
+      const uploaded = await uploadSingleFile(file, "image", uploader?.folder || uploadFolder || "plan-backgrounds", [], uploadEndpoint, {
+        moduleSlug,
+        recordId,
+        fieldName: uploadFolder,
+      });
       const url = uploaded.url || "";
       if (!url) throw new Error("La subida no devolvio una URL publica.");
       updateBackground({

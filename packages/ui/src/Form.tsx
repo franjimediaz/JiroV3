@@ -1026,6 +1026,8 @@ export default function Form({
         mode={effectiveMode}
         dataProvider={dataProvider}
         record={values}
+        moduleSlug={effectiveModuleSlug}
+        recordId={effectiveRecordId}
         onChange={(nextPlan) => handleChange(sourceField, nextPlan)}
       />
     );

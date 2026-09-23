@@ -26,10 +26,12 @@ type Props = {
   mode: "view" | "edit" | "create";
   dataProvider?: DataProvider;
   record?: Record<string, unknown>;
+  moduleSlug?: string;
+  recordId?: string;
   onChange: (next: PlanDocument) => void;
 };
 
-export default function PlanEditorView({ config, value, mode, dataProvider, record, onChange }: Props) {
+export default function PlanEditorView({ config, value, mode, dataProvider, record, moduleSlug, recordId, onChange }: Props) {
   const readOnly = mode === "view";
   const canvasRef = useRef<PlanCanvasHandle | null>(null);
   const [tool, setTool] = useState<PlanTool>("select");
@@ -478,6 +480,8 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
           uploader={config.options?.background?.uploader}
           calibration={config.options?.calibration}
           uploadFolder={`${config.sourceField || "plan-editor"}/background`}
+          moduleSlug={moduleSlug}
+          recordId={recordId}
           onChange={history.pushHistory}
         />
         <PlanLayersPanel document={document} readOnly={readOnly} onChange={history.pushHistory} />

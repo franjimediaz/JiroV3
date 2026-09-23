@@ -13,7 +13,7 @@ import { asRecord, requiredString } from "@/lib/validation/common";
 
 export const runtime = "nodejs";
 
-function permission(name: "create" | "delete") {
+function permission(name: "delete") {
   return configuredPermission(`FILES_${name.toUpperCase()}_PERMISSION`, `files.${name}`);
 }
 
@@ -50,20 +50,18 @@ export async function POST(req: Request) {
       throw badRequest("Parametros de storage no permitidos");
     }
     if (!(file instanceof File)) throw badRequest("No se recibio ningun archivo valido");
+    if (!moduleSlug) throw badRequest("moduleSlug es requerido");
 
     const uploadAction = recordId ? "actualizar" : "crear";
-    const ctx = moduleSlug
-      ? await requireModulePermission(moduleSlug, uploadAction)
-      : await requirePermission(permission("create"));
+    const ctx = await requireModulePermission(moduleSlug, uploadAction);
     actorId = ctx.user.id;
     await enforceRateLimit({ key: `upload:${ctx.user.id}`, limit: 20, windowMs: 60_000 });
 
     if (process.env.NODE_ENV !== "production") {
       console.info("upload authorization", {
         uid: ctx.user.id,
-        moduleSlug: moduleSlug || "files",
+        moduleSlug,
         requestedAction: uploadAction,
-        usedFallbackPermission: !moduleSlug,
         fieldName,
       });
     }

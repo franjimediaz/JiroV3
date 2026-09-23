@@ -15,7 +15,6 @@ describe("security hardening regression checks", () => {
     assert.match(permissions, /CONFIGURABLE_PERMISSION_PATTERN/);
     assert.match(permissions, /process\.env\[envName\]\?\.trim\(\)/);
     assert.match(permissions, /return CONFIGURABLE_PERMISSION_PATTERN\.test\(value\) \? value : fallback/);
-    assert.match(upload, /configuredPermission\(`FILES_\$\{name\.toUpperCase\(\)\}_PERMISSION`, `files\.\$\{name\}`\)/);
     assert.match(uploadUrl, /configuredPermission\("FILES_READ_PERMISSION", "files\.read"\)/);
     assert.doesNotMatch(uploadUrl, /process\.env\.FILES_READ_PERMISSION\s*\|\|/);
   });
@@ -28,9 +27,10 @@ describe("security hardening regression checks", () => {
     const fieldInput = source("packages/ui/src/components/fields/FieldInput.tsx");
     const form = source("packages/ui/src/Form.tsx");
 
+    assert.match(upload, /if \(!moduleSlug\) throw badRequest\("moduleSlug es requerido"\)/);
     assert.match(upload, /requireModulePermission\(moduleSlug,\s*uploadAction\)/);
     assert.match(upload, /recordId \? "actualizar" : "crear"/);
-    assert.match(upload, /requirePermission\(permission\("create"\)\)/);
+    assert.doesNotMatch(upload, /requirePermission\(permission\("create"\)\)/);
     assert.match(upload, /formData\.has\("bucket"\)/);
     assert.match(upload, /formData\.has\("folder"\)/);
     assert.match(upload, /formData\.has\("allowedMimeTypes"\)/);
