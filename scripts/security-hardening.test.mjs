@@ -25,7 +25,11 @@ describe("security hardening regression checks", () => {
     const validation = source("apps/web/lib/validation/upload.ts");
     const storagePath = source("apps/web/lib/security/safeStoragePath.ts");
     const uploadClient = source("packages/ui/src/components/fields/fileUploadUtils.ts");
+    const fieldInput = source("packages/ui/src/components/fields/FieldInput.tsx");
+    const form = source("packages/ui/src/Form.tsx");
 
+    assert.match(upload, /requireModulePermission\(moduleSlug,\s*uploadAction\)/);
+    assert.match(upload, /recordId \? "actualizar" : "crear"/);
     assert.match(upload, /requirePermission\(permission\("create"\)\)/);
     assert.match(upload, /formData\.has\("bucket"\)/);
     assert.match(upload, /formData\.has\("folder"\)/);
@@ -36,6 +40,11 @@ describe("security hardening regression checks", () => {
     assert.match(storagePath, /sanitizePathSegment\(args\.userId\)/);
     assert.match(storagePath, /return path\.split\("\/"\)\.includes\(userId\)/);
     assert.match(uploadClient, /extractApiErrorMessage/);
+    assert.match(uploadClient, /formData\.append\("moduleSlug"/);
+    assert.match(uploadClient, /formData\.append\("recordId"/);
+    assert.match(fieldInput, /\{ moduleSlug, recordId, fieldName: field\.name \}/);
+    assert.match(form, /moduleSlug=\{effectiveModuleSlug\}/);
+    assert.match(form, /recordId=\{effectiveRecordId\}/);
     assert.doesNotMatch(uploadClient, /String\(data\?\.error/);
     assert.doesNotMatch(uploadClient, /formData\.append\("folder"/);
   });

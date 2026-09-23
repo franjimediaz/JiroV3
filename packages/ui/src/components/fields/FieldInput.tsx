@@ -28,6 +28,8 @@ type Props = {
   onChange: (v: any) => void;
   readOnly?: boolean;
   uploadFolder?: string;
+  moduleSlug?: string;
+  recordId?: string;
   displayValue?: string;
   isDisplayLoading?: boolean;
   displayIcon?: string;
@@ -47,6 +49,8 @@ function FileFieldInput({
   onChange,
   readOnly,
   uploadFolder,
+  moduleSlug,
+  recordId,
   multiple,
   maxFiles,
 }: {
@@ -55,6 +59,8 @@ function FileFieldInput({
   onChange: (v: any) => void;
   readOnly?: boolean;
   uploadFolder?: string;
+  moduleSlug?: string;
+  recordId?: string;
   multiple?: boolean;
   maxFiles?: number;
 }) {
@@ -183,7 +189,9 @@ function setFiles(nextFiles: UploadedFileValue[]) {
                 file,
                 isImage ? "image" : "file",
                 effectiveFolder,
-                field.allowedMimeTypes || []
+                field.allowedMimeTypes || [],
+                undefined,
+                { moduleSlug, recordId, fieldName: field.name }
               );
 
               uploadedBatch.push(uploaded);
@@ -209,7 +217,9 @@ function setFiles(nextFiles: UploadedFileValue[]) {
               file,
               isImage ? "image" : "file",
               effectiveFolder,
-              field.allowedMimeTypes || []
+              field.allowedMimeTypes || [],
+              undefined,
+              { moduleSlug, recordId, fieldName: field.name }
             );
 
             setFiles([uploaded]);
@@ -501,6 +511,8 @@ export default function FieldInput({
   onChange,
   readOnly,
   uploadFolder,
+  moduleSlug,
+  recordId,
   displayValue,
   isDisplayLoading,
   displayIcon,
@@ -656,6 +668,8 @@ if (type === "number" || type === "money" || type === "percent") {
       onChange={onChange}
       readOnly={readOnly}
       uploadFolder={uploadFolder}
+      moduleSlug={moduleSlug}
+      recordId={recordId}
       multiple={!!(field as any).multiple}
       maxFiles={(field as any).maxFiles}
     />

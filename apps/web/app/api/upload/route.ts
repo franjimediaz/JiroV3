@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { configuredPermission, requirePermission } from "@/lib/auth/requirePermission";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 import { handleApiError } from "@/lib/auth/handleApiError";
 import { badRequest, forbidden } from "@/lib/auth/apiError";
 import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
@@ -25,6 +26,11 @@ function allowedBuckets() {
   return new Set(Object.keys(FILE_POLICIES).map((kind) => bucketForKind(kind as keyof typeof FILE_POLICIES)));
 }
 
+function formString(formData: FormData, name: string) {
+  const value = formData.get(name);
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export async function POST(req: Request) {
   const requestId = getRequestId(req);
   let actorId: string | null = null;
@@ -33,20 +39,34 @@ export async function POST(req: Request) {
     const ip = getClientIp(req);
     await enforceRateLimit({ key: `upload:${ip}`, limit: 30, windowMs: 60_000 });
 
-    const ctx = await requirePermission(permission("create"));
-    actorId = ctx.user.id;
-    await enforceRateLimit({ key: `upload:${ctx.user.id}`, limit: 20, windowMs: 60_000 });
-
     const formData = await req.formData();
     const file = formData.get("file");
     const kind = parseUploadKind(formData.get("kind"));
-    const moduleSlug = typeof formData.get("moduleSlug") === "string" ? String(formData.get("moduleSlug")) : undefined;
-    const recordId = typeof formData.get("recordId") === "string" ? String(formData.get("recordId")) : undefined;
+    const moduleSlug = formString(formData, "moduleSlug") || undefined;
+    const recordId = formString(formData, "recordId") || undefined;
+    const fieldName = formString(formData, "fieldName") || undefined;
 
     if (formData.has("bucket") || formData.has("folder") || formData.has("allowedMimeTypes")) {
       throw badRequest("Parametros de storage no permitidos");
     }
     if (!(file instanceof File)) throw badRequest("No se recibio ningun archivo valido");
+
+    const uploadAction = recordId ? "actualizar" : "crear";
+    const ctx = moduleSlug
+      ? await requireModulePermission(moduleSlug, uploadAction)
+      : await requirePermission(permission("create"));
+    actorId = ctx.user.id;
+    await enforceRateLimit({ key: `upload:${ctx.user.id}`, limit: 20, windowMs: 60_000 });
+
+    if (process.env.NODE_ENV !== "production") {
+      console.info("upload authorization", {
+        uid: ctx.user.id,
+        moduleSlug: moduleSlug || "files",
+        requestedAction: uploadAction,
+        usedFallbackPermission: !moduleSlug,
+        fieldName,
+      });
+    }
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const mimeType = validateFileAgainstPolicy(file, buffer, kind);

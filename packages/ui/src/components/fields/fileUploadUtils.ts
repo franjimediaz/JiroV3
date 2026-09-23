@@ -11,6 +11,12 @@ export type UploadedFileValue = {
   isPublic?: boolean;
 };
 
+export type UploadContext = {
+  moduleSlug?: string;
+  recordId?: string;
+  fieldName?: string;
+};
+
 export const MAX_IMAGE_SIZE_MB = 5;
 export const MAX_FILE_SIZE_MB = 10;
 
@@ -135,11 +141,15 @@ export async function uploadSingleFile(
   kind: "file" | "image",
   _folder = "general",
   _allowedMimeTypes: string[] = [],
-  endpoint = "/api/upload"
+  endpoint = "/api/upload",
+  context: UploadContext = {}
 ): Promise<UploadedFileValue> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("kind", kind);
+  if (context.moduleSlug?.trim()) formData.append("moduleSlug", context.moduleSlug.trim());
+  if (context.recordId?.trim()) formData.append("recordId", context.recordId.trim());
+  if (context.fieldName?.trim()) formData.append("fieldName", context.fieldName.trim());
 
   const res = await fetch(endpoint, {
     method: "POST",

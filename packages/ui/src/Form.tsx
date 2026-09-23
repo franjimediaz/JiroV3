@@ -923,6 +923,8 @@ export default function Form({
             }
             readOnly={readOnlyField}
             uploadFolder={moduleFolder}
+            moduleSlug={effectiveModuleSlug}
+            recordId={effectiveRecordId}
             displayValue={resolvedDisplay?.value}
             isDisplayLoading={isDisplayLoading}
             displayIcon={resolvedDisplay?.icon}
