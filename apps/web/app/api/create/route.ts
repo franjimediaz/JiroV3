@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
 import { requireModulePermission } from "@/lib/auth/requireModulePermission";
+import { handleApiError } from "@/lib/auth/handleApiError";
 
 type Body = {
   moduleSlug?: string;
@@ -9,11 +10,15 @@ type Body = {
 };
 
 export async function POST(req: Request) {
+  const requestId = crypto.randomUUID();
+  let moduleSlugForLog = "";
+
   try {
     const body = (await req.json()) as Body;
     const moduleSlug = body.moduleSlug?.trim();
     const legacyTable = body.table?.trim();
     const payload = body.data;
+    moduleSlugForLog = moduleSlug || legacyTable || "";
 
     if (!moduleSlug && !legacyTable) {
       return NextResponse.json({ ok: false, detail: "Falta 'moduleSlug'" }, { status: 400 });
@@ -82,9 +87,6 @@ export async function POST(req: Request) {
       legacyTableAccepted: !!legacyTable && !moduleSlug,
     });
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, detail: e?.message || "Error creando registro" },
-      { status: 500 }
-    );
+    return handleApiError(e, requestId, { route: "/api/create", method: "POST", moduleSlug: moduleSlugForLog });
   }
 }

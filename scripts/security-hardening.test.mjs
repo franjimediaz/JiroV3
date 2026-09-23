@@ -95,6 +95,8 @@ describe("security hardening regression checks", () => {
     const currentUser = source("apps/web/lib/auth/getCurrentUser.ts");
     const listRoute = source("apps/web/app/api/list/route.ts");
     const dpListRoute = source("apps/web/app/api/dp/list/route.ts");
+    const createRoute = source("apps/web/app/api/create/route.ts");
+    const aggregateRoute = source("apps/web/app/api/aggregate/route.ts");
     const proxy = source("apps/web/proxy.ts");
 
     assert.match(permissions, /ACTION_PERMISSION_MAP/);
@@ -117,6 +119,14 @@ describe("security hardening regression checks", () => {
     assert.match(dpListRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);
     assert.match(dpListRoute, /handleApiError\(error,\s*requestId,\s*\{ route: "\/api\/dp\/list"/);
 
+    assert.match(createRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"crear"\)/);
+    assert.match(createRoute, /handleApiError\(e,\s*requestId,\s*\{ route: "\/api\/create"/);
+    assert.doesNotMatch(createRoute, /catch \(e[\s\S]*status:\s*500[\s\S]*\)/);
+
+    assert.match(aggregateRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);
+    assert.match(aggregateRoute, /handleApiError\(e,\s*requestId,\s*\{ route: "\/api\/aggregate"/);
+    assert.doesNotMatch(aggregateRoute, /catch \(e[\s\S]*status:\s*500[\s\S]*\)/);
+
     assert.match(permissions, /requireUser\(\)/);
     assert.match(currentUser, /throw unauthorized\(\)/);
     assert.match(permissions, /throw forbidden\(\)/);
@@ -130,6 +140,39 @@ describe("security hardening regression checks", () => {
     assert.match(proxy, /isApiPath\(pathname\)/);
     assert.match(proxy, /NextResponse\.json\(/);
     assert.match(proxy, /status:\s*401/);
+  });
+
+  it("keeps role authorization smoke contracts stable for generic APIs and relations", () => {
+    const permissions = source("apps/web/lib/auth/requirePermission.ts");
+    const upload = source("apps/web/app/api/upload/route.ts");
+    const uploadUrl = source("apps/web/app/api/upload-url/route.ts");
+    const listRoute = source("apps/web/app/api/list/route.ts");
+    const dpListRoute = source("apps/web/app/api/dp/list/route.ts");
+    const createRoute = source("apps/web/app/api/create/route.ts");
+    const aggregateRoute = source("apps/web/app/api/aggregate/route.ts");
+    const relationDisplay = source("packages/ui/src/utils/relationDisplay.tsx");
+    const currentUser = source("apps/web/lib/auth/getCurrentUser.ts");
+
+    assert.match(permissions, /create:\s*"crear"/);
+    assert.match(permissions, /update:\s*"actualizar"/);
+    assert.match(permissions, /delete:\s*"eliminar"/);
+
+    assert.match(listRoute, /requireModulePermission\(moduleSlug,\s*"ver"\)/);
+    assert.match(dpListRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);
+    assert.match(aggregateRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);
+    assert.match(createRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"crear"\)/);
+
+    assert.match(upload, /if \(!moduleSlug\) throw badRequest\("moduleSlug es requerido"\)/);
+    assert.match(upload, /const uploadAction = recordId \? "actualizar" : "crear"/);
+    assert.match(upload, /requireModulePermission\(moduleSlug,\s*uploadAction\)/);
+    assert.match(uploadUrl, /requirePermission\(configuredPermission\("FILES_READ_PERMISSION", "files\.read"\)\)/);
+
+    assert.match(relationDisplay, /catch \(error\)/);
+    assert.match(relationDisplay, /statusPatch\[getRelationCacheKey\(bucket\.config,\s*id\)\] = "failed"/);
+    assert.doesNotMatch(relationDisplay, /throw error/);
+
+    assert.doesNotMatch(currentUser, /usuarios_roles/);
+    assert.doesNotMatch(permissions, /usuarios_roles/);
   });
 
   it("keeps PDF generation isolated behind auth, resource allowlists, size limits, and concurrency limits", () => {
@@ -168,5 +211,28 @@ describe("security hardening regression checks", () => {
     assert.doesNotMatch(migration, /with check \(true\)/i);
     assert.match(docs, /audit_events/);
     assert.match(docs, /metadata table/i);
+  });
+
+  it("audits sensitive backend operations without letting audit failures drive the main response", () => {
+    const writer = source("apps/web/lib/audit/writeAuditEvent.ts");
+    const upload = source("apps/web/app/api/upload/route.ts");
+    const uploadUrl = source("apps/web/app/api/upload-url/route.ts");
+    const userCreate = source("apps/web/app/api/users/create/route.ts");
+    const roleUpdate = source("apps/web/app/api/admin/users/role/route.ts");
+    const workflows = source("apps/web/app/api/workflows/run/route.ts");
+
+    assert.match(writer, /catch\s*(?:\([^)]*\))?\s*\{/);
+    assert.doesNotMatch(writer, /throw error/);
+
+    assert.match(upload, /action:\s*"file\.upload"[\s\S]*success:\s*true/);
+    assert.match(upload, /action:\s*"file\.upload"[\s\S]*success:\s*false/);
+    assert.match(uploadUrl, /action:\s*"file\.signed_url"[\s\S]*success:\s*true/);
+    assert.match(uploadUrl, /action:\s*"file\.signed_url"[\s\S]*success:\s*false/);
+    assert.match(userCreate, /action:\s*"users\.create"[\s\S]*success:\s*true/);
+    assert.match(userCreate, /action:\s*"users\.create"[\s\S]*success:\s*false/);
+    assert.match(roleUpdate, /action:\s*"users\.roles\.update"[\s\S]*success:\s*true/);
+    assert.match(roleUpdate, /action:\s*"users\.roles\.update"[\s\S]*success:\s*false/);
+    assert.match(workflows, /action:\s*"workflows\.run"[\s\S]*success:\s*true/);
+    assert.match(workflows, /action:\s*"workflows\.run"[\s\S]*success:\s*false/);
   });
 });
