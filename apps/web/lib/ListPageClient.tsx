@@ -74,10 +74,20 @@ export default function ListPageClient({
       return;
     }
 
-    const supabase = createClient();
-    const { error } = await supabase.from(table).delete().eq(primaryKey, row?.[primaryKey]);
-    if (error) {
-      alert(`No se pudo eliminar: ${error.message}`);
+    const response = await fetch("/api/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        moduleSlug,
+        id: row?.[primaryKey],
+      }),
+    });
+    const text = await response.text();
+    const json = text ? JSON.parse(text) : {};
+
+    if (!response.ok || !json?.ok) {
+      const message = json?.error?.message || json?.detail || json?.error || text || "No se pudo eliminar";
+      alert(`No se pudo eliminar: ${message}`);
       return;
     }
 

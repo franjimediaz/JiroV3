@@ -97,6 +97,8 @@ describe("security hardening regression checks", () => {
     const dpListRoute = source("apps/web/app/api/dp/list/route.ts");
     const dpLabelsRoute = source("apps/web/app/api/dp/labels/route.ts");
     const createRoute = source("apps/web/app/api/create/route.ts");
+    const updateRoute = source("apps/web/app/api/update/route.ts");
+    const deleteRoute = source("apps/web/app/api/delete/route.ts");
     const aggregateRoute = source("apps/web/app/api/aggregate/route.ts");
     const proxy = source("apps/web/proxy.ts");
 
@@ -131,6 +133,12 @@ describe("security hardening regression checks", () => {
     assert.match(createRoute, /handleApiError\(e,\s*requestId,\s*\{ route: "\/api\/create"/);
     assert.doesNotMatch(createRoute, /catch \(e[\s\S]*status:\s*500[\s\S]*\)/);
 
+    assert.match(updateRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"actualizar"\)/);
+    assert.match(updateRoute, /handleApiError\(e,\s*requestId,\s*\{ route: "\/api\/update"/);
+
+    assert.match(deleteRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"eliminar"\)/);
+    assert.match(deleteRoute, /handleApiError\(e,\s*requestId,\s*\{ route: "\/api\/delete"/);
+
     assert.match(aggregateRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);
     assert.match(aggregateRoute, /handleApiError\(e,\s*requestId,\s*\{ route: "\/api\/aggregate"/);
     assert.doesNotMatch(aggregateRoute, /catch \(e[\s\S]*status:\s*500[\s\S]*\)/);
@@ -158,6 +166,8 @@ describe("security hardening regression checks", () => {
     const dpListRoute = source("apps/web/app/api/dp/list/route.ts");
     const dpLabelsRoute = source("apps/web/app/api/dp/labels/route.ts");
     const createRoute = source("apps/web/app/api/create/route.ts");
+    const updateRoute = source("apps/web/app/api/update/route.ts");
+    const deleteRoute = source("apps/web/app/api/delete/route.ts");
     const aggregateRoute = source("apps/web/app/api/aggregate/route.ts");
     const relationDisplay = source("packages/ui/src/utils/relationDisplay.tsx");
     const currentUser = source("apps/web/lib/auth/getCurrentUser.ts");
@@ -175,6 +185,8 @@ describe("security hardening regression checks", () => {
     assert.match(dpLabelsRoute, /\.from\(resolved\.table\)/);
     assert.match(aggregateRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);
     assert.match(createRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"crear"\)/);
+    assert.match(updateRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"actualizar"\)/);
+    assert.match(deleteRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"eliminar"\)/);
 
     assert.match(upload, /if \(!moduleSlug\) throw badRequest\("moduleSlug es requerido"\)/);
     assert.match(upload, /const uploadAction = recordId \? "actualizar" : "crear"/);
@@ -234,6 +246,12 @@ describe("security hardening regression checks", () => {
     const userCreate = source("apps/web/app/api/users/create/route.ts");
     const roleUpdate = source("apps/web/app/api/admin/users/role/route.ts");
     const workflows = source("apps/web/app/api/workflows/run/route.ts");
+    const createRoute = source("apps/web/app/api/create/route.ts");
+    const updateRoute = source("apps/web/app/api/update/route.ts");
+    const deleteRoute = source("apps/web/app/api/delete/route.ts");
+    const formClient = source("apps/web/lib/FormClient.tsx");
+    const listClient = source("apps/web/lib/ListPageClient.tsx");
+    const modulosAction = source("apps/web/actions/modulos.ts");
 
     assert.match(writer, /catch\s*(?:\([^)]*\))?\s*\{/);
     assert.doesNotMatch(writer, /throw error/);
@@ -248,5 +266,29 @@ describe("security hardening regression checks", () => {
     assert.match(roleUpdate, /action:\s*"users\.roles\.update"[\s\S]*success:\s*false/);
     assert.match(workflows, /action:\s*"workflows\.run"[\s\S]*success:\s*true/);
     assert.match(workflows, /action:\s*"workflows\.run"[\s\S]*success:\s*false/);
+
+    assert.match(createRoute, /action:\s*"record\.create"[\s\S]*success:\s*true/);
+    assert.match(createRoute, /action:\s*"record\.create"[\s\S]*success:\s*false/);
+    assert.match(updateRoute, /action:\s*"record\.update"[\s\S]*success:\s*true/);
+    assert.match(updateRoute, /action:\s*"record\.update"[\s\S]*success:\s*false/);
+    assert.match(deleteRoute, /action:\s*"record\.delete"[\s\S]*success:\s*true/);
+    assert.match(deleteRoute, /action:\s*"record\.delete"[\s\S]*success:\s*false/);
+    assert.match(modulosAction, /action:\s*`module\.\$\{operation\}`/);
+    assert.match(modulosAction, /success,\s*metadata:/);
+
+    assert.match(createRoute, /requestId,\s*success:\s*true/);
+    assert.match(createRoute, /requestId,\s*success:\s*false/);
+    assert.match(updateRoute, /requestId,\s*success:\s*true/);
+    assert.match(deleteRoute, /requestId,\s*success:\s*false/);
+    assert.match(createRoute, /fieldNames:\s*auditFieldNames/);
+    assert.match(updateRoute, /fieldNames:\s*auditFieldNames/);
+    assert.doesNotMatch(createRoute, /metadata:\s*\{[\s\S]*payload/);
+    assert.doesNotMatch(updateRoute, /metadata:\s*\{[\s\S]*payload/);
+    assert.doesNotMatch(deleteRoute, /metadata:\s*\{[\s\S]*payload/);
+    assert.match(modulosAction, /fieldNames:\s*FIELD_NAMES/);
+
+    assert.match(formClient, /postMutation\("\/api\/create"/);
+    assert.match(formClient, /postMutation\("\/api\/update"/);
+    assert.match(listClient, /fetch\("\/api\/delete"/);
   });
 });
