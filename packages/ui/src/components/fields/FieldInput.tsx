@@ -946,13 +946,12 @@ function legacyGetAcceptValue(field: Field, isImage: boolean) {
 async function legacyUploadSingleFile(
   file: File,
   kind: "file" | "image",
-  folder = "general",
+  _folder = "general",
   allowedMimeTypes: string[] = []
 ): Promise<UploadedFileValue> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("kind", kind);
-  formData.append("folder", folder);
 
   const res = await fetch("/api/upload", {
     method: "POST",

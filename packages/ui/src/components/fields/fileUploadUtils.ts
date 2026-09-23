@@ -53,6 +53,22 @@ export function buildPublicSupabaseUrl(bucket: string, path: string) {
   return `${base}/storage/v1/object/public/${bucket}/${path}`;
 }
 
+export function extractApiErrorMessage(data: unknown, rawText: string, fallback: string) {
+  if (data && typeof data === "object") {
+    const record = data as Record<string, unknown>;
+    if (typeof record.error === "string") return record.error;
+    if (record.error && typeof record.error === "object") {
+      const errorRecord = record.error as Record<string, unknown>;
+      if (typeof errorRecord.message === "string") return errorRecord.message;
+      if (typeof errorRecord.code === "string") return errorRecord.code;
+    }
+    if (typeof record.detail === "string") return record.detail;
+    if (typeof record.message === "string") return record.message;
+  }
+
+  return rawText || fallback;
+}
+
 export async function deleteStoredFile(fileValue?: UploadedFileValue | null, endpoint = "/api/upload") {
   if (!fileValue?.bucket || !fileValue?.path) return { ok: true };
 
@@ -70,7 +86,7 @@ export async function deleteStoredFile(fileValue?: UploadedFileValue | null, end
   const data = await res.json().catch(() => null);
 
   if (!res.ok) {
-    throw new Error(data?.error || "No se pudo eliminar el archivo anterior");
+    throw new Error(extractApiErrorMessage(data, "", "No se pudo eliminar el archivo anterior"));
   }
 
   return data;
@@ -92,7 +108,7 @@ export async function getSignedFileUrl(bucket: string, path: string, expiresIn =
   const data = await res.json();
 
   if (!res.ok) {
-    throw new Error(data?.error || "No se pudo obtener la URL firmada");
+    throw new Error(extractApiErrorMessage(data, "", "No se pudo obtener la URL firmada"));
   }
 
   return data.signedUrl as string;
@@ -117,14 +133,13 @@ export function getAcceptValue(_field: Pick<Field, "allowedMimeTypes">, isImage:
 export async function uploadSingleFile(
   file: File,
   kind: "file" | "image",
-  folder = "general",
+  _folder = "general",
   _allowedMimeTypes: string[] = [],
   endpoint = "/api/upload"
 ): Promise<UploadedFileValue> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("kind", kind);
-  formData.append("folder", folder);
 
   const res = await fetch(endpoint, {
     method: "POST",
@@ -144,7 +159,15 @@ export async function uploadSingleFile(
   }
 
   if (!res.ok) {
-    throw new Error(String(data?.error || rawText || "No se pudo subir el archivo"));
+    const message = extractApiErrorMessage(data, rawText, "No se pudo subir el archivo");
+    if (process.env.NODE_ENV !== "production") {
+      console.error("uploadSingleFile failed", {
+        status: res.status,
+        error: message,
+        response: data ?? rawText,
+      });
+    }
+    throw new Error(message);
   }
 
   return {

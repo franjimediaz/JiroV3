@@ -24,6 +24,7 @@ describe("security hardening regression checks", () => {
     const upload = source("apps/web/app/api/upload/route.ts");
     const validation = source("apps/web/lib/validation/upload.ts");
     const storagePath = source("apps/web/lib/security/safeStoragePath.ts");
+    const uploadClient = source("packages/ui/src/components/fields/fileUploadUtils.ts");
 
     assert.match(upload, /requirePermission\(permission\("create"\)\)/);
     assert.match(upload, /formData\.has\("bucket"\)/);
@@ -34,6 +35,9 @@ describe("security hardening regression checks", () => {
     assert.match(validation, /file\.type && file\.type !== detectedMime/);
     assert.match(storagePath, /sanitizePathSegment\(args\.userId\)/);
     assert.match(storagePath, /return path\.split\("\/"\)\.includes\(userId\)/);
+    assert.match(uploadClient, /extractApiErrorMessage/);
+    assert.doesNotMatch(uploadClient, /String\(data\?\.error/);
+    assert.doesNotMatch(uploadClient, /formData\.append\("folder"/);
   });
 
   it("requires user-scoped signed-url and delete paths", () => {
