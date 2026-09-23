@@ -95,6 +95,7 @@ describe("security hardening regression checks", () => {
     const currentUser = source("apps/web/lib/auth/getCurrentUser.ts");
     const listRoute = source("apps/web/app/api/list/route.ts");
     const dpListRoute = source("apps/web/app/api/dp/list/route.ts");
+    const dpLabelsRoute = source("apps/web/app/api/dp/labels/route.ts");
     const createRoute = source("apps/web/app/api/create/route.ts");
     const aggregateRoute = source("apps/web/app/api/aggregate/route.ts");
     const proxy = source("apps/web/proxy.ts");
@@ -118,6 +119,13 @@ describe("security hardening regression checks", () => {
 
     assert.match(dpListRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);
     assert.match(dpListRoute, /handleApiError\(error,\s*requestId,\s*\{ route: "\/api\/dp\/list"/);
+
+    assert.match(dpLabelsRoute, /resolveModuleConfig\(moduleKey\)/);
+    assert.match(dpLabelsRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);
+    assert.match(dpLabelsRoute, /handleApiError\(error,\s*requestId,\s*\{ route: "\/api\/dp\/labels"/);
+    assert.doesNotMatch(dpLabelsRoute, /catch \(error[\s\S]*status:\s*500[\s\S]*\)/);
+    assert.doesNotMatch(dpLabelsRoute, /supabaseAdmin|service_role/i);
+    assert.doesNotMatch(dpLabelsRoute, /\.from\(table\)/);
 
     assert.match(createRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"crear"\)/);
     assert.match(createRoute, /handleApiError\(e,\s*requestId,\s*\{ route: "\/api\/create"/);
@@ -148,6 +156,7 @@ describe("security hardening regression checks", () => {
     const uploadUrl = source("apps/web/app/api/upload-url/route.ts");
     const listRoute = source("apps/web/app/api/list/route.ts");
     const dpListRoute = source("apps/web/app/api/dp/list/route.ts");
+    const dpLabelsRoute = source("apps/web/app/api/dp/labels/route.ts");
     const createRoute = source("apps/web/app/api/create/route.ts");
     const aggregateRoute = source("apps/web/app/api/aggregate/route.ts");
     const relationDisplay = source("packages/ui/src/utils/relationDisplay.tsx");
@@ -159,6 +168,11 @@ describe("security hardening regression checks", () => {
 
     assert.match(listRoute, /requireModulePermission\(moduleSlug,\s*"ver"\)/);
     assert.match(dpListRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);
+    assert.match(dpLabelsRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);
+    assert.match(dpLabelsRoute, /if \(!moduleKey\)/);
+    assert.match(dpLabelsRoute, /throw badRequest\("moduleSlug es requerido"\)/);
+    assert.match(dpLabelsRoute, /legacyTable && legacyTable !== resolved\.table && legacyTable !== resolved\.slug/);
+    assert.match(dpLabelsRoute, /\.from\(resolved\.table\)/);
     assert.match(aggregateRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);
     assert.match(createRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"crear"\)/);
 
