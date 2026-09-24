@@ -345,4 +345,66 @@ describe("security hardening regression checks", () => {
     assert.match(policy, /MODULE_AUDIT_EVENT_OPTIONS[\s\S]*Subir archivos/);
     assert.match(auditPolicyTest, /updates only props\.audit and preserves the rest of props/);
   });
+
+  it("applies module capabilities to the active module UI and generic mutation APIs", () => {
+    const moduleForm = source("packages/ui/src/ModuloForm/ModuloForm.tsx");
+    const listView = source("packages/ui/src/ListView.tsx");
+    const listClient = source("apps/web/lib/ListPageClient.tsx");
+    const formClient = source("apps/web/lib/FormClient.tsx");
+    const createRoute = source("apps/web/app/api/create/route.ts");
+    const updateRoute = source("apps/web/app/api/update/route.ts");
+    const deleteRoute = source("apps/web/app/api/delete/route.ts");
+    const policy = source("packages/types/moduleCapabilities.ts");
+    const capabilityTest = source("scripts/module-capabilities.test.mjs");
+
+    assert.match(moduleForm, /MODULE_CAPABILITY_OPTIONS/);
+    assert.match(moduleForm, /<h4[^>]*>Operaciones permitidas<\/h4>/);
+    assert.match(moduleForm, /Estas opciones definen que funciones ofrece el modulo/);
+    assert.match(moduleForm, /applyModuleCapabilitiesToProps\(propsObj/);
+    assert.match(listView, /getEffectiveModuleCapabilities\(normalizedSchema\)/);
+    assert.match(listView, /capabilities\.allowSearch && filterFields\.length > 0/);
+
+    assert.match(listClient, /isModuleActionAvailable\(schema,\s*"crear"/);
+    assert.match(listClient, /isModuleActionAvailable\(schema,\s*"actualizar"/);
+    assert.match(listClient, /isModuleActionAvailable\(schema,\s*"eliminar"/);
+    assert.match(listClient, /isModuleActionAvailable\(schema,\s*"exportar"/);
+    assert.match(listClient, /isModuleActionAvailable\(schema,\s*"importar"/);
+    assert.match(listClient, /onCreate=\{canCreate \? handleCreate : undefined\}/);
+    assert.match(listClient, /onExport=\{canExport \? handleExport : undefined\}/);
+    assert.match(listClient, /onImport=\{canImport \? handleImport : undefined\}/);
+
+    assert.match(formClient, /capabilities\.allowEdit/);
+    assert.match(formClient, /isModuleActionAvailable\(schema,\s*"actualizar"/);
+    assert.match(formClient, /const effectiveMode:\s*Mode\s*=\s*mode === "edit" && !canEdit \? "view" : mode/);
+    assert.match(formClient, /mode=\{effectiveMode\}/);
+    assert.match(formClient, /canEdit=\{canEdit\}/);
+    assert.match(formClient, /onEdit=\{canEdit \? onEdit : undefined\}/);
+    assert.match(createRoute, /moduleCapabilityEnabled\(resolved\.schema,\s*"allowCreate"\)/);
+    assert.match(updateRoute, /moduleCapabilityEnabled\(resolved\.schema,\s*"allowEdit"\)/);
+    assert.match(deleteRoute, /moduleCapabilityEnabled\(resolved\.schema,\s*"allowDelete"\)/);
+    assert.match(createRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"crear"\)[\s\S]*moduleCapabilityEnabled/);
+    assert.match(updateRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"actualizar"\)[\s\S]*moduleCapabilityEnabled/);
+    assert.match(deleteRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"eliminar"\)[\s\S]*moduleCapabilityEnabled/);
+
+    assert.match(policy, /DEFAULT_MODULE_CAPABILITIES[\s\S]*allowCreate:\s*true/);
+    assert.match(policy, /MODULE_CAPABILITY_BY_ACTION[\s\S]*exportar:\s*"allowExport"/);
+    assert.match(policy, /isModuleActionAvailable/);
+    assert.match(capabilityTest, /allowExport: true[\s\S]*"exportar", true\), true/);
+    assert.match(capabilityTest, /allowImport: false[\s\S]*"importar", true\), false/);
+    assert.match(capabilityTest, /uses allowEdit and actualizar together for form edit visibility/);
+    assert.match(capabilityTest, /updates only props\.capabilities and preserves other module props/);
+  });
+
+  it("keeps the record form edit action behind the shared edit capability rule", () => {
+    const form = source("packages/ui/src/Form.tsx");
+    const formClient = source("apps/web/lib/FormClient.tsx");
+
+    assert.match(form, /canEdit\?: boolean/);
+    assert.match(form, /canEdit = true/);
+    assert.match(form, /if \(!canEdit\) return/);
+    assert.match(form, /effectiveMode === "view" && canEdit/);
+    assert.match(formClient, /const canEdit = isModuleActionAvailable\(schema,\s*"actualizar",\s*hasPermiso\(resolved\.slug,\s*"actualizar" as any\)\)/);
+    assert.match(formClient, /const effectiveMode:\s*Mode\s*=\s*mode === "edit" && !canEdit \? "view" : mode/);
+    assert.match(formClient, /<RequirePerms modulo=\{resolved\.slug\} accion=\{requiredAction as any\}>/);
+  });
 });

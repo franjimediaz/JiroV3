@@ -55,6 +55,7 @@ type Props = {
   mode?: Mode;
   onSubmit?: (values: any) => void;
   onBack?: () => void;
+  canEdit?: boolean;
   onEdit?: () => void;
   dataProvider?: DataProvider;
   treeViewProvider?: TreeViewDataProvider;
@@ -231,6 +232,7 @@ export default function Form({
   mode,
   onSubmit,
   onBack,
+  canEdit = true,
   onEdit,
   dataProvider = defaultDataProvider,
   treeViewProvider,
@@ -830,6 +832,7 @@ export default function Form({
   };
 
   const handleEdit = () => {
+    if (!canEdit) return;
     if (onEdit) return onEdit();
 
     if (typeof window !== "undefined") {
@@ -845,7 +848,7 @@ export default function Form({
         Volver
       </button>
 
-      {effectiveMode === "view" && (
+      {effectiveMode === "view" && canEdit && (
         <button type="button" className="btn btn-warning px-4" onClick={handleEdit}>
           Editar
         </button>

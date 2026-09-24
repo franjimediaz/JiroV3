@@ -4,8 +4,8 @@ import { useState, useTransition, useEffect, useRef, useCallback} from "react";
 import styles from "./modulo-detalle.module.css";
 import  Selector from "../components/fields/Selector";
 import {IconPicker} from "@repo/ui";
-import type { CalendarSpecialViewConfig, CalendarViewMode, ConfigurableAuditEvent, Field as FieldSchema, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
-import { applyModuleAuditConfigToProps, getEffectiveModuleAuditConfig, MODULE_AUDIT_EVENT_OPTIONS, normalizeModuleDefaultFilters, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
+import type { CalendarSpecialViewConfig, CalendarViewMode, ConfigurableAuditEvent, Field as FieldSchema, ModuleCapabilityKey, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
+import { applyModuleAuditConfigToProps, applyModuleCapabilitiesToProps, getEffectiveModuleAuditConfig, getEffectiveModuleCapabilities, MODULE_AUDIT_EVENT_OPTIONS, MODULE_CAPABILITY_OPTIONS, normalizeModuleDefaultFilters, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
 import { FieldRow, VisibilityConfigEditor } from "./FieldRow"
 import ModuleDefaultFiltersBuilder from "./ModuleDefaultFiltersBuilder";
@@ -1328,6 +1328,17 @@ const setAuditEvent = (event: ConfigurableAuditEvent, checked: boolean) => {
   });
 };
 
+const moduleCapabilities = getEffectiveModuleCapabilities(propsObj);
+
+const setModuleCapability = (key: ModuleCapabilityKey, checked: boolean) => {
+  const next = applyModuleCapabilitiesToProps(propsObj, {
+    ...moduleCapabilities,
+    [key]: checked,
+  });
+  setPropsObj(next);
+  setRawText(JSON.stringify(next, null, 2));
+};
+
 const [editorTab, setEditorTab] = useState<
   "general" | "db" | "ui" | "audit" | "fields" | "layout" | "views" | "json"
 >("general");
@@ -1514,6 +1525,26 @@ const editorTabs = [
             }}
             {...readOnlyAttr}
           />
+        </div>
+      </div>
+
+      <div className={styles.card} style={{ marginTop: 12 }}>
+        <h4 style={{ marginTop: 0 }}>Operaciones permitidas</h4>
+        <div className={styles.help} style={{ marginBottom: 10 }}>
+          Estas opciones definen que funciones ofrece el modulo. Los permisos de cada usuario se aplican adicionalmente segun su rol.
+        </div>
+        <div className={styles.grid}>
+          {MODULE_CAPABILITY_OPTIONS.map((option) => (
+            <label key={option.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={moduleCapabilities[option.key]}
+                disabled={readOnly}
+                onChange={(e) => setModuleCapability(option.key, e.target.checked)}
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
         </div>
       </div>
 

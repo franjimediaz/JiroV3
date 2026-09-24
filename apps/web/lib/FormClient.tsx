@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseTreeViewProvider } from "@/lib/utils/treeViewProvider";
 import { Form } from "@repo/ui";
+import { getEffectiveModuleCapabilities, isModuleActionAvailable } from "@repo/types";
 import type { ModuleSchema } from "@repo/types";
 import { RequirePerms, usePerms } from "@/lib/perms";
 
@@ -187,13 +188,20 @@ export default function FormClient({
     [schema, moduleSlug, modulesBySlug, baseRoute]
   );
 
-  const requiredAction = accionPorModo(mode);
+  const capabilities = getEffectiveModuleCapabilities(schema);
+  const canEdit = isModuleActionAvailable(schema, "actualizar", hasPermiso(resolved.slug, "actualizar" as any));
+  const effectiveMode: Mode = mode === "edit" && !canEdit ? "view" : mode;
+  const requiredAction = accionPorModo(effectiveMode);
+  const capabilityAllowed =
+    effectiveMode === "create" ? capabilities.allowCreate :
+    effectiveMode === "edit" ? capabilities.allowEdit :
+    true;
 
   const onSubmit = (values: any) => {
     start(async () => {
       try {
         // 1) check UX permiso (la RLS también manda, pero esto evita clicks tontos)
-        if (!hasPermiso(resolved.slug, requiredAction as any)) {
+        if (!capabilityAllowed || !hasPermiso(resolved.slug, requiredAction as any)) {
           alert("No tienes permisos para esta acción.");
           return;
         }
@@ -202,7 +210,7 @@ export default function FormClient({
         const payload = pickPersistablePayload(sanitized, schema);
 
         // 2) update / insert
-        if (mode === "edit") {
+        if (effectiveMode === "edit") {
           const id = initialData?.[resolved.primaryKey];
           if (!id) throw new Error("Falta el ID para editar");
 
@@ -220,7 +228,7 @@ export default function FormClient({
           return;
         }
 
-        if (mode === "create") {
+        if (effectiveMode === "create") {
           // insert y volver al detalle
           // Nota: si tu PK es uuid autogenerado, necesitarás .select() para obtenerlo
           const result = await postMutation("/api/create", {
@@ -250,6 +258,7 @@ export default function FormClient({
   // opcional: botones custom de volver/editar (si no los quieres, los quitas)
   const onBack = () => router.back();
   const onEdit = () => {
+    if (!canEdit) return;
     // Si estás en view, al editar añade ?edit=true
     const url = new URL(window.location.href);
     url.searchParams.set("edit", "true");
@@ -266,10 +275,11 @@ export default function FormClient({
           initialData={initialData}
           recordId={initialData?.[resolved.primaryKey] ?? initialData?.id}
           moduleSlug={resolved.slug}
-          mode={mode}
+          mode={effectiveMode}
           onSubmit={onSubmit}
           onBack={onBack}
-          onEdit={onEdit}
+          canEdit={canEdit}
+          onEdit={canEdit ? onEdit : undefined}
           // treeview
           modulesBySlug={modulesBySlug}
           schemasBySlug={schemasBySlug}

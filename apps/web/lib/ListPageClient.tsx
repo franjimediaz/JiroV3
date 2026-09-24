@@ -2,6 +2,7 @@
 
 import { useRef, useState, type ChangeEvent } from "react";
 import { ListView } from "@repo/ui";
+import { getEffectiveModuleCapabilities, isModuleActionAvailable } from "@repo/types";
 import type { ListViewExportPayload, ModuleSchema } from "@repo/types";
 import { useRouter } from "next/navigation";
 import { RequirePerms, usePerms } from "@/lib/perms";
@@ -40,9 +41,16 @@ export default function ListPageClient({
   const [importing, setImporting] = useState(false);
   const table = String(schema.db.table || "").trim();
   const primaryKey = schema.db.primaryKey || "id";
+  const capabilities = getEffectiveModuleCapabilities(schema);
+  const canView = hasPermiso(moduleSlug, "ver");
+  const canCreate = isModuleActionAvailable(schema, "crear", hasPermiso(moduleSlug, "crear"));
+  const canEdit = isModuleActionAvailable(schema, "actualizar", hasPermiso(moduleSlug, "actualizar"));
+  const canDelete = isModuleActionAvailable(schema, "eliminar", hasPermiso(moduleSlug, "eliminar"));
+  const canExport = isModuleActionAvailable(schema, "exportar", hasPermiso(moduleSlug, "exportar"));
+  const canImport = isModuleActionAvailable(schema, "importar", hasPermiso(moduleSlug, "importar"));
 
   const handleDelete = async (row: any) => {
-    if (!hasPermiso(moduleSlug, "eliminar")) {
+    if (!capabilities.allowDelete || !hasPermiso(moduleSlug, "eliminar")) {
       await inform({
         title: "Accion no permitida",
         message: `No tienes permisos para eliminar este ${titleSingular}.`,
@@ -110,7 +118,7 @@ export default function ListPageClient({
   };
 
   const handleEdit = async (row: any) => {
-    if (!hasPermiso(moduleSlug, "actualizar")) {
+    if (!capabilities.allowEdit || !hasPermiso(moduleSlug, "actualizar")) {
       await inform({
         title: "Accion no permitida",
         message: `No tienes permisos para editar este ${titleSingular}.`,
@@ -125,7 +133,7 @@ export default function ListPageClient({
   };
 
   const handleCreate = async () => {
-    if (!hasPermiso(moduleSlug, "crear")) {
+    if (!capabilities.allowCreate || !hasPermiso(moduleSlug, "crear")) {
       await inform({
         title: "Accion no permitida",
         message: `No tienes permisos para crear un nuevo ${titleSingular}.`,
@@ -140,7 +148,7 @@ export default function ListPageClient({
   };
 
   const handleExport = async (payload: ListViewExportPayload) => {
-    if (!hasPermiso(moduleSlug, "exportar")) {
+    if (!capabilities.allowExport || !hasPermiso(moduleSlug, "exportar")) {
       await inform({
         title: "Accion no permitida",
         message: `No tienes permisos para exportar ${titleSingular}.`,
@@ -187,7 +195,7 @@ export default function ListPageClient({
   };
 
   const handleImport = async () => {
-    if (!hasPermiso(moduleSlug, "importar")) {
+    if (!capabilities.allowImport || !hasPermiso(moduleSlug, "importar")) {
       await inform({
         title: "Accion no permitida",
         message: `No tienes permisos para importar registros en ${titleSingular}.`,
@@ -318,12 +326,12 @@ export default function ListPageClient({
         <ListView
           schema={schema}
           data={rows}
-          onViewRow={handleView}
-          onEditRow={handleEdit}
-          onDeleteRow={handleDelete}
-          onCreate={handleCreate}
-          onExport={handleExport}
-          onImport={handleImport}
+          onViewRow={canView ? handleView : undefined}
+          onEditRow={canEdit ? handleEdit : undefined}
+          onDeleteRow={canDelete ? handleDelete : undefined}
+          onCreate={canCreate ? handleCreate : undefined}
+          onExport={canExport ? handleExport : undefined}
+          onImport={canImport ? handleImport : undefined}
           exportLoading={exporting}
           importLoading={importing}
         />

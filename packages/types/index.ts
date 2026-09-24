@@ -134,4 +134,21 @@ export type {
   ModuleAuditProps,
   EffectiveModuleAuditConfig,
 } from "./auditPolicy";
+export {
+  MODULE_CAPABILITY_KEYS,
+  MODULE_CAPABILITY_BY_ACTION,
+  DEFAULT_MODULE_CAPABILITIES,
+  MODULE_CAPABILITY_OPTIONS,
+  getEffectiveModuleCapabilities,
+  buildModuleCapabilitiesConfig,
+  applyModuleCapabilitiesToProps,
+  moduleCapabilityEnabled,
+  isModuleActionAvailable,
+} from "./moduleCapabilities";
+export type {
+  ModuleCapabilityKey,
+  ModuleCapabilityAction,
+  ModuleCapabilities,
+  ModuleCapabilitiesProps,
+} from "./moduleCapabilities";
 
