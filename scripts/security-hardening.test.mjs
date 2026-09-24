@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 const root = process.cwd();
 const source = (path) => readFileSync(join(root, path), "utf8");
+const countMatches = (text, pattern) => Array.from(text.matchAll(pattern)).length;
 
 describe("security hardening regression checks", () => {
   it("validates configurable permission env vars instead of treating them as authorization bypasses", () => {
@@ -231,6 +232,7 @@ describe("security hardening regression checks", () => {
     assert.match(policy, /CONFIGURABLE_AUDIT_EVENTS/);
     assert.match(policy, /DEFAULT_MODULE_AUDIT_EVENTS/);
     assert.match(policy, /MANDATORY_AUDIT_EVENTS/);
+    assert.match(policy, /DEFAULT_MODULE_AUDIT_EVENTS[\s\S]*"record\.create"[\s\S]*"record\.update"[\s\S]*"record\.delete"[\s\S]*"file\.upload"/);
     assert.match(policy, /"record\.read"/);
     assert.match(policy, /"file\.upload"/);
     assert.match(policy, /"users\.create"/);
@@ -280,6 +282,14 @@ describe("security hardening regression checks", () => {
     assert.match(updateRoute, /shouldAuditEvent\(resolved\.schema,\s*"record\.update"\)/);
     assert.match(deleteRoute, /shouldAuditEvent\(resolved\.schema,\s*"record\.delete"\)/);
     assert.match(upload, /shouldAuditEvent\(resolved\.schema,\s*"file\.upload"\)/);
+    assert.match(createRoute, /if \(shouldAudit\) await writeAuditEvent\(\{[\s\S]*success:\s*true/);
+    assert.match(createRoute, /if \(shouldAudit\) await writeAuditEvent\(\{[\s\S]*success:\s*false/);
+    assert.match(updateRoute, /if \(shouldAudit\) await writeAuditEvent\(\{[\s\S]*success:\s*true/);
+    assert.match(updateRoute, /if \(shouldAudit\) await writeAuditEvent\(\{[\s\S]*success:\s*false/);
+    assert.match(deleteRoute, /if \(shouldAudit\) await writeAuditEvent\(\{[\s\S]*success:\s*true/);
+    assert.match(deleteRoute, /if \(shouldAudit\) await writeAuditEvent\(\{[\s\S]*success:\s*false/);
+    assert.match(upload, /if \(shouldAuditUpload\) await writeAuditEvent\(\{[\s\S]*success:\s*true/);
+    assert.match(upload, /if \(shouldAuditUpload\) await writeAuditEvent\(\{[\s\S]*success:\s*false/);
 
     assert.match(createRoute, /action:\s*"record\.create"[\s\S]*success:\s*true/);
     assert.match(createRoute, /action:\s*"record\.create"[\s\S]*success:\s*false/);
@@ -287,6 +297,10 @@ describe("security hardening regression checks", () => {
     assert.match(updateRoute, /action:\s*"record\.update"[\s\S]*success:\s*false/);
     assert.match(deleteRoute, /action:\s*"record\.delete"[\s\S]*success:\s*true/);
     assert.match(deleteRoute, /action:\s*"record\.delete"[\s\S]*success:\s*false/);
+    assert.equal(countMatches(createRoute, /action:\s*"record\.create"/g), 2);
+    assert.equal(countMatches(updateRoute, /action:\s*"record\.update"/g), 2);
+    assert.equal(countMatches(deleteRoute, /action:\s*"record\.delete"/g), 2);
+    assert.equal(countMatches(upload, /action:\s*"file\.upload"/g), 2);
     assert.match(modulosAction, /action:\s*`module\.\$\{operation\}`/);
     assert.match(modulosAction, /success,\s*metadata:/);
 

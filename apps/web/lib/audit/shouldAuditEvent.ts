@@ -10,6 +10,7 @@ export const DEFAULT_MODULE_AUDIT_EVENTS = [
   "record.create",
   "record.update",
   "record.delete",
+  "file.upload",
 ] as const;
 
 export const MANDATORY_AUDIT_EVENTS = [

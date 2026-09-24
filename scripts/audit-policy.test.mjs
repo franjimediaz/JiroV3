@@ -19,12 +19,13 @@ async function loadAuditPolicy() {
 }
 
 describe("module audit policy", () => {
-  it("audits create update and delete by default when props.audit is absent", async () => {
+  it("audits create update delete and file uploads by default when props.audit is absent", async () => {
     const { shouldAuditEvent } = await loadAuditPolicy();
 
     assert.equal(shouldAuditEvent({}, "record.create"), true);
     assert.equal(shouldAuditEvent({}, "record.update"), true);
     assert.equal(shouldAuditEvent({}, "record.delete"), true);
+    assert.equal(shouldAuditEvent({}, "file.upload"), true);
   });
 
   it("does not audit reads by default", async () => {
@@ -38,6 +39,13 @@ describe("module audit policy", () => {
     const moduleConfig = { audit: { enabled: false, events: ["record.create", "file.upload"] } };
 
     assert.equal(shouldAuditEvent(moduleConfig, "record.create"), false);
+    assert.equal(shouldAuditEvent(moduleConfig, "file.upload"), false);
+  });
+
+  it("allows file uploads to be disabled explicitly", async () => {
+    const { shouldAuditEvent } = await loadAuditPolicy();
+    const moduleConfig = { audit: { enabled: true, events: ["record.create", "record.update", "record.delete"] } };
+
     assert.equal(shouldAuditEvent(moduleConfig, "file.upload"), false);
   });
 
