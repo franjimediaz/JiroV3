@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
-import { ApiError, badRequest } from "@/lib/auth/apiError";
+import { ApiError, badRequest, forbidden } from "@/lib/auth/apiError";
 import { handleApiError } from "@/lib/auth/handleApiError";
 import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 import { shouldAuditEvent } from "@/lib/audit/shouldAuditEvent";
 import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
+import { moduleCapabilityEnabled } from "@repo/types";
 
 type Body = {
   moduleSlug?: string;
@@ -49,6 +50,9 @@ export async function POST(req: Request) {
     }
 
     const ctx = await requireModulePermission(resolved.permissionsKey, "eliminar");
+    if (!moduleCapabilityEnabled(resolved.schema, "allowDelete")) {
+      throw forbidden("Este modulo no permite eliminar registros");
+    }
     actorUserId = ctx.user.id;
 
     const { error } = await ctx.supabase

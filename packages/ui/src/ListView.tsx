@@ -7,7 +7,7 @@ import type {
   ListViewExportPayload,
   ListViewProps,
 } from "@repo/types";
-import { normalizeFieldConfig, normalizeModuleSchema } from "@repo/types";
+import { getEffectiveModuleCapabilities, normalizeFieldConfig, normalizeModuleSchema } from "@repo/types";
 import { ActionMenu } from "./ActionMenu";
 import { dataProvider } from "./providers/DataProvider";
 import  SelectorTabla  from "./components/fields/Selector";
@@ -39,6 +39,7 @@ export default function ListView({
   onImport,
 }: ListViewProps) {
   const normalizedSchema = useMemo(() => normalizeModuleSchema(schema), [schema]);
+  const capabilities = useMemo(() => getEffectiveModuleCapabilities(normalizedSchema), [normalizedSchema]);
   const primaryKey = normalizedSchema.db.primaryKey || "id";
   const [showFilters, setShowFilters] = useState(false);
 
@@ -218,7 +219,7 @@ export default function ListView({
               
             </button>
           )}
-          {filterFields.length > 0 && (
+          {capabilities.allowSearch && filterFields.length > 0 && (
             <button
               type="button"
               className="btn btn-sm btn-outline-secondary"
@@ -258,7 +259,7 @@ export default function ListView({
 
       {/* FILTROS */}
       
-      {filterFields.length > 0 && showFilters && (
+      {capabilities.allowSearch && filterFields.length > 0 && showFilters && (
           <div className="card-body border-bottom">
             <div className="row g-2">
               {filterFields.map((f) => {

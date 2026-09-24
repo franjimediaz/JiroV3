@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseTreeViewProvider } from "@/lib/utils/treeViewProvider";
 import { Form } from "@repo/ui";
+import { getEffectiveModuleCapabilities } from "@repo/types";
 import type { ModuleSchema } from "@repo/types";
 import { RequirePerms, usePerms } from "@/lib/perms";
 
@@ -188,12 +189,17 @@ export default function FormClient({
   );
 
   const requiredAction = accionPorModo(mode);
+  const capabilities = getEffectiveModuleCapabilities(schema);
+  const capabilityAllowed =
+    mode === "create" ? capabilities.allowCreate :
+    mode === "edit" ? capabilities.allowEdit :
+    true;
 
   const onSubmit = (values: any) => {
     start(async () => {
       try {
         // 1) check UX permiso (la RLS también manda, pero esto evita clicks tontos)
-        if (!hasPermiso(resolved.slug, requiredAction as any)) {
+        if (!capabilityAllowed || !hasPermiso(resolved.slug, requiredAction as any)) {
           alert("No tienes permisos para esta acción.");
           return;
         }
@@ -250,6 +256,7 @@ export default function FormClient({
   // opcional: botones custom de volver/editar (si no los quieres, los quitas)
   const onBack = () => router.back();
   const onEdit = () => {
+    if (!capabilities.allowEdit || !hasPermiso(resolved.slug, "actualizar" as any)) return;
     // Si estás en view, al editar añade ?edit=true
     const url = new URL(window.location.href);
     url.searchParams.set("edit", "true");
@@ -269,7 +276,7 @@ export default function FormClient({
           mode={mode}
           onSubmit={onSubmit}
           onBack={onBack}
-          onEdit={onEdit}
+          onEdit={capabilities.allowEdit && hasPermiso(resolved.slug, "actualizar" as any) ? onEdit : undefined}
           // treeview
           modulesBySlug={modulesBySlug}
           schemasBySlug={schemasBySlug}

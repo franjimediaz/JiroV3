@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
 import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 import { handleApiError } from "@/lib/auth/handleApiError";
-import { ApiError, badRequest } from "@/lib/auth/apiError";
+import { ApiError, badRequest, forbidden } from "@/lib/auth/apiError";
 import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
 import { shouldAuditEvent } from "@/lib/audit/shouldAuditEvent";
+import { moduleCapabilityEnabled } from "@repo/types";
 
 type Body = {
   moduleSlug?: string;
@@ -48,6 +49,9 @@ export async function POST(req: Request) {
     }
 
     const ctx = await requireModulePermission(resolved.permissionsKey, "crear");
+    if (!moduleCapabilityEnabled(resolved.schema, "allowCreate")) {
+      throw forbidden("Este modulo no permite crear registros");
+    }
     const { supabase } = ctx;
     actorUserId = ctx.user.id;
 

@@ -1,6 +1,7 @@
 import type { ModuleDefaultFilterGroup, ModuleDefaultQueryFilterLike } from "./moduleDefaultFilters";
 import type { SelectorTableFilterGroup, SelectorTableFilterOperator } from "./selectorTableFilters";
 import type { ModuleAuditConfig } from "./auditPolicy";
+import type { ModuleCapabilities } from "./moduleCapabilities";
 
 export type Compute =
   | { type: "none" }
@@ -403,6 +404,7 @@ export type ModuleSchema = {
   };
   fields: Field[]; // ← aquí se usa el array de Field
   audit?: ModuleAuditConfig;
+  capabilities?: Partial<ModuleCapabilities>;
   ui?: ModuleUiSchema;
 
 };
