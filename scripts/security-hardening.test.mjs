@@ -220,7 +220,8 @@ describe("security hardening regression checks", () => {
 
   it("documents and migrates audit events as append-only server-side evidence", () => {
     const writer = source("apps/web/lib/audit/writeAuditEvent.ts");
-    const policy = source("apps/web/lib/audit/shouldAuditEvent.ts");
+    const policy = source("packages/types/auditPolicy.ts");
+    const webPolicy = source("apps/web/lib/audit/shouldAuditEvent.ts");
     const migration = source("supabase/migrations/202607270001_create_audit_events.sql");
     const docs = source("docs/security/security-audit-remediation.md");
 
@@ -238,6 +239,7 @@ describe("security hardening regression checks", () => {
     assert.match(policy, /"users\.create"/);
     assert.match(policy, /"users\.roles\.update"/);
     assert.match(policy, /"workflows\.run"/);
+    assert.match(webPolicy, /from "@repo\/types"/);
     assert.match(migration, /enable row level security/i);
     assert.match(migration, /module text null/);
     assert.match(migration, /request_id text not null/);
@@ -318,5 +320,29 @@ describe("security hardening regression checks", () => {
     assert.match(formClient, /postMutation\("\/api\/create"/);
     assert.match(formClient, /postMutation\("\/api\/update"/);
     assert.match(listClient, /fetch\("\/api\/delete"/);
+  });
+
+  it("exposes module audit policy controls without overwriting other module props", () => {
+    const moduleForm = source("packages/ui/src/ModuloForm/ModuloForm.tsx");
+    const policy = source("packages/types/auditPolicy.ts");
+    const auditPolicyTest = source("scripts/audit-policy.test.mjs");
+
+    assert.match(moduleForm, /MODULE_AUDIT_EVENT_OPTIONS/);
+    assert.match(moduleForm, /getEffectiveModuleAuditConfig\(propsObj\)/);
+    assert.match(moduleForm, /applyModuleAuditConfigToProps\(propsObj,\s*nextConfig\)/);
+    assert.match(moduleForm, /id: "audit", label: "Auditoría"/);
+    assert.match(moduleForm, /<Section title="Auditoría">/);
+    assert.match(moduleForm, /Activar auditoría/);
+    assert.match(moduleForm, /Eventos auditados/);
+    assert.match(moduleForm, /Registrar lecturas puede generar un gran volumen de eventos/);
+    assert.match(moduleForm, /Las acciones administrativas críticas se auditan siempre/);
+    assert.doesNotMatch(moduleForm, /users\.create|users\.roles\.update|workflows\.run/);
+
+    assert.match(policy, /MODULE_AUDIT_EVENT_OPTIONS[\s\S]*Crear registros/);
+    assert.match(policy, /MODULE_AUDIT_EVENT_OPTIONS[\s\S]*Modificar registros/);
+    assert.match(policy, /MODULE_AUDIT_EVENT_OPTIONS[\s\S]*Eliminar registros/);
+    assert.match(policy, /MODULE_AUDIT_EVENT_OPTIONS[\s\S]*Consultar registros/);
+    assert.match(policy, /MODULE_AUDIT_EVENT_OPTIONS[\s\S]*Subir archivos/);
+    assert.match(auditPolicyTest, /updates only props\.audit and preserves the rest of props/);
   });
 });
