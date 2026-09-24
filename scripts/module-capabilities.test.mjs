@@ -67,6 +67,24 @@ describe("module capabilities", () => {
     assert.equal(isModuleActionAvailable({ capabilities: { allowImport: false } }, "importar", true), false);
   });
 
+  it("uses allowEdit and actualizar together for form edit visibility", async () => {
+    const { isModuleActionAvailable } = await loadModuleCapabilities();
+
+    assert.equal(isModuleActionAvailable({ capabilities: { allowEdit: true } }, "actualizar", true), true);
+    assert.equal(isModuleActionAvailable({ capabilities: { allowEdit: true } }, "actualizar", false), false);
+    assert.equal(isModuleActionAvailable({ capabilities: { allowEdit: false } }, "actualizar", true), false);
+    assert.equal(isModuleActionAvailable({ capabilities: { allowEdit: false } }, "actualizar", false), false);
+    assert.equal(isModuleActionAvailable({}, "actualizar", true), true);
+  });
+
+  it("uses allowSearch with view permission without introducing a search role permission", async () => {
+    const { isModuleActionAvailable } = await loadModuleCapabilities();
+
+    assert.equal(isModuleActionAvailable({ capabilities: { allowSearch: true } }, "buscar", true), true);
+    assert.equal(isModuleActionAvailable({ capabilities: { allowSearch: true } }, "buscar", false), false);
+    assert.equal(isModuleActionAvailable({ capabilities: { allowSearch: false } }, "buscar", true), false);
+  });
+
   it("updates only props.capabilities and preserves other module props", async () => {
     const { applyModuleCapabilitiesToProps } = await loadModuleCapabilities();
     const props = {

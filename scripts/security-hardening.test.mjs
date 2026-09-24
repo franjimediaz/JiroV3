@@ -374,6 +374,11 @@ describe("security hardening regression checks", () => {
     assert.match(listClient, /onImport=\{canImport \? handleImport : undefined\}/);
 
     assert.match(formClient, /capabilities\.allowEdit/);
+    assert.match(formClient, /isModuleActionAvailable\(schema,\s*"actualizar"/);
+    assert.match(formClient, /const effectiveMode:\s*Mode\s*=\s*mode === "edit" && !canEdit \? "view" : mode/);
+    assert.match(formClient, /mode=\{effectiveMode\}/);
+    assert.match(formClient, /canEdit=\{canEdit\}/);
+    assert.match(formClient, /onEdit=\{canEdit \? onEdit : undefined\}/);
     assert.match(createRoute, /moduleCapabilityEnabled\(resolved\.schema,\s*"allowCreate"\)/);
     assert.match(updateRoute, /moduleCapabilityEnabled\(resolved\.schema,\s*"allowEdit"\)/);
     assert.match(deleteRoute, /moduleCapabilityEnabled\(resolved\.schema,\s*"allowDelete"\)/);
@@ -386,6 +391,20 @@ describe("security hardening regression checks", () => {
     assert.match(policy, /isModuleActionAvailable/);
     assert.match(capabilityTest, /allowExport: true[\s\S]*"exportar", true\), true/);
     assert.match(capabilityTest, /allowImport: false[\s\S]*"importar", true\), false/);
+    assert.match(capabilityTest, /uses allowEdit and actualizar together for form edit visibility/);
     assert.match(capabilityTest, /updates only props\.capabilities and preserves other module props/);
+  });
+
+  it("keeps the record form edit action behind the shared edit capability rule", () => {
+    const form = source("packages/ui/src/Form.tsx");
+    const formClient = source("apps/web/lib/FormClient.tsx");
+
+    assert.match(form, /canEdit\?: boolean/);
+    assert.match(form, /canEdit = true/);
+    assert.match(form, /if \(!canEdit\) return/);
+    assert.match(form, /effectiveMode === "view" && canEdit/);
+    assert.match(formClient, /const canEdit = isModuleActionAvailable\(schema,\s*"actualizar",\s*hasPermiso\(resolved\.slug,\s*"actualizar" as any\)\)/);
+    assert.match(formClient, /const effectiveMode:\s*Mode\s*=\s*mode === "edit" && !canEdit \? "view" : mode/);
+    assert.match(formClient, /<RequirePerms modulo=\{resolved\.slug\} accion=\{requiredAction as any\}>/);
   });
 });
