@@ -3,6 +3,7 @@ import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
 import { ApiError, badRequest } from "@/lib/auth/apiError";
 import { handleApiError } from "@/lib/auth/handleApiError";
 import { requireModulePermission } from "@/lib/auth/requireModulePermission";
+import { shouldAuditEvent } from "@/lib/audit/shouldAuditEvent";
 import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
 
 type Body = {
@@ -18,6 +19,7 @@ export async function POST(req: Request) {
   let auditModule: string | null = null;
   let auditResourceType: string | null = null;
   let auditResourceId: string | null = null;
+  let shouldAudit = shouldAuditEvent(null, "record.delete");
 
   try {
     const body = (await req.json()) as Body;
@@ -35,6 +37,7 @@ export async function POST(req: Request) {
     }
 
     const resolved = await resolveModuleConfig(moduleSlug || legacyTable || "");
+    shouldAudit = shouldAuditEvent(resolved.schema, "record.delete");
     auditModule = resolved.permissionsKey;
     auditResourceType = resolved.slug;
 
@@ -57,7 +60,7 @@ export async function POST(req: Request) {
       throw badRequest(error.message);
     }
 
-    await writeAuditEvent({
+    if (shouldAudit) await writeAuditEvent({
       actorUserId,
       module: auditModule,
       action: "record.delete",
@@ -74,7 +77,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, id: recordId });
   } catch (e: any) {
-    await writeAuditEvent({
+    if (shouldAudit) await writeAuditEvent({
       actorUserId,
       module: auditModule || moduleSlugForLog || null,
       action: "record.delete",

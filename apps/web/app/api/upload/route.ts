@@ -5,6 +5,8 @@ import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 import { handleApiError } from "@/lib/auth/handleApiError";
 import { badRequest, forbidden } from "@/lib/auth/apiError";
 import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
+import { shouldAuditEvent } from "@/lib/audit/shouldAuditEvent";
+import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
 import { getClientIp, enforceRateLimit } from "@/lib/security/rateLimit";
 import { getRequestId } from "@/lib/security/requestId";
 import { buildServerStoragePath, isPathInUserScope } from "@/lib/security/safeStoragePath";
@@ -34,6 +36,7 @@ function formString(formData: FormData, name: string) {
 export async function POST(req: Request) {
   const requestId = getRequestId(req);
   let actorId: string | null = null;
+  let shouldAuditUpload = shouldAuditEvent(null, "file.upload");
 
   try {
     const ip = getClientIp(req);
@@ -56,6 +59,12 @@ export async function POST(req: Request) {
     const ctx = await requireModulePermission(moduleSlug, uploadAction);
     actorId = ctx.user.id;
     await enforceRateLimit({ key: `upload:${ctx.user.id}`, limit: 20, windowMs: 60_000 });
+    try {
+      const resolved = await resolveModuleConfig(moduleSlug);
+      shouldAuditUpload = shouldAuditEvent(resolved.schema, "file.upload");
+    } catch {
+      shouldAuditUpload = shouldAuditEvent(null, "file.upload");
+    }
 
     if (process.env.NODE_ENV !== "production") {
       console.info("upload authorization", {
@@ -84,9 +93,10 @@ export async function POST(req: Request) {
 
     if (uploadError) throw new Error("Storage upload failed");
 
-    await writeAuditEvent({
+    if (shouldAuditUpload) await writeAuditEvent({
       actorUserId: ctx.user.id,
       action: "file.upload",
+      module: moduleSlug,
       resourceType: "storage.objects",
       resourceId: path,
       requestId,
@@ -106,7 +116,7 @@ export async function POST(req: Request) {
       requestId,
     });
   } catch (error) {
-    await writeAuditEvent({
+    if (shouldAuditUpload) await writeAuditEvent({
       actorUserId: actorId,
       action: "file.upload",
       requestId,

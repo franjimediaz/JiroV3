@@ -219,6 +219,7 @@ describe("security hardening regression checks", () => {
 
   it("documents and migrates audit events as append-only server-side evidence", () => {
     const writer = source("apps/web/lib/audit/writeAuditEvent.ts");
+    const policy = source("apps/web/lib/audit/shouldAuditEvent.ts");
     const migration = source("supabase/migrations/202607270001_create_audit_events.sql");
     const docs = source("docs/security/security-audit-remediation.md");
 
@@ -227,6 +228,14 @@ describe("security hardening regression checks", () => {
     assert.match(writer, /sanitizeAuditMetadata/);
     assert.match(writer, /SENSITIVE_KEY_PATTERN/);
     assert.match(writer, /module: args\.module \?\? inferModule\(args\.action\)/);
+    assert.match(policy, /CONFIGURABLE_AUDIT_EVENTS/);
+    assert.match(policy, /DEFAULT_MODULE_AUDIT_EVENTS/);
+    assert.match(policy, /MANDATORY_AUDIT_EVENTS/);
+    assert.match(policy, /"record\.read"/);
+    assert.match(policy, /"file\.upload"/);
+    assert.match(policy, /"users\.create"/);
+    assert.match(policy, /"users\.roles\.update"/);
+    assert.match(policy, /"workflows\.run"/);
     assert.match(migration, /enable row level security/i);
     assert.match(migration, /module text null/);
     assert.match(migration, /request_id text not null/);
@@ -266,6 +275,11 @@ describe("security hardening regression checks", () => {
     assert.match(roleUpdate, /action:\s*"users\.roles\.update"[\s\S]*success:\s*false/);
     assert.match(workflows, /action:\s*"workflows\.run"[\s\S]*success:\s*true/);
     assert.match(workflows, /action:\s*"workflows\.run"[\s\S]*success:\s*false/);
+
+    assert.match(createRoute, /shouldAuditEvent\(resolved\.schema,\s*"record\.create"\)/);
+    assert.match(updateRoute, /shouldAuditEvent\(resolved\.schema,\s*"record\.update"\)/);
+    assert.match(deleteRoute, /shouldAuditEvent\(resolved\.schema,\s*"record\.delete"\)/);
+    assert.match(upload, /shouldAuditEvent\(resolved\.schema,\s*"file\.upload"\)/);
 
     assert.match(createRoute, /action:\s*"record\.create"[\s\S]*success:\s*true/);
     assert.match(createRoute, /action:\s*"record\.create"[\s\S]*success:\s*false/);

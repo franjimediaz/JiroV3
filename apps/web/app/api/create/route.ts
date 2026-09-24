@@ -4,6 +4,7 @@ import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 import { handleApiError } from "@/lib/auth/handleApiError";
 import { ApiError, badRequest } from "@/lib/auth/apiError";
 import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
+import { shouldAuditEvent } from "@/lib/audit/shouldAuditEvent";
 
 type Body = {
   moduleSlug?: string;
@@ -19,6 +20,7 @@ export async function POST(req: Request) {
   let auditResourceType: string | null = null;
   let auditResourceId: string | null = null;
   let auditFieldNames: string[] = [];
+  let shouldAudit = shouldAuditEvent(null, "record.create");
 
   try {
     const body = (await req.json()) as Body;
@@ -35,6 +37,7 @@ export async function POST(req: Request) {
     }
 
     const resolved = await resolveModuleConfig(moduleSlug || legacyTable || "");
+    shouldAudit = shouldAuditEvent(resolved.schema, "record.create");
     auditModule = resolved.permissionsKey;
     auditResourceType = resolved.slug;
     if (!resolved.table) {
@@ -87,7 +90,7 @@ export async function POST(req: Request) {
     }
 
     auditResourceId = String(created?.[resolved.primaryKey] ?? created?.id ?? "");
-    await writeAuditEvent({
+    if (shouldAudit) await writeAuditEvent({
       actorUserId,
       module: auditModule,
       action: "record.create",
@@ -110,7 +113,7 @@ export async function POST(req: Request) {
       legacyTableAccepted: !!legacyTable && !moduleSlug,
     });
   } catch (e: any) {
-    await writeAuditEvent({
+    if (shouldAudit) await writeAuditEvent({
       actorUserId,
       module: auditModule || moduleSlugForLog || null,
       action: "record.create",
