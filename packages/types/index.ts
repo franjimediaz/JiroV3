@@ -116,4 +116,22 @@ export type {
   NormalizedPlanEditorConfig,
   NormalizedSpecialView,
 } from "./normalizeModuleSchema";
+export {
+  CONFIGURABLE_AUDIT_EVENTS,
+  DEFAULT_MODULE_AUDIT_EVENTS,
+  MANDATORY_AUDIT_EVENTS,
+  MODULE_AUDIT_EVENT_OPTIONS,
+  getEffectiveModuleAuditConfig,
+  buildModuleAuditConfig,
+  applyModuleAuditConfigToProps,
+  shouldAuditEvent,
+} from "./auditPolicy";
+export type {
+  ConfigurableAuditEvent,
+  MandatoryAuditEvent,
+  AuditEventName,
+  ModuleAuditConfig,
+  ModuleAuditProps,
+  EffectiveModuleAuditConfig,
+} from "./auditPolicy";
 

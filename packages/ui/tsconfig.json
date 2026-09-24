@@ -10,7 +10,9 @@
     "target": "ES2020",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],  
     "paths": {
-      "@repo/types": ["../types"]
+      "@repo/types": ["../types"],
+      "next": ["../../apps/web/node_modules/next"],
+      "next/*": ["../../apps/web/node_modules/next/*"]
     },
     "skipLibCheck": true,
     "strict": true

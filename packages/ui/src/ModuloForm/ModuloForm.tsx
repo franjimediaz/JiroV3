@@ -4,8 +4,8 @@ import { useState, useTransition, useEffect, useRef, useCallback} from "react";
 import styles from "./modulo-detalle.module.css";
 import  Selector from "../components/fields/Selector";
 import {IconPicker} from "@repo/ui";
-import type { CalendarSpecialViewConfig, CalendarViewMode, Field as FieldSchema, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
-import { normalizeModuleDefaultFilters, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
+import type { CalendarSpecialViewConfig, CalendarViewMode, ConfigurableAuditEvent, Field as FieldSchema, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
+import { applyModuleAuditConfigToProps, getEffectiveModuleAuditConfig, MODULE_AUDIT_EVENT_OPTIONS, normalizeModuleDefaultFilters, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
 import { FieldRow, VisibilityConfigEditor } from "./FieldRow"
 import ModuleDefaultFiltersBuilder from "./ModuleDefaultFiltersBuilder";
@@ -1303,13 +1303,39 @@ const ensureTableFields = useCallback((tableSlug: string) => {
   ensureFieldsLoaded(key);
 }, [ensureFieldsLoaded]);
 
+const auditConfig = getEffectiveModuleAuditConfig(propsObj);
+
+const setAuditConfig = (nextConfig: typeof auditConfig) => {
+  const next = applyModuleAuditConfigToProps(propsObj, nextConfig);
+  setPropsObj(next);
+  setRawText(JSON.stringify(next, null, 2));
+};
+
+const setAuditEnabled = (enabled: boolean) => {
+  setAuditConfig({
+    enabled,
+    events: enabled ? auditConfig.events : auditConfig.events,
+  });
+};
+
+const setAuditEvent = (event: ConfigurableAuditEvent, checked: boolean) => {
+  setAuditConfig({
+    enabled: true,
+    events: {
+      ...auditConfig.events,
+      [event]: checked,
+    },
+  });
+};
+
 const [editorTab, setEditorTab] = useState<
-  "general" | "db" | "ui" | "fields" | "layout" | "views" | "json"
+  "general" | "db" | "ui" | "audit" | "fields" | "layout" | "views" | "json"
 >("general");
 const editorTabs = [
   { id: "general", label: "General" },
   { id: "db", label: "Base de datos" },
   { id: "ui", label: "Apariencia" },
+  { id: "audit", label: "Auditoría" },
   { id: "fields", label: "Campos" },
   { id: "layout", label: "Formulario" },
   { id: "views", label: "Vistas especiales" },
@@ -1556,6 +1582,46 @@ const editorTabs = [
               { key: "invoice.generateFromBudget", label: "Generar factura desde presupuesto" },
             ]}
           />
+        </div>
+      </div>
+    </Section>
+  )}
+
+  {/* AUDITORIA */}
+  {editorTab === "audit" && (
+    <Section title="Auditoría">
+      <div className={styles.card} style={{ marginTop: 0 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={auditConfig.enabled}
+            disabled={readOnly}
+            onChange={(e) => setAuditEnabled(e.target.checked)}
+          />
+          <strong>Activar auditoría</strong>
+        </label>
+        <div className={styles.help} style={{ marginTop: 8 }}>
+          Las acciones administrativas críticas se auditan siempre.
+        </div>
+      </div>
+
+      <div className={styles.card} style={{ marginTop: 12, opacity: auditConfig.enabled ? 1 : 0.6 }}>
+        <h4 style={{ marginTop: 0 }}>Eventos auditados</h4>
+        <div className={styles.grid}>
+          {MODULE_AUDIT_EVENT_OPTIONS.map((option) => (
+            <label key={option.event} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={auditConfig.events[option.event]}
+                disabled={readOnly || !auditConfig.enabled}
+                onChange={(e) => setAuditEvent(option.event, e.target.checked)}
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
+        <div className={styles.help} style={{ marginTop: 10 }}>
+          Registrar lecturas puede generar un gran volumen de eventos.
         </div>
       </div>
     </Section>

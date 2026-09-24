@@ -11,6 +11,12 @@ export type UploadedFileValue = {
   isPublic?: boolean;
 };
 
+export type UploadContext = {
+  moduleSlug?: string;
+  recordId?: string;
+  fieldName?: string;
+};
+
 export const MAX_IMAGE_SIZE_MB = 5;
 export const MAX_FILE_SIZE_MB = 10;
 
@@ -21,24 +27,19 @@ export const ALLOWED_IMAGE_MIME_TYPES = [
   "image/jpeg",
   "image/png",
   "image/webp",
-  "image/gif",
 ];
+
+export const ALLOWED_FILE_MIME_TYPES = ["application/pdf", "text/plain"];
 
 export function validateSelectedFile(
   file: File,
-  field: Pick<Field, "allowedMimeTypes">,
+  _field: Pick<Field, "allowedMimeTypes">,
   kind: "file" | "image"
 ) {
-  const allowedMimeTypes = field.allowedMimeTypes || [];
+  const allowedMimeTypes = kind === "image" ? ALLOWED_IMAGE_MIME_TYPES : ALLOWED_FILE_MIME_TYPES;
 
-  if (allowedMimeTypes.length > 0) {
-    if (!allowedMimeTypes.includes(file.type)) {
-      return `Tipo de archivo no permitido: ${file.type || "desconocido"}`;
-    }
-  } else if (kind === "image") {
-    if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
-      return "Formato de imagen no permitido. Usa JPG, PNG, WEBP o GIF.";
-    }
+  if (!allowedMimeTypes.includes(file.type)) {
+    return `Tipo de archivo no permitido: ${file.type || "desconocido"}`;
   }
 
   if (kind === "image" && file.size > MAX_IMAGE_SIZE_BYTES) {
@@ -58,6 +59,22 @@ export function buildPublicSupabaseUrl(bucket: string, path: string) {
   return `${base}/storage/v1/object/public/${bucket}/${path}`;
 }
 
+export function extractApiErrorMessage(data: unknown, rawText: string, fallback: string) {
+  if (data && typeof data === "object") {
+    const record = data as Record<string, unknown>;
+    if (typeof record.error === "string") return record.error;
+    if (record.error && typeof record.error === "object") {
+      const errorRecord = record.error as Record<string, unknown>;
+      if (typeof errorRecord.message === "string") return errorRecord.message;
+      if (typeof errorRecord.code === "string") return errorRecord.code;
+    }
+    if (typeof record.detail === "string") return record.detail;
+    if (typeof record.message === "string") return record.message;
+  }
+
+  return rawText || fallback;
+}
+
 export async function deleteStoredFile(fileValue?: UploadedFileValue | null, endpoint = "/api/upload") {
   if (!fileValue?.bucket || !fileValue?.path) return { ok: true };
 
@@ -75,7 +92,7 @@ export async function deleteStoredFile(fileValue?: UploadedFileValue | null, end
   const data = await res.json().catch(() => null);
 
   if (!res.ok) {
-    throw new Error(data?.error || "No se pudo eliminar el archivo anterior");
+    throw new Error(extractApiErrorMessage(data, "", "No se pudo eliminar el archivo anterior"));
   }
 
   return data;
@@ -97,50 +114,42 @@ export async function getSignedFileUrl(bucket: string, path: string, expiresIn =
   const data = await res.json();
 
   if (!res.ok) {
-    throw new Error(data?.error || "No se pudo obtener la URL firmada");
+    throw new Error(extractApiErrorMessage(data, "", "No se pudo obtener la URL firmada"));
   }
 
   return data.signedUrl as string;
 }
 
-export function getAllowedTypesHint(field: Pick<Field, "allowedMimeTypes">, isImage: boolean) {
-  if (field.allowedMimeTypes?.length) {
-    return `Tipos permitidos: ${field.allowedMimeTypes.join(", ")}.`;
-  }
-
+export function getAllowedTypesHint(_field: Pick<Field, "allowedMimeTypes">, isImage: boolean) {
   if (isImage) {
-    return "Formatos: JPG, PNG, WEBP, GIF.";
+    return "Formatos: JPG, PNG, WEBP.";
   }
 
-  return "";
+  return "Formatos: PDF, TXT.";
 }
 
-export function getAcceptValue(field: Pick<Field, "allowedMimeTypes">, isImage: boolean) {
-  const allowedMimeTypes = field.allowedMimeTypes || [];
-
-  if (allowedMimeTypes.length > 0) {
-    return allowedMimeTypes.join(",");
-  }
-
+export function getAcceptValue(_field: Pick<Field, "allowedMimeTypes">, isImage: boolean) {
   if (isImage) {
     return ALLOWED_IMAGE_MIME_TYPES.join(",");
   }
 
-  return undefined;
+  return ALLOWED_FILE_MIME_TYPES.join(",");
 }
 
 export async function uploadSingleFile(
   file: File,
   kind: "file" | "image",
-  folder = "general",
-  allowedMimeTypes: string[] = [],
-  endpoint = "/api/upload"
+  _folder = "general",
+  _allowedMimeTypes: string[] = [],
+  endpoint = "/api/upload",
+  context: UploadContext = {}
 ): Promise<UploadedFileValue> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("kind", kind);
-  formData.append("folder", folder);
-  formData.append("allowedMimeTypes", JSON.stringify(allowedMimeTypes));
+  if (context.moduleSlug?.trim()) formData.append("moduleSlug", context.moduleSlug.trim());
+  if (context.recordId?.trim()) formData.append("recordId", context.recordId.trim());
+  if (context.fieldName?.trim()) formData.append("fieldName", context.fieldName.trim());
 
   const res = await fetch(endpoint, {
     method: "POST",
@@ -160,7 +169,15 @@ export async function uploadSingleFile(
   }
 
   if (!res.ok) {
-    throw new Error(String(data?.error || rawText || "No se pudo subir el archivo"));
+    const message = extractApiErrorMessage(data, rawText, "No se pudo subir el archivo");
+    if (process.env.NODE_ENV !== "production") {
+      console.error("uploadSingleFile failed", {
+        status: res.status,
+        error: message,
+        response: data ?? rawText,
+      });
+    }
+    throw new Error(message);
   }
 
   return {

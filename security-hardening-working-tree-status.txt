@@ -1,0 +1,42 @@
+﻿ M apps/web/app/api/admin/users/role/route.ts
+ M apps/web/app/api/aggregate/route.ts
+ M apps/web/app/api/create/route.ts
+ M apps/web/app/api/dp/list/route.ts
+ M apps/web/app/api/list/route.ts
+ M apps/web/app/api/pdf/context/route.ts
+ M apps/web/app/api/pdf/generate/route.ts
+ M apps/web/app/api/pdf/preview/route.ts
+ M apps/web/app/api/pdf/template-preview/route.ts
+ M apps/web/app/api/task/route.ts
+ M apps/web/app/api/upload-url/route.ts
+ M apps/web/app/api/upload/route.ts
+ M apps/web/app/api/users/create/route.ts
+ M apps/web/app/api/workflows/run/route.ts
+ M apps/web/next.config.js
+ M apps/web/proxy.ts
+ M apps/web/tsconfig.json
+ M packages/ui/tsconfig.json
+ M pdf-service/server.js
+ M turbo.json
+?? .env.example
+?? apps/web/lib/audit/writeAuditEvent.ts
+?? apps/web/lib/auth/apiError.ts
+?? apps/web/lib/auth/getCurrentUser.ts
+?? apps/web/lib/auth/handleApiError.ts
+?? apps/web/lib/auth/requireModulePermission.ts
+?? apps/web/lib/auth/requirePermission.ts
+?? apps/web/lib/auth/requireTenantAccess.ts
+?? apps/web/lib/security/rateLimit.ts
+?? apps/web/lib/security/requestId.ts
+?? apps/web/lib/security/safeStoragePath.ts
+?? apps/web/lib/validation/common.ts
+?? apps/web/lib/validation/pdf.ts
+?? apps/web/lib/validation/upload.ts
+?? apps/web/lib/validation/users.ts
+?? apps/web/lib/validation/workflows.ts
+?? docs/security/deployment-checklist.md
+?? docs/security/security-audit-remediation.md
+?? scripts/security-hardening.test.mjs
+?? security-hardening-working-tree-status.txt
+?? security-hardening-working-tree.patch
+?? supabase/migrations/202607270001_create_audit_events.sql

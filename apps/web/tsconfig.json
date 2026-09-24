@@ -28,6 +28,12 @@
       "@repo/types": [
         "../../packages/types"
       ],
+      "next": [
+        "./node_modules/next"
+      ],
+      "next/*": [
+        "./node_modules/next/*"
+      ],
       "@/*": [
         "./*"
       ]

@@ -3,7 +3,6 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseTreeViewProvider } from "@/lib/utils/treeViewProvider";
-import { createClient } from "@/lib/supabase/client";
 import { Form } from "@repo/ui";
 import type { ModuleSchema } from "@repo/types";
 import { RequirePerms, usePerms } from "@/lib/perms";
@@ -126,6 +125,23 @@ function accionPorModo(mode: Mode) {
   return "crear";
 }
 
+async function postMutation(path: "/api/create" | "/api/update", body: Record<string, unknown>) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const text = await response.text();
+  const json = text ? JSON.parse(text) : {};
+
+  if (!response.ok || !json?.ok) {
+    const message = json?.error?.message || json?.detail || json?.error || text || "Error guardando";
+    throw new Error(String(message));
+  }
+
+  return json;
+}
+
 // -----------------------------
 // Componente
 // -----------------------------
@@ -182,7 +198,6 @@ export default function FormClient({
           return;
         }
 
-        const supabase = createClient();
         const sanitized = sanitize(values, schema);
         const payload = pickPersistablePayload(sanitized, schema);
 
@@ -191,12 +206,11 @@ export default function FormClient({
           const id = initialData?.[resolved.primaryKey];
           if (!id) throw new Error("Falta el ID para editar");
 
-          const { error } = await supabase
-            .from(resolved.table)
-            .update(payload)
-            .eq(resolved.primaryKey, id);
-
-          if (error) throw error;
+          await postMutation("/api/update", {
+            moduleSlug: resolved.slug,
+            id,
+            data: payload,
+          });
 
           // limpiar ?edit=true
           const qs = new URLSearchParams(searchParams.toString());
@@ -209,14 +223,11 @@ export default function FormClient({
         if (mode === "create") {
           // insert y volver al detalle
           // Nota: si tu PK es uuid autogenerado, necesitarás .select() para obtenerlo
-          const { data, error } = await supabase
-            .from(resolved.table)
-            .insert(payload)
-            .select("*")
-            .maybeSingle();
-
-          if (error) throw error;
-          const newId = (data as any)?.[resolved.primaryKey] ?? (data as any)?.id;
+          const result = await postMutation("/api/create", {
+            moduleSlug: resolved.slug,
+            data: payload,
+          });
+          const newId = result?.id ?? result?.record?.[resolved.primaryKey] ?? result?.record?.id;
           if (!newId) {
             // fallback: refresca y listo
             router.refresh();

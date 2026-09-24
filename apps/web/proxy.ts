@@ -17,9 +17,13 @@ function isPublicPath(pathname: string) {
   return false;
 }
 
+function isApiPath(pathname: string) {
+  return pathname === "/api" || pathname.startsWith("/api/");
+}
+
 export default async function proxy(request: NextRequest) {
   // Response base que usaremos para propagar las cookies actualizadas
-  let res = NextResponse.next({
+  const res = NextResponse.next({
     request: { headers: request.headers },
   });
 
@@ -29,7 +33,6 @@ export default async function proxy(request: NextRequest) {
     {
       cookies: {
         getAll() {
-          // 👈 aquí usamos NextRequest, que SÍ tiene cookies
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
@@ -42,14 +45,27 @@ export default async function proxy(request: NextRequest) {
   );
 
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const { nextUrl } = request;
   const pathname = nextUrl.pathname;
 
   // Si no hay sesión y la ruta NO es pública → mandamos a /login
-  if (!session && !isPublicPath(pathname)) {
+  if (!user && !isPublicPath(pathname)) {
+    if (isApiPath(pathname)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: "No autenticado",
+          },
+        },
+        { status: 401 }
+      );
+    }
+
     const redirectUrl = nextUrl.clone();
     redirectUrl.pathname = "/login";
 
@@ -67,6 +83,6 @@ export default async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     
-    "/((?!api/upload|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)",
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)",
   ],
 };

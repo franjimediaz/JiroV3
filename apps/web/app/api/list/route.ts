@@ -8,6 +8,8 @@ import {
   filterRowsWithDefaultFilters,
   resolveDefaultFiltersForQuery,
 } from "@/lib/moduleDefaultFilters";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
+import { handleApiError } from "@/lib/auth/handleApiError";
 
 type ListFilter = QueryFilter;
 type ListSort = { field: string; dir: "asc" | "desc" };
@@ -33,17 +35,22 @@ function parseProps(props: any) {
 }
 
 export async function POST(req: Request) {
+  const requestId = crypto.randomUUID();
+  let moduleSlug = "";
+
   try {
     const supabase = await createClient();
 
     const body = (await req.json()) as ListBody;
-    const moduleSlug = String(body?.moduleSlug || "").trim();
+    moduleSlug = String(body?.moduleSlug || "").trim();
     const limitRaw = body?.limit;
     const offsetRaw = body?.offset;
 
     if (!moduleSlug) {
       return NextResponse.json({ ok: false, detail: "moduleSlug es requerido" }, { status: 400 });
     }
+
+    await requireModulePermission(moduleSlug, "ver");
 
     const { data: modRow, error: modErr } = await supabase
       .from("modulos")
@@ -112,12 +119,8 @@ export async function POST(req: Request) {
 
     const rows = defaultFilters.canQueryDirectly ? data ?? [] : filterRowsWithDefaultFilters(data ?? [], defaultFilters.group);
     return NextResponse.json({ ok: true, data: rows });
-  } catch (error: any) {
-    console.error("POST /api/list fatal", error);
-    return NextResponse.json(
-      { ok: false, detail: error?.message || "Error inesperado" },
-      { status: 500 }
-    );
+  } catch (error) {
+    return handleApiError(error, requestId, { route: "/api/list", method: "POST", moduleSlug });
   }
 }
 

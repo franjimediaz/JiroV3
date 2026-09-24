@@ -923,6 +923,8 @@ export default function Form({
             }
             readOnly={readOnlyField}
             uploadFolder={moduleFolder}
+            moduleSlug={effectiveModuleSlug}
+            recordId={effectiveRecordId}
             displayValue={resolvedDisplay?.value}
             isDisplayLoading={isDisplayLoading}
             displayIcon={resolvedDisplay?.icon}
@@ -1024,6 +1026,8 @@ export default function Form({
         mode={effectiveMode}
         dataProvider={dataProvider}
         record={values}
+        moduleSlug={effectiveModuleSlug}
+        recordId={effectiveRecordId}
         onChange={(nextPlan) => handleChange(sourceField, nextPlan)}
       />
     );

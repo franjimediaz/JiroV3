@@ -10,6 +10,7 @@ import {
   MAX_FILE_SIZE_BYTES,
   MAX_IMAGE_SIZE_MB,
   MAX_IMAGE_SIZE_BYTES,
+  ALLOWED_FILE_MIME_TYPES,
   ALLOWED_IMAGE_MIME_TYPES,
   buildPublicSupabaseUrl,
   deleteStoredFile,
@@ -27,6 +28,8 @@ type Props = {
   onChange: (v: any) => void;
   readOnly?: boolean;
   uploadFolder?: string;
+  moduleSlug?: string;
+  recordId?: string;
   displayValue?: string;
   isDisplayLoading?: boolean;
   displayIcon?: string;
@@ -46,6 +49,8 @@ function FileFieldInput({
   onChange,
   readOnly,
   uploadFolder,
+  moduleSlug,
+  recordId,
   multiple,
   maxFiles,
 }: {
@@ -54,6 +59,8 @@ function FileFieldInput({
   onChange: (v: any) => void;
   readOnly?: boolean;
   uploadFolder?: string;
+  moduleSlug?: string;
+  recordId?: string;
   multiple?: boolean;
   maxFiles?: number;
 }) {
@@ -182,7 +189,9 @@ function setFiles(nextFiles: UploadedFileValue[]) {
                 file,
                 isImage ? "image" : "file",
                 effectiveFolder,
-                field.allowedMimeTypes || []
+                field.allowedMimeTypes || [],
+                undefined,
+                { moduleSlug, recordId, fieldName: field.name }
               );
 
               uploadedBatch.push(uploaded);
@@ -208,7 +217,9 @@ function setFiles(nextFiles: UploadedFileValue[]) {
               file,
               isImage ? "image" : "file",
               effectiveFolder,
-              field.allowedMimeTypes || []
+              field.allowedMimeTypes || [],
+              undefined,
+              { moduleSlug, recordId, fieldName: field.name }
             );
 
             setFiles([uploaded]);
@@ -500,6 +511,8 @@ export default function FieldInput({
   onChange,
   readOnly,
   uploadFolder,
+  moduleSlug,
+  recordId,
   displayValue,
   isDisplayLoading,
   displayIcon,
@@ -655,6 +668,8 @@ if (type === "number" || type === "money" || type === "percent") {
       onChange={onChange}
       readOnly={readOnly}
       uploadFolder={uploadFolder}
+      moduleSlug={moduleSlug}
+      recordId={recordId}
       multiple={!!(field as any).multiple}
       maxFiles={(field as any).maxFiles}
     />
@@ -855,16 +870,10 @@ function legacyValidateSelectedFile(
   field: Field,
   kind: "file" | "image"
 ) {
-  const allowedMimeTypes = field.allowedMimeTypes || [];
+  const allowedMimeTypes = kind === "image" ? ALLOWED_IMAGE_MIME_TYPES : ALLOWED_FILE_MIME_TYPES;
 
-  if (allowedMimeTypes.length > 0) {
-    if (!allowedMimeTypes.includes(file.type)) {
-      return `Tipo de archivo no permitido: ${file.type || "desconocido"}`;
-    }
-  } else if (kind === "image") {
-    if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type)) {
-      return "Formato de imagen no permitido. Usa JPG, PNG, WEBP o GIF.";
-    }
+  if (!allowedMimeTypes.includes(file.type)) {
+    return `Tipo de archivo no permitido: ${file.type || "desconocido"}`;
   }
 
   if (kind === "image") {
@@ -933,42 +942,30 @@ async function legacyGetSignedFileUrl(bucket: string, path: string, expiresIn = 
   return data.signedUrl as string;
 }
 function legacyGetAllowedTypesHint(field: Field, isImage: boolean) {
-  if (field.allowedMimeTypes?.length) {
-    return `Tipos permitidos: ${field.allowedMimeTypes.join(", ")}.`;
-  }
-
   if (isImage) {
-    return "Formatos: JPG, PNG, WEBP, GIF.";
+    return "Formatos: JPG, PNG, WEBP.";
   }
 
-  return "";
+  return "Formatos: PDF, TXT.";
 }
 function legacyGetAcceptValue(field: Field, isImage: boolean) {
-  const allowedMimeTypes = field.allowedMimeTypes || [];
-
-  if (allowedMimeTypes.length > 0) {
-    return allowedMimeTypes.join(",");
-  }
-
   if (isImage) {
     return ALLOWED_IMAGE_MIME_TYPES.join(",");
   }
 
-  return undefined;
+  return ALLOWED_FILE_MIME_TYPES.join(",");
 }
 
 // Esta función se encarga de subir un solo archivo al backend y obtener su URL
 async function legacyUploadSingleFile(
   file: File,
   kind: "file" | "image",
-  folder = "general",
+  _folder = "general",
   allowedMimeTypes: string[] = []
 ): Promise<UploadedFileValue> {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("kind", kind);
-  formData.append("folder", folder);
-  formData.append("allowedMimeTypes", JSON.stringify(allowedMimeTypes));
 
   const res = await fetch("/api/upload", {
     method: "POST",

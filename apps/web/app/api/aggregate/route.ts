@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
+import { handleApiError } from "@/lib/auth/handleApiError";
 
 const ALLOWED_AGG_OPS = new Set(["sum", "avg", "min", "max", "count"]);
 const ALLOWED_WHERE_OPS = new Set(["=", "!=", ">", "<", ">=", "<=", "in"]);
@@ -8,6 +10,9 @@ const ALLOWED_WHERE_OPS = new Set(["=", "!=", ">", "<", ">=", "<=", "in"]);
 type WhereCond = { field: string; op: string; value: any };
 
 export async function POST(req: Request) {
+  const requestId = crypto.randomUUID();
+  let moduleSlugForLog = "";
+
   try {
     const body = await req.json().catch(() => ({}));
     const moduleSlug = String(body?.moduleSlug || "").trim();
@@ -15,6 +20,7 @@ export async function POST(req: Request) {
     const field = String(body?.field || "").trim();
     const op = String(body?.op || "").toLowerCase();
     const where: WhereCond[] = Array.isArray(body?.where) ? body.where : [];
+    moduleSlugForLog = moduleSlug || legacySourceTable;
 
     if ((!moduleSlug && !legacySourceTable) || !field || !op) {
       return NextResponse.json({ ok: false, detail: "moduleSlug/sourceTable, field y op requeridos" }, { status: 400 });
@@ -30,6 +36,7 @@ export async function POST(req: Request) {
     if (legacySourceTable && legacySourceTable !== resolved.table && legacySourceTable !== resolved.slug) {
       return NextResponse.json({ ok: false, detail: `sourceTable legacy no permitido: ${legacySourceTable}` }, { status: 400 });
     }
+    await requireModulePermission(resolved.permissionsKey, "ver");
 
     const declaredFields = new Set((resolved.schema.fields || []).map((schemaField) => schemaField.name));
     if (op !== "count" && !declaredFields.has(field)) {
@@ -80,7 +87,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, value, legacyTableAccepted: !!legacySourceTable && !moduleSlug });
   } catch (e: any) {
-    console.error("[/api/aggregate] crash:", e);
-    return NextResponse.json({ ok: false, detail: e?.message || "Error interno" }, { status: 500 });
+    return handleApiError(e, requestId, { route: "/api/aggregate", method: "POST", moduleSlug: moduleSlugForLog });
   }
 }
