@@ -244,7 +244,7 @@ export default async function Home() {
               <div className="p-4 p-md-5">
                 <div style={{ display: "inline-flex", alignItems: "center", gap: 10, padding: "9px 15px", borderRadius: 999, border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", fontSize: 12, letterSpacing: ".16em", textTransform: "uppercase", color: "rgba(226,232,240,.96)" }}>
                   <span className="rounded-circle" style={{ width: 8, height: 8, background: "#22c55e" }} />
-                  Dashboard Premium
+                  Dashboard
                 </div>
                 <h1 className="mt-4 mb-3" style={{ fontSize: "clamp(2.3rem, 4.4vw, 4.4rem)", lineHeight: 0.98, fontWeight: 900 }}>
                   Todo el proyecto en una portada con datos reales.
