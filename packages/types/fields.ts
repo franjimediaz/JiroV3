@@ -2,6 +2,7 @@ import type { ModuleDefaultFilterGroup, ModuleDefaultQueryFilterLike } from "./m
 import type { SelectorTableFilterGroup, SelectorTableFilterOperator } from "./selectorTableFilters";
 import type { ModuleAuditConfig } from "./auditPolicy";
 import type { ModuleCapabilities } from "./moduleCapabilities";
+import type { ModuleReadMode } from "./moduleReadMode";
 
 export type Compute =
   | { type: "none" }
@@ -400,6 +401,7 @@ export type ModuleSchema = {
     table: string;
     softDelete?: boolean;
     primaryKey?: string;
+    readMode?: ModuleReadMode;
     defaultFilters?: ModuleDefaultQueryFilterLike[] | ModuleDefaultFilterGroup;
   };
   fields: Field[]; // ← aquí se usa el array de Field

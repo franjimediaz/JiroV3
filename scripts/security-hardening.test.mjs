@@ -127,8 +127,9 @@ describe("security hardening regression checks", () => {
     assert.match(dpLabelsRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);
     assert.match(dpLabelsRoute, /handleApiError\(error,\s*requestId,\s*\{ route: "\/api\/dp\/labels"/);
     assert.doesNotMatch(dpLabelsRoute, /catch \(error[\s\S]*status:\s*500[\s\S]*\)/);
-    assert.doesNotMatch(dpLabelsRoute, /supabaseAdmin|service_role/i);
-    assert.doesNotMatch(dpLabelsRoute, /\.from\(table\)/);
+    assert.match(dpLabelsRoute, /if \(resolved\.readMode === "server"\) \{[\s\S]*await import\("@\/lib\/supabase\/admin"\)/);
+    assert.match(dpLabelsRoute, /queryClient[\s\S]*\.from\(resolved\.table\)/);
+    assert.doesNotMatch(dpLabelsRoute, /\.from\(table\)|\.from\(legacyTable\)|\.from\(body\.table\)/);
 
     assert.match(createRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"crear"\)/);
     assert.match(createRoute, /handleApiError\(e,\s*requestId,\s*\{ route: "\/api\/create"/);
@@ -406,5 +407,54 @@ describe("security hardening regression checks", () => {
     assert.match(formClient, /const canEdit = isModuleActionAvailable\(schema,\s*"actualizar",\s*hasPermiso\(resolved\.slug,\s*"actualizar" as any\)\)/);
     assert.match(formClient, /const effectiveMode:\s*Mode\s*=\s*mode === "edit" && !canEdit \? "view" : mode/);
     assert.match(formClient, /<RequirePerms modulo=\{resolved\.slug\} accion=\{requiredAction as any\}>/);
+  });
+
+  it("supports secure server-read modules without opening direct client access", () => {
+    const readModePolicy = source("packages/types/moduleReadMode.ts");
+    const fields = source("packages/types/fields.ts");
+    const index = source("packages/types/index.ts");
+    const resolver = source("apps/web/lib/modules/resolveModuleConfig.ts");
+    const modulesServer = source("apps/web/lib/modules.server.ts");
+    const listPage = source("apps/web/app/(main)/m/[slug]/page.tsx");
+    const listRoute = source("apps/web/app/api/list/route.ts");
+    const dpListRoute = source("apps/web/app/api/dp/list/route.ts");
+    const dpLabelsRoute = source("apps/web/app/api/dp/labels/route.ts");
+    const moduleForm = source("packages/ui/src/ModuloForm/ModuloForm.tsx");
+    const listView = source("packages/ui/src/ListView.tsx");
+    const readModeTest = source("scripts/module-read-mode.test.mjs");
+
+    assert.match(readModePolicy, /export type ModuleReadMode = .*"client".*"server"/s);
+    assert.match(readModePolicy, /DEFAULT_MODULE_READ_MODE:\s*ModuleReadMode\s*=\s*"client"/);
+    assert.match(readModePolicy, /getEffectiveModuleReadMode/);
+    assert.match(fields, /readMode\?: ModuleReadMode/);
+    assert.match(index, /getEffectiveModuleReadMode/);
+    assert.match(readModeTest, /defaults missing readMode to client/);
+
+    assert.match(resolver, /readMode:\s*ModuleReadMode/);
+    assert.match(resolver, /const readMode = getEffectiveModuleReadMode\(schema\)/);
+    assert.match(resolver, /readMode,/);
+    assert.match(modulesServer, /readMode: resolved\.readMode/);
+
+    assert.match(listPage, /if \(readMode === "server"\) \{[\s\S]*requireModulePermission\(slug,\s*"ver"\)[\s\S]*await import\("@\/lib\/supabase\/admin"\)/);
+    assert.match(modulesServer, /if \(options\?\.readMode === "server"\) \{[\s\S]*requireModulePermission\(options\.permissionsKey,\s*"ver"\)[\s\S]*await import\("@\/lib\/supabase\/admin"\)/);
+
+    assert.match(listRoute, /const permissionCtx = await requireModulePermission\(moduleSlug,\s*"ver"\)/);
+    assert.match(listRoute, /const resolved = await resolveModuleConfig\(moduleSlug\)/);
+    assert.match(listRoute, /legacyTable && legacyTable !== resolved\.table && legacyTable !== resolved\.slug/);
+    assert.match(listRoute, /let queryClient: any = permissionCtx\.supabase/);
+    assert.match(listRoute, /if \(resolved\.readMode === "server"\) \{[\s\S]*requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)[\s\S]*await import\("@\/lib\/supabase\/admin"\)/);
+    assert.match(listRoute, /queryClient\.from\(resolved\.table\)/);
+    assert.doesNotMatch(listRoute, /from\(legacyTable\)|from\(body\.table\)|from\(tableName\)/);
+
+    assert.match(dpListRoute, /if \(resolved\.readMode === "server"\) \{[\s\S]*await import\("@\/lib\/supabase\/admin"\)/);
+    assert.match(dpListRoute, /queryClient\.from\(resolved\.table\)/);
+    assert.match(dpLabelsRoute, /if \(resolved\.readMode === "server"\) \{[\s\S]*await import\("@\/lib\/supabase\/admin"\)/);
+    assert.match(dpLabelsRoute, /queryClient[\s\S]*\.from\(resolved\.table\)/);
+
+    assert.match(moduleForm, /Modo de lectura/);
+    assert.match(moduleForm, /normalizeModuleReadMode\(propsObj\.db\.readMode\)/);
+    assert.match(moduleForm, /Servidor protegido/);
+    assert.match(listView, /renderStructuredValue/);
+    assert.match(listView, /JSON\.stringify\(value\)/);
   });
 });

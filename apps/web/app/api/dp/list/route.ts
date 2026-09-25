@@ -20,11 +20,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "moduleSlug requerido" }, { status: 400 });
     }
 
+    await requireModulePermission(moduleSlug, "ver");
     const resolved = await resolveModuleConfig(moduleSlug);
     if (!resolved.table) {
       return NextResponse.json({ error: "Este modulo no es un modulo de datos" }, { status: 400 });
     }
-    await requireModulePermission(resolved.permissionsKey, "ver");
+    if (resolved.permissionsKey !== moduleSlug) {
+      await requireModulePermission(resolved.permissionsKey, "ver");
+    }
     const declaredFields = new Set((resolved.schema.fields || []).map((field) => field.name));
     const selectedDisplayField = declaredFields.has(displayField) ? displayField : resolved.displayField || "id";
 
@@ -35,8 +38,13 @@ export async function GET(req: Request) {
       );
     }
 
-    const supabase = await createClient();
-    let query = supabase.from(resolved.table).select("*").limit(limit);
+    let queryClient: any = await createClient();
+    if (resolved.readMode === "server") {
+      const { supabaseAdmin } = await import("@/lib/supabase/admin");
+      queryClient = supabaseAdmin;
+    }
+
+    let query = queryClient.from(resolved.table).select("*").limit(limit);
 
     if (q.trim()) {
       query = query.ilike(selectedDisplayField, `%${q.trim()}%`);

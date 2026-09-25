@@ -151,4 +151,11 @@ export type {
   ModuleCapabilities,
   ModuleCapabilitiesProps,
 } from "./moduleCapabilities";
+export {
+  MODULE_READ_MODES,
+  DEFAULT_MODULE_READ_MODE,
+  normalizeModuleReadMode,
+  getEffectiveModuleReadMode,
+} from "./moduleReadMode";
+export type { ModuleReadMode } from "./moduleReadMode";
 

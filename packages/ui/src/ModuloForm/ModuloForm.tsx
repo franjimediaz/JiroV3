@@ -5,7 +5,7 @@ import styles from "./modulo-detalle.module.css";
 import  Selector from "../components/fields/Selector";
 import {IconPicker} from "@repo/ui";
 import type { CalendarSpecialViewConfig, CalendarViewMode, ConfigurableAuditEvent, Field as FieldSchema, ModuleCapabilityKey, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
-import { applyModuleAuditConfigToProps, applyModuleCapabilitiesToProps, getEffectiveModuleAuditConfig, getEffectiveModuleCapabilities, MODULE_AUDIT_EVENT_OPTIONS, MODULE_CAPABILITY_OPTIONS, normalizeModuleDefaultFilters, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
+import { applyModuleAuditConfigToProps, applyModuleCapabilitiesToProps, getEffectiveModuleAuditConfig, getEffectiveModuleCapabilities, MODULE_AUDIT_EVENT_OPTIONS, MODULE_CAPABILITY_OPTIONS, normalizeModuleDefaultFilters, normalizeModuleReadMode, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
 import { FieldRow, VisibilityConfigEditor } from "./FieldRow"
 import ModuleDefaultFiltersBuilder from "./ModuleDefaultFiltersBuilder";
@@ -1525,6 +1525,28 @@ const editorTabs = [
             }}
             {...readOnlyAttr}
           />
+        </div>
+
+        <div className={styles.full}>
+          <label className={styles.label}>Modo de lectura</label>
+          <select
+            className={styles.input}
+            value={normalizeModuleReadMode(propsObj.db.readMode)}
+            disabled={readOnly}
+            onChange={(e) => {
+              const readMode = normalizeModuleReadMode(e.target.value);
+              const db = { ...propsObj.db, readMode };
+              const next = { ...propsObj, db };
+              setPropsObj(next);
+              setRawText(JSON.stringify(next, null, 2));
+            }}
+          >
+            <option value="client">Cliente / RLS</option>
+            <option value="server">Servidor protegido</option>
+          </select>
+          <div className={styles.help} style={{ marginTop: 8 }}>
+            Cliente / RLS: la sesion autenticada consulta directamente la tabla protegida por RLS. Servidor protegido: JiRo valida permisos y realiza la lectura desde backend.
+          </div>
         </div>
       </div>
 

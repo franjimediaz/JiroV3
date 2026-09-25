@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import ListPageClient from "@/lib/ListPageClient";
 import { fetchAllModulesIndex, fetchModuleRowBySlug } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 import {
   applyQueryFilters,
   buildModuleDefaultFilterRuntimeContext,
@@ -29,7 +30,7 @@ export default async function ListPage({
   const slug = p?.slug;
   if (!slug) notFound();
 
-  const { schema, table, titleSingular } = await fetchModuleRowBySlug(slug);
+  const { schema, table, titleSingular, readMode } = await fetchModuleRowBySlug(slug);
   if (!table) {
     throw new Error(`Este modulo no es un modulo de datos: ${slug}`);
   }
@@ -39,7 +40,14 @@ export default async function ListPage({
   const runtimeContext = await buildModuleDefaultFilterRuntimeContext(supabase);
   const defaultFilters = resolveDefaultFiltersForQuery(schema?.db?.defaultFilters, runtimeContext);
 
-  let query = supabase.from(table).select("*");
+  let queryClient: any = supabase;
+  if (readMode === "server") {
+    await requireModulePermission(slug, "ver");
+    const { supabaseAdmin } = await import("@/lib/supabase/admin");
+    queryClient = supabaseAdmin;
+  }
+
+  let query = queryClient.from(table).select("*");
   if (defaultFilters.canQueryDirectly) {
     query = applyQueryFilters(query, defaultFilters.filters as QueryFilter[]);
   }

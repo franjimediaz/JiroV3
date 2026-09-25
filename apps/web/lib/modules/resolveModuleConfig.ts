@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { normalizeModuleSchema, type NormalizedModuleSchema } from "@repo/types";
+import { getEffectiveModuleReadMode, normalizeModuleSchema, type ModuleReadMode, type NormalizedModuleSchema } from "@repo/types";
 
 export type ResolvedModuleConfig = {
   id?: string;
@@ -10,6 +10,7 @@ export type ResolvedModuleConfig = {
   tipo?: string;
   schema: NormalizedModuleSchema;
   permissionsKey: string;
+  readMode: ModuleReadMode;
   isDataModule: boolean;
   requiresTable: boolean;
   titleSingular?: string;
@@ -65,6 +66,7 @@ export function resolveModuleConfigFromRow(row: any): ResolvedModuleConfig {
   const isDataModule = Boolean(table);
   const route = cleanRoute((props as any)?.route ?? (props as any)?.ui?.route ?? row?.route, slug, { isDataModule });
   const primaryKey = String(schema?.db?.primaryKey || "id").trim();
+  const readMode = getEffectiveModuleReadMode(schema);
 
   return {
     id: row?.id ? String(row.id) : undefined,
@@ -75,6 +77,7 @@ export function resolveModuleConfigFromRow(row: any): ResolvedModuleConfig {
     tipo: row?.tipo ? String(row.tipo) : undefined,
     schema,
     permissionsKey: slug,
+    readMode,
     isDataModule,
     requiresTable,
     titleSingular: String((props as any)?.ui?.titleSingular ?? row?.nombre ?? slug),
@@ -128,6 +131,7 @@ export async function resolveModuleIndex() {
       id: resolved.id,
       nombre: row?.nombre,
       db: { table: resolved.table, primaryKey: resolved.primaryKey },
+      readMode: resolved.readMode,
       route: resolved.route,
       tipo: resolved.tipo,
       schema: resolved.schema,

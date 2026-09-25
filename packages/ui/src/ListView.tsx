@@ -483,6 +483,8 @@ function renderCell(
 ) {
   if (value === null || value === undefined || value === "") return "—";
 
+  if (typeof value === "object" && !Array.isArray(value)) return renderStructuredValue(value);
+
   switch (field.type as FieldType) {
     case "boolean":
       return value ? (
@@ -576,6 +578,20 @@ function renderCell(
 
     default:
       return String(value);
+  }
+}
+
+function renderStructuredValue(value: unknown) {
+  try {
+    const text = JSON.stringify(value);
+    const display = text.length > 160 ? `${text.slice(0, 157)}...` : text;
+    return (
+      <code title={text} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+        {display}
+      </code>
+    );
+  } catch {
+    return String(value);
   }
 }
 

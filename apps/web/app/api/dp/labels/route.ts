@@ -55,6 +55,7 @@ export async function POST(req: Request) {
 
     assertIdentifier(moduleKey, "moduleSlug");
 
+    await requireModulePermission(moduleKey, "ver");
     const resolved = await resolveLabelsModule(moduleKey);
     moduleSlug = resolved.slug;
 
@@ -69,17 +70,23 @@ export async function POST(req: Request) {
     const labelField = requestedLabelField || resolved.displayField || "id";
     assertIdentifier(labelField, "labelField");
     assertAllowedLabelField(resolved, labelField);
-    await requireModulePermission(resolved.permissionsKey, "ver");
+    if (resolved.permissionsKey !== moduleKey) {
+      await requireModulePermission(resolved.permissionsKey, "ver");
+    }
 
     if (ids.length === 0) {
       return NextResponse.json({ ok: true, map: {}, requestId });
     }
 
-    const supabase = await createClient();
+    let queryClient: any = await createClient();
+    if (resolved.readMode === "server") {
+      const { supabaseAdmin } = await import("@/lib/supabase/admin");
+      queryClient = supabaseAdmin;
+    }
     const idField = resolved.primaryKey || "id";
     const selectFields = Array.from(new Set([idField, labelField])).join(",");
 
-    const { data, error } = await supabase
+    const { data, error } = await queryClient
       .from(resolved.table)
       .select(selectFields)
       .in(idField, ids);

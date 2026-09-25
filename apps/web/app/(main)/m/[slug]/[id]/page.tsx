@@ -69,13 +69,14 @@ export default async function EntityPage({
   const schema = mod.schema;
   const table = mod.table;
   const primaryKey = mod.primaryKey;
+  const readMode = mod.readMode;
   const baseRoute = `/m/${slug}/`;
   if (!table) {
     throw new Error(`Este modulo no es un modulo de datos: ${slug}`);
   }
 
   // 2) fila
-  const row = await fetchRowById(table, primaryKey, id);
+  const row = await fetchRowById(table, primaryKey, id, { readMode, permissionsKey: slug });
   if (!row) notFound();
 
   // 3) índices auxiliares (para treeview + resolve de rutas)

@@ -1,6 +1,5 @@
 // app/api/list/route.ts
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import type { QueryFilter } from "@repo/types";
 import {
   applyQueryFilters,
@@ -8,84 +7,58 @@ import {
   filterRowsWithDefaultFilters,
   resolveDefaultFiltersForQuery,
 } from "@/lib/moduleDefaultFilters";
-import { requireModulePermission } from "@/lib/auth/requireModulePermission";
+import { badRequest } from "@/lib/auth/apiError";
 import { handleApiError } from "@/lib/auth/handleApiError";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
+import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
 
 type ListFilter = QueryFilter;
-type ListSort = { field: string; dir: "asc" | "desc" };
+type ListSort = { field: string; dir: "asc" | "desc"; direction?: "asc" | "desc" };
 
 type ListBody = {
   moduleSlug: string;
+  table?: string;
   filters?: ListFilter[];
   sort?: ListSort[];
   limit?: number;
   offset?: number;
 };
 
-function parseProps(props: any) {
-  if (!props) return null;
-  if (typeof props === "string") {
-    try {
-      return JSON.parse(props);
-    } catch {
-      return null;
-    }
-  }
-  return props;
-}
-
 export async function POST(req: Request) {
   const requestId = crypto.randomUUID();
   let moduleSlug = "";
 
   try {
-    const supabase = await createClient();
-
     const body = (await req.json()) as ListBody;
     moduleSlug = String(body?.moduleSlug || "").trim();
+    const legacyTable = String(body?.table || "").trim();
     const limitRaw = body?.limit;
     const offsetRaw = body?.offset;
 
     if (!moduleSlug) {
-      return NextResponse.json({ ok: false, detail: "moduleSlug es requerido" }, { status: 400 });
+      throw badRequest("moduleSlug es requerido");
     }
 
-    await requireModulePermission(moduleSlug, "ver");
-
-    const { data: modRow, error: modErr } = await supabase
-      .from("modulos")
-      .select("id, slug, props")
-      .eq("slug", moduleSlug)
-      .maybeSingle();
-
-    if (modErr) {
-      console.error("POST /api/list modulos error", modErr);
-      return NextResponse.json(
-        { ok: false, detail: "Error resolviendo módulo", code: modErr.code },
-        { status: 500 }
-      );
+    const permissionCtx = await requireModulePermission(moduleSlug, "ver");
+    const resolved = await resolveModuleConfig(moduleSlug);
+    if (!resolved.table) {
+      throw badRequest(`El modulo "${moduleSlug}" no tiene props.db.table`);
+    }
+    if (legacyTable && legacyTable !== resolved.table && legacyTable !== resolved.slug) {
+      throw badRequest(`Tabla legacy no permitida: ${legacyTable}`);
     }
 
-    if (!modRow) {
-      return NextResponse.json(
-        { ok: false, detail: `No existe módulo con slug "${moduleSlug}"` },
-        { status: 404 }
-      );
+    let queryClient: any = permissionCtx.supabase;
+    if (resolved.readMode === "server") {
+      await requireModulePermission(resolved.permissionsKey, "ver");
+      const { supabaseAdmin } = await import("@/lib/supabase/admin");
+      queryClient = supabaseAdmin;
     }
 
-    const props = parseProps((modRow as any).props);
-    const tableName = String(props?.db?.table || "").trim() || moduleSlug;
-    if (!tableName) {
-      return NextResponse.json(
-        { ok: false, detail: `El módulo "${moduleSlug}" no tiene props.db.table` },
-        { status: 400 }
-      );
-    }
+    const runtimeContext = await buildModuleDefaultFilterRuntimeContext(permissionCtx.supabase);
+    const defaultFilters = resolveDefaultFiltersForQuery(resolved.schema?.db?.defaultFilters, runtimeContext);
 
-    const runtimeContext = await buildModuleDefaultFilterRuntimeContext(supabase);
-    const defaultFilters = resolveDefaultFiltersForQuery(props?.db?.defaultFilters, runtimeContext);
-
-    let q = supabase.from(tableName).select("*");
+    let q = queryClient.from(resolved.table).select("*");
     if (defaultFilters.canQueryDirectly) {
       q = applyQueryFilters(q, defaultFilters.filters as QueryFilter[]);
     }
@@ -110,10 +83,10 @@ export async function POST(req: Request) {
 
     const { data, error } = await q;
     if (error) {
-      console.error("POST /api/list query error", { tableName, error });
+      console.error("POST /api/list query error", { tableName: resolved.table, error });
       return NextResponse.json(
         { ok: false, detail: "Error listando datos", code: error.code },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -127,6 +100,6 @@ export async function POST(req: Request) {
 export async function GET() {
   return NextResponse.json(
     { ok: false, detail: "Usa POST con JSON: { moduleSlug, filters, sort, limit, offset }" },
-    { status: 405 }
+    { status: 405 },
   );
 }
