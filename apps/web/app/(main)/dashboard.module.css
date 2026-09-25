@@ -292,6 +292,11 @@ a.moduleLink:hover {
     background-position: -200% 0;
   }
 }
+@container (min-width: 401px) and (max-width: 940px) {
+  .featuredGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 @container (max-width: 760px) {
   .columns {
     grid-template-columns: minmax(0, 1fr);
