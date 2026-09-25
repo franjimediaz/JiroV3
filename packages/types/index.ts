@@ -152,3 +152,4 @@ export type {
   ModuleCapabilitiesProps,
 } from "./moduleCapabilities";
 
+export { applyModuleUiPatch } from "./moduleUi";

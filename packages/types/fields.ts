@@ -388,6 +388,7 @@ export type ModuleUiSchema = {
   icon?: string;
   color?: string;
   sidebar?: boolean;
+  dashboard?: boolean;
   formSections?: FormSection[];
   previewTabs?: FormPreviewTab[];
   specialViews?: SpecialViewConfig[];

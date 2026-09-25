@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect, useRef, useCallback} from "react";
 import styles from "./modulo-detalle.module.css";
+import { applyModuleUiPatch } from "@repo/types";
 import  Selector from "../components/fields/Selector";
 import {IconPicker} from "@repo/ui";
 import type { CalendarSpecialViewConfig, CalendarViewMode, ConfigurableAuditEvent, Field as FieldSchema, ModuleCapabilityKey, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
@@ -901,7 +902,6 @@ export default function ModuloForm({
   const [tipo, setTipo] = useState(initialData?.tipo ?? "tabla");
   const [orden, setOrden] = useState<number>(initialData?.orden ?? 0);
   const [activo, setActivo] = useState<boolean>(!!initialData?.activo);
-  const [sidebar, setSidebar] = useState<boolean>(!!initialData?.sidebar);
   const [parentId, setParentId] = useState<string | null>(initialData?.parent_id ?? null);
   const [pickOpen, setPickOpen] = useState(false);
   const [pickTarget, setPickTarget] = useState<PickTarget>("columns");
@@ -951,13 +951,14 @@ useEffect(() => {
     const base: ModuleSchema = {
       db: { table: "", softDelete: false },
       fields: [],
-      ui: { icon: "", color: "#2b2b2b", sidebar: false, tabs: [] },
+      ui: { icon: "", color: "#2b2b2b", sidebar: false, dashboard: false, tabs: [] },
     };
 
     const raw = initialData?.props;
     try {
       const parsed = normalizeModuleSchema(typeof raw === "string" ? JSON.parse(raw) : raw || {});
       const next: ModuleSchema = {
+        ...parsed,
         db: { ...base.db, ...(parsed.db || {}) },
         fields: Array.isArray(parsed.fields) ? (parsed.fields as Field[]) : [],
         ui: { ...base.ui, ...(parsed.ui || {}) },
@@ -1218,7 +1219,7 @@ const setSpecialViews = (specialViews: SpecialViewConfig[]) => {
       if (err) return setMsg({ ok: false, text: `Props inválidos: ${err}` });
     }
 
-    toSave = { ...normalizedToSave, ui: { ...(normalizedToSave.ui || {}), sidebar } };
+    toSave = applyModuleUiPatch(normalizedToSave, { dashboard: normalizedToSave.ui?.dashboard === true });
 
     start(async () => {
       const fd = new FormData();
@@ -1230,7 +1231,7 @@ const setSpecialViews = (specialViews: SpecialViewConfig[]) => {
       fd.set("tipo", tipo);
       fd.set("orden", String(orden));
       fd.set("activo", String(activo));
-      fd.set("sidebar", String(sidebar));
+      fd.set("sidebar", String(toSave.ui?.sidebar === true));
       fd.set("props", JSON.stringify(toSave));
 
       const res = await onSave(fd);
@@ -1459,21 +1460,7 @@ const editorTabs = [
         </div>
 
 
-        <div className={styles.switchRow}>
-          <label className={styles.label}>Quitar del sidebar</label>
-          <input
-            type="checkbox"
-            checked={!!propsObj.ui?.sidebar}
-            onChange={(e) => {
-              const ui = { ...propsObj.ui, sidebar: e.target.checked };
-              const next = { ...propsObj, ui };
-              setPropsObj(next);
-              setRawText(JSON.stringify(next, null, 2));
-              setSidebar(e.target.checked);
-            }}
-            {...readOnlyAttr}
-          />
-        </div>
+
       </div>
     </Section>
   )}
@@ -1566,6 +1553,38 @@ const editorTabs = [
   {editorTab === "ui" && (
     <Section title="Sección: UI">
       <div className={styles.grid}>
+        <div className={styles.switchRow}>
+          <label className={styles.label} htmlFor="module-sidebar">Quitar del sidebar</label>
+          <input
+            id="module-sidebar"
+            type="checkbox"
+            checked={!!propsObj.ui?.sidebar}
+            onChange={(e) => {
+              const next = applyModuleUiPatch(propsObj, { sidebar: e.target.checked });
+              setPropsObj(next);
+              setRawText(JSON.stringify(next, null, 2));
+            }}
+            {...readOnlyAttr}
+          />
+        </div>
+        <div className={styles.switchRow}>
+          <div>
+            <label className={styles.label} htmlFor="module-dashboard">Dashboard</label>
+            <p className={styles.help} id="module-dashboard-help">Mostrar este módulo como acceso en el dashboard de inicio.</p>
+          </div>
+          <input
+            id="module-dashboard"
+            type="checkbox"
+            checked={propsObj.ui?.dashboard === true}
+            disabled={readOnly}
+            aria-describedby="module-dashboard-help"
+            onChange={(e) => {
+              const next = applyModuleUiPatch(propsObj, { dashboard: e.target.checked });
+              setPropsObj(next);
+              setRawText(JSON.stringify(next, null, 2));
+            }}
+          />
+        </div>
         <div>
           <label className={styles.label}>ui.color</label>
           <input
@@ -1573,8 +1592,7 @@ const editorTabs = [
             className={styles.color}
             value={propsObj.ui?.color || "#2b2b2b"}
             onChange={(e) => {
-              const ui = { ...(propsObj.ui || {}), color: e.target.value };
-              const next = { ...propsObj, ui };
+              const next = applyModuleUiPatch(propsObj, { color: e.target.value });
               setPropsObj(next);
               setRawText(JSON.stringify(next, null, 2));
             }}
@@ -1588,8 +1606,7 @@ const editorTabs = [
           <IconPicker
             value={propsObj.ui?.icon}
             onChange={(icon: string) => {
-              const ui = { ...(propsObj.ui || {}), icon };
-              const next = { ...propsObj, ui };
+              const next = applyModuleUiPatch(propsObj, { icon });
               setPropsObj(next);
               setRawText(JSON.stringify(next, null, 2));
             }}

@@ -1,19 +1,13 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import type { DashboardModule } from "./dashboard-model";
+import type { DashboardModule, DashboardModuleGroup } from "./dashboard-model";
 import styles from "./dashboard.module.css";
 
 function Icon({ name }: { name: string }) {
   return <i className={name} aria-hidden="true" />;
 }
 
-function ModuleLink({
-  item,
-  metric = false,
-}: {
-  item: DashboardModule;
-  metric?: boolean;
-}) {
+function ModuleLink({ item }: { item: DashboardModule }) {
   const content = (
     <>
       <span
@@ -24,56 +18,28 @@ function ModuleLink({
       </span>
       <span className={styles.moduleContent}>
         <span className={styles.moduleName}>{item.name}</span>
-        {metric ? (
-          <span className={styles.count}>
-            {item.count === null ? (
-              "Conteo no disponible"
-            ) : (
-              <>
-                <strong>
-                  {new Intl.NumberFormat("es-ES").format(item.count)}
-                </strong>{" "}
-                registros accesibles
-              </>
-            )}
-          </span>
-        ) : (
-          <span className={styles.hint}>
-            {item.href ? "Abrir módulo" : "Acceso no disponible"}
-          </span>
-        )}
+        <span className={styles.hint}>Abrir módulo</span>
       </span>
-      {item.href && <Icon name="bi bi-arrow-up-right" />}
+      <Icon name="bi bi-arrow-up-right" />
     </>
   );
-  return item.href ? (
+  return (
     <Link href={item.href} className={styles.moduleLink} prefetch={false}>
       {content}
     </Link>
-  ) : (
-    <div
-      className={`${styles.moduleLink} ${styles.unavailable}`}
-      aria-disabled="true"
-    >
-      {content}
-    </div>
   );
 }
 
 export function Dashboard({
-  modules,
-  featured,
+  groups,
   email,
   loadError,
 }: {
-  modules: DashboardModule[];
-  featured: DashboardModule[];
+  groups: DashboardModuleGroup[];
   email: string;
   loadError: boolean;
 }) {
-  const business = modules.filter((item) => !item.system);
-  const system = modules.filter((item) => item.system);
-  const first = featured[0];
+  const first = groups[0]?.modules[0];
   return (
     <div className={styles.dashboard}>
       <header className={styles.hero}>
@@ -116,73 +82,40 @@ export function Dashboard({
             Volver a cargar el inicio
           </Link>
         </section>
-      ) : (
-        <>
-          {featured.length > 0 && (
-            <section aria-labelledby="featured-title">
+      ) : groups.length ? (
+        <div className={styles.groupGrid}>
+          {groups.map((group) => (
+            <section
+              key={group.id}
+              className={styles.panel}
+              aria-labelledby={`group-${group.id}`}
+            >
               <div className={styles.sectionHeading}>
-                <div>
-                  <h2 id="featured-title">Accesos destacados</h2>
-                  <p>
-                    Tus módulos a mano, con los registros accesibles para tu
-                    cuenta.
-                  </p>
-                </div>
-                <span className={styles.badge}>
-                  {featured.length} destacados
+                <h2 id={`group-${group.id}`}>{group.name}</h2>
+                <span
+                  className={styles.badge}
+                  aria-label={`${group.modules.length} accesos`}
+                >
+                  {group.modules.length}
                 </span>
               </div>
-              <div className={styles.featuredGrid}>
-                {featured.map((item) => (
-                  <ModuleLink key={item.id} item={item} metric />
+              <div className={styles.moduleGrid}>
+                {group.modules.map((item) => (
+                  <ModuleLink key={item.id} item={item} />
                 ))}
               </div>
             </section>
-          )}
-          <div className={system.length ? styles.columns : styles.singleColumn}>
-            <section className={styles.panel} aria-labelledby="business-title">
-              <div className={styles.sectionHeading}>
-                <div>
-                  <h2 id="business-title">Módulos de negocio</h2>
-                  <p>Explora las herramientas de tu espacio de trabajo.</p>
-                </div>
-                <span className={styles.badge}>{business.length}</span>
-              </div>
-              {business.length ? (
-                <div className={styles.moduleGrid}>
-                  {business.map((item) => (
-                    <ModuleLink key={item.id} item={item} />
-                  ))}
-                </div>
-              ) : (
-                <div className={styles.empty}>
-                  <Icon name="bi bi-grid-1x2" />
-                  <h3>Aún no hay módulos de negocio</h3>
-                  <p>
-                    Los módulos activos aparecerán aquí cuando estén
-                    disponibles.
-                  </p>
-                </div>
-              )}
-            </section>
-            {system.length > 0 && (
-              <section className={styles.panel} aria-labelledby="system-title">
-                <div className={styles.sectionHeading}>
-                  <div>
-                    <h2 id="system-title">Administración</h2>
-                    <p>Configuración de tu espacio.</p>
-                  </div>
-                  <Icon name="bi bi-sliders" />
-                </div>
-                <div className={styles.systemList}>
-                  {system.map((item) => (
-                    <ModuleLink key={item.id} item={item} />
-                  ))}
-                </div>
-              </section>
-            )}
-          </div>
-        </>
+          ))}
+        </div>
+      ) : (
+        <section className={styles.empty}>
+          <Icon name="bi bi-grid-1x2" />
+          <h2>No tienes accesos configurados para el dashboard.</h2>
+          <p>
+            Los módulos habilitados aparecerán aquí cuando tengas permiso para
+            acceder.
+          </p>
+        </section>
       )}
     </div>
   );

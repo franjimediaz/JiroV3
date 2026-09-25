@@ -10,7 +10,6 @@ const countMatches = (text, pattern) => Array.from(text.matchAll(pattern)).lengt
 describe("security hardening regression checks", () => {
   it("validates configurable permission env vars instead of treating them as authorization bypasses", () => {
     const permissions = source("apps/web/lib/auth/requirePermission.ts");
-    const upload = source("apps/web/app/api/upload/route.ts");
     const uploadUrl = source("apps/web/app/api/upload-url/route.ts");
 
     assert.match(permissions, /CONFIGURABLE_PERMISSION_PATTERN/);
@@ -103,17 +102,16 @@ describe("security hardening regression checks", () => {
     const aggregateRoute = source("apps/web/app/api/aggregate/route.ts");
     const proxy = source("apps/web/proxy.ts");
 
-    assert.match(permissions, /ACTION_PERMISSION_MAP/);
-    assert.match(permissions, /read:\s*"ver"/);
-    assert.match(permissions, /create:\s*"crear"/);
-    assert.match(permissions, /update:\s*"actualizar"/);
-    assert.match(permissions, /delete:\s*"eliminar"/);
+    const rules = source("apps/web/lib/auth/permissionRules.ts");
+    assert.match(rules, /ACTION_PERMISSION_MAP/);
+    assert.match(rules, /read:\s*"ver"/);
+    assert.match(rules, /create:\s*"crear"/);
+    assert.match(rules, /update:\s*"actualizar"/);
+    assert.match(rules, /delete:\s*"eliminar"/);
     assert.match(permissions, /normalizePermissionAction\(actionRaw\)/);
-    assert.match(permissions, /modulePerms\["\*"\] === true \|\| modulePerms\[action\] === true/);
-    assert.match(permissions, /rpc\("can"/);
-    assert.match(permissions, /modulo:\s*moduleName/);
-    assert.match(permissions, /accion:\s*action/);
-    assert.match(permissions, /permissionMatched = await canByDatabasePolicy/);
+    assert.match(permissions, /ctx\.permissions \?\? effectivePermissions/);
+    assert.doesNotMatch(permissions, /rpc\(/);
+    assert.match(currentUser, /supabaseAdmin/);
     assert.match(modulePermission, /normalizePermissionAction\(action\)/);
 
     assert.match(listRoute, /requireModulePermission\(moduleSlug,\s*"ver"\)/);
@@ -161,6 +159,7 @@ describe("security hardening regression checks", () => {
 
   it("keeps role authorization smoke contracts stable for generic APIs and relations", () => {
     const permissions = source("apps/web/lib/auth/requirePermission.ts");
+    const rules = source("apps/web/lib/auth/permissionRules.ts");
     const upload = source("apps/web/app/api/upload/route.ts");
     const uploadUrl = source("apps/web/app/api/upload-url/route.ts");
     const listRoute = source("apps/web/app/api/list/route.ts");
@@ -173,9 +172,9 @@ describe("security hardening regression checks", () => {
     const relationDisplay = source("packages/ui/src/utils/relationDisplay.tsx");
     const currentUser = source("apps/web/lib/auth/getCurrentUser.ts");
 
-    assert.match(permissions, /create:\s*"crear"/);
-    assert.match(permissions, /update:\s*"actualizar"/);
-    assert.match(permissions, /delete:\s*"eliminar"/);
+    assert.match(rules, /create:\s*"crear"/);
+    assert.match(rules, /update:\s*"actualizar"/);
+    assert.match(rules, /delete:\s*"eliminar"/);
 
     assert.match(listRoute, /requireModulePermission\(moduleSlug,\s*"ver"\)/);
     assert.match(dpListRoute, /requireModulePermission\(resolved\.permissionsKey,\s*"ver"\)/);

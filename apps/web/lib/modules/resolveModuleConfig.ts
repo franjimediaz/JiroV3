@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { cache } from "react";
 import { normalizeModuleSchema, type NormalizedModuleSchema } from "@repo/types";
 
 export type ResolvedModuleConfig = {
@@ -15,6 +16,30 @@ export type ResolvedModuleConfig = {
   titleSingular?: string;
   displayField?: string;
 };
+
+export type ModuleRow = {
+  id: string;
+  parent_id: string | null;
+  slug: string;
+  nombre: string | null;
+  route: string | null;
+  tipo: string | null;
+  orden: number | null;
+  activo: boolean | null;
+  props: unknown;
+};
+
+// Shared per-request inventory; layout, dashboard and module index use one query.
+export const fetchModuleRows = cache(async (): Promise<ModuleRow[]> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("modulos")
+    .select("id,parent_id,slug,nombre,route,tipo,orden,activo,props")
+    .order("orden", { ascending: true })
+    .order("nombre", { ascending: true });
+  if (error) throw new Error("No se pudieron cargar los módulos");
+  return (data ?? []) as ModuleRow[];
+});
 
 function parseProps(props: unknown) {
   if (typeof props !== "string") return props || {};
@@ -97,11 +122,7 @@ export async function resolveModuleConfig(slugOrAlias: string): Promise<Resolved
   if (bySlug) return resolveModuleConfigFromRow(bySlug);
 
   // Compatibilidad temporal: aceptar db.table/table solo si coincide con un modulo real.
-  const { data: rows, error: indexError } = await supabase
-    .from("modulos")
-    .select("id,slug,props,activo,tipo,orden,route,nombre");
-
-  if (indexError) throw new Error(indexError.message);
+  const rows = await fetchModuleRows();
 
   for (const row of rows || []) {
     const resolved = resolveModuleConfigFromRow(row);
@@ -112,12 +133,7 @@ export async function resolveModuleConfig(slugOrAlias: string): Promise<Resolved
 }
 
 export async function resolveModuleIndex() {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("modulos")
-    .select("id,slug,props,route,nombre,tipo");
-
-  if (error) throw new Error("No se pudieron cargar los modulos");
+  const data = await fetchModuleRows();
 
   const modulesBySlug: Record<string, any> = {};
   const slugByTable: Record<string, string> = {};

@@ -157,14 +157,11 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 12px;
 }
-.columns {
+.groupGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(260px, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
   gap: 20px;
   align-items: start;
-}
-.singleColumn {
-  display: grid;
 }
 .panel {
   padding: 22px;
@@ -175,10 +172,6 @@
 .moduleGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
-  gap: 10px;
-}
-.systemList {
-  display: grid;
   gap: 10px;
 }
 .moduleLink {
@@ -199,10 +192,6 @@ a.moduleLink:hover {
   border-color: #93b4e2;
   background: #eff6ff;
   color: #0f172a;
-}
-.featuredGrid .moduleLink {
-  background: linear-gradient(150deg, #fff, #f0f5fc);
-  padding: 20px 16px;
 }
 .moduleLink > i {
   font-size: 14px;
@@ -229,22 +218,10 @@ a.moduleLink:hover {
   font-weight: 650;
   line-height: 1.4;
 }
-.hint,
-.count {
+.hint {
   color: var(--dash-muted);
   font-size: 12px;
   line-height: 1.5;
-}
-.count strong {
-  color: #0f172a;
-  font-size: 22px;
-  font-weight: 700;
-  display: block;
-  margin-top: 5px;
-}
-.unavailable {
-  background: #f8fafc;
-  border-style: dashed;
 }
 .empty {
   text-align: center;
@@ -298,7 +275,7 @@ a.moduleLink:hover {
   }
 }
 @container (max-width: 760px) {
-  .columns {
+  .groupGrid {
     grid-template-columns: minmax(0, 1fr);
   }
   .hero {

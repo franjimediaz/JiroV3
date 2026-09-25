@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import Providers from "../providers";
-import { createClient } from "@/lib/supabase/server";
-import { PermisosProvider } from "@/lib/perms";
+import { fetchModuleRows } from "@/lib/modules/resolveModuleConfig";
 import type { SidebarItem } from "@repo/ui";
 import MainShell from "./MainShell";
 
@@ -92,23 +91,14 @@ export default async function MainLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("modulos")
-    .select("id,nombre,route,activo,orden,parent_id,slug,props,tipo") // ✅ añade slug si existe
-    .eq("activo", true)
-    .order("orden", { ascending: true })
-    .order("nombre", { ascending: true });
-
-  const items: SidebarItem[] = error ? [] : buildTree((data ?? []) as ModuloRow[]);
+  const data = await fetchModuleRows().catch(() => []);
+  const items = buildTree(data.filter((row) => row.activo === true) as ModuloRow[]);
 
   return (
-  <PermisosProvider>
     <div className={`${geistSans.variable} ${geistMono.variable}`}>
       <Providers>
         <MainShell items={items}>{children}</MainShell>
       </Providers>
     </div>
-  </PermisosProvider>
 );
 }

@@ -24,6 +24,7 @@ apps/web/lib/pdf/.test-tmp/
 
 # Build Outputs
 .next/
+apps/web/lib/modules/pageRoutes.generated.json
 out/
 build
 dist

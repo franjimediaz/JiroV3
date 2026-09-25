@@ -1,10 +1,17 @@
 import type { User } from "@supabase/supabase-js";
+import { cache } from "react";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { unauthorized } from "./apiError";
+import {
+  effectivePermissions,
+  type EffectivePermission,
+} from "./permissionRules";
 
 export type RolePerms = Record<string, Record<string, boolean> | boolean>;
 
 export type CurrentUserContext = {
+  permissions?: EffectivePermission[];
   supabase: Awaited<ReturnType<typeof createClient>>;
   user: User;
   profile: {
@@ -35,65 +42,82 @@ function parsePerms(value: unknown): RolePerms {
   return value as RolePerms;
 }
 
-export async function getCurrentUser(): Promise<CurrentUserContext | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
+export const getCurrentUser = cache(
+  async (): Promise<CurrentUserContext | null> => {
+    const supabase = await createClient();
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser();
 
-  if (error || !user) return null;
+    if (error || !user) return null;
 
-  const { data: profileRow, error: profileError } = await supabase
-    .from("users")
-    .select("uid, email, role_id, role")
-    .eq("uid", user.id)
-    .maybeSingle();
-
-  if ((profileError || !profileRow) && process.env.NODE_ENV !== "production") {
-    console.warn("current user profile not resolved", {
-      uid: user.id,
-      error: profileError?.message,
-    });
-  }
-
-  const profile = profileRow
-    ? {
-        uid: typeof profileRow.uid === "string" ? profileRow.uid : user.id,
-        email: typeof profileRow.email === "string" ? profileRow.email : user.email,
-        role_id: typeof profileRow.role_id === "string" ? profileRow.role_id : null,
-        role: typeof profileRow.role === "string" ? profileRow.role : null,
-      }
-    : { uid: user.id, email: user.email, role_id: null, role: null };
-
-  let role: CurrentUserContext["role"] = null;
-  if (profile.role_id) {
-    const { data: roleRow, error: roleError } = await supabase
-      .from("rol")
-      .select("id, slug, perms")
-      .eq("id", profile.role_id)
+    const { data: profileRow, error: profileError } = await supabase
+      .from("users")
+      .select("uid, email, role_id, role")
+      .eq("uid", user.id)
       .maybeSingle();
 
-    if ((roleError || !roleRow) && process.env.NODE_ENV !== "production") {
-      console.warn("current user role not resolved", {
+    if (
+      (profileError || !profileRow) &&
+      process.env.NODE_ENV !== "production"
+    ) {
+      console.warn("current user profile not resolved", {
         uid: user.id,
-        role_id: profile.role_id,
-        role_slug: profile.role,
-        error: roleError?.message,
+        error: profileError?.message,
       });
     }
 
-    if (roleRow && typeof roleRow.id === "string") {
-      role = {
-        id: roleRow.id,
-        slug: typeof roleRow.slug === "string" ? roleRow.slug : null,
-        perms: parsePerms(roleRow.perms),
-      };
-    }
-  }
+    const profile = profileRow
+      ? {
+          uid: typeof profileRow.uid === "string" ? profileRow.uid : user.id,
+          email:
+            typeof profileRow.email === "string"
+              ? profileRow.email
+              : user.email,
+          role_id:
+            typeof profileRow.role_id === "string" ? profileRow.role_id : null,
+          role: typeof profileRow.role === "string" ? profileRow.role : null,
+        }
+      : { uid: user.id, email: user.email, role_id: null, role: null };
 
-  return { supabase, user, profile, role };
-}
+    let role: CurrentUserContext["role"] = null;
+    if (profile.role_id) {
+      // Read only this authenticated user's role. rol SELECT is itself gated by
+      // rol.ver, while public.can reads the same row as SECURITY DEFINER.
+      const { data: roleRow, error: roleError } = await supabaseAdmin
+        .from("rol")
+        .select("id, slug, perms")
+        .eq("id", profile.role_id)
+        .maybeSingle();
+
+      if ((roleError || !roleRow) && process.env.NODE_ENV !== "production") {
+        console.warn("current user role not resolved", {
+          uid: user.id,
+          role_id: profile.role_id,
+          role_slug: profile.role,
+          error: roleError?.message,
+        });
+      }
+
+      if (roleRow && typeof roleRow.id === "string") {
+        role = {
+          id: roleRow.id,
+          slug: typeof roleRow.slug === "string" ? roleRow.slug : null,
+          perms: parsePerms(roleRow.perms),
+        };
+      }
+    }
+
+    return {
+      supabase,
+      user,
+      profile,
+      role,
+      permissions: effectivePermissions(role?.perms),
+    };
+  },
+);
 
 export async function requireUser() {
   const ctx = await getCurrentUser();

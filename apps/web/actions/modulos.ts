@@ -1,4 +1,5 @@
 "use server";
+import { revalidatePath } from "next/cache";
 
 import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -142,6 +143,7 @@ export async function upsertModuloAction(formData: FormData): Promise<{ ok: bool
       if (error) return await fail(`DB insert: ${error.message}`);
       resourceId = data!.id as string;
       await auditModulo(true);
+      revalidatePath("/", "layout");
       return { ok: true, detail: "Modulo creado.", id: data!.id as string };
     }
 
@@ -155,6 +157,7 @@ export async function upsertModuloAction(formData: FormData): Promise<{ ok: bool
     if (error) return await fail(`DB update: ${error.message}`);
     resourceId = data!.id as string;
     await auditModulo(true);
+    revalidatePath("/", "layout");
     return { ok: true, detail: "Modulo actualizado.", id: data!.id as string };
   } catch (error: any) {
     return await fail(error?.message ?? "Fallo inesperado.");

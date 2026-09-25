@@ -1,4 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { requireModulePermission } from "@/lib/auth/requireModulePermission";
+import { ApiError } from "@/lib/auth/apiError";
 import ListPageClient from "@/lib/ListPageClient";
 import { fetchAllModulesIndex, fetchModuleRowBySlug } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
@@ -28,6 +30,13 @@ export default async function ListPage({
   const sp = (await resolveMaybePromise(searchParams)) ?? {};
   const slug = p?.slug;
   if (!slug) notFound();
+  try {
+    await requireModulePermission(slug, "ver");
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 403) redirect("/403");
+    if (error instanceof ApiError && error.status === 401) redirect("/login");
+    throw error;
+  }
 
   const { schema, table, titleSingular } = await fetchModuleRowBySlug(slug);
   if (!table) {

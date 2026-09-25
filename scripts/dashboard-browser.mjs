@@ -5,62 +5,21 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { createServer } from "node:http";
 import { chromium } from "playwright";
-import ts from "typescript";
+import {
+  loadSource,
+  groupsFor,
+  fixtureRows,
+  fixturePerms,
+} from "./helpers/dashboard-fixtures.mjs";
 
 const base = resolve("apps/web/app/(main)");
 const require = createRequire(resolve(base, "Dashboard.tsx"));
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
-function load(file) {
-  const code = ts.transpileModule(readFileSync(resolve(base, file), "utf8"), {
-    compilerOptions: {
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2022,
-      jsx: ts.JsxEmit.ReactJSX,
-      esModuleInterop: true,
-    },
-  }).outputText;
-  const mod = { exports: {} };
-  const localRequire = (id) =>
-    id.endsWith(".css")
-      ? { __esModule: true, default: new Proxy({}, { get: (_, key) => key }) }
-      : require(id);
-  new Function("require", "module", "exports", code)(
-    localRequire,
-    mod,
-    mod.exports,
-  );
-  return mod.exports;
-}
-const { Dashboard, DashboardSkeleton } = load("Dashboard.tsx");
-const { buildDashboardModules, featuredModules } = load("dashboard-model.ts");
-const row = (slug, name, props = {}, parent_id = null) => ({
-  id: slug,
-  slug,
-  nombre: name,
-  activo: true,
-  tipo: "tabla",
-  orden: 1,
-  route: null,
-  parent_id,
-  props: { db: { table: slug }, ...props },
-});
-const modules = buildDashboardModules([
-  row("clientes", "Clientes", { ui: { icon: "bi-person", color: "#2563eb" } }),
-  row("proyectos", "Proyectos", {
-    ui: { icon: "bi bi-briefcase", color: "#0f766e" },
-  }),
-  row("documentos", "Documentación y seguimiento de proyectos"),
-  row("tareas", "Tareas pendientes"),
-  row("sin-configurar", "Sin configurar", { db: null }),
-  row("system", "Sistema"),
-  row("modulos", "Módulos", {}, "system"),
-  row("rol", "Roles", {}, "system"),
-  row("pdf-templates", "Plantillas PDF", {}, "system"),
-]);
-const featured = featuredModules(modules);
-featured[0].count = 0;
-featured[1].count = 1234;
+const { Dashboard, DashboardSkeleton } = loadSource(
+  resolve(base, "Dashboard.tsx"),
+);
+const groups = groupsFor(fixtureRows, fixturePerms);
 const output = resolve(".next/dashboard-check");
 mkdirSync(output, { recursive: true });
 const css = [
@@ -73,26 +32,26 @@ const css = [
   .join("\n");
 let fixture = "normal";
 function markup() {
-  const stress = modules.map((item) => ({
-    ...item,
-    name: "TextoSinEspacios".repeat(14),
+  const stress = groups.map((group) => ({
+    ...group,
+    name: "FamiliaSinEspacios".repeat(12),
+    modules: group.modules.map((item) => ({
+      ...item,
+      name: "TextoSinEspacios".repeat(14),
+    })),
   }));
   const element =
     fixture === "loading"
       ? React.createElement(DashboardSkeleton)
       : React.createElement(Dashboard, {
-          modules:
+          groups:
             fixture === "empty" || fixture === "error"
               ? []
               : fixture === "stress"
                 ? stress
-                : modules,
-          featured:
-            fixture === "empty" || fixture === "error"
-              ? []
-              : fixture === "stress"
-                ? stress.slice(0, 4)
-                : featured,
+                : fixture === "restricted"
+                  ? groupsFor(fixtureRows, { py: { ver: true } })
+                  : groups,
           email:
             fixture === "stress"
               ? `${"correo".repeat(30)}@example.test`
@@ -128,7 +87,14 @@ try {
     if (msg.type() === "error") errors.push(msg.text());
   });
   const url = `http://127.0.0.1:${server.address().port}`;
-  for (fixture of ["normal", "stress", "empty", "error", "loading"]) {
+  for (fixture of [
+    "normal",
+    "stress",
+    "empty",
+    "error",
+    "loading",
+    "restricted",
+  ]) {
     for (const width of [1440, 1280, 1024, 768, 390]) {
       await page.setViewportSize({ width, height: 1050 });
       await page.goto(url);
@@ -154,8 +120,21 @@ try {
               existsSync(resolve(base, `.${href}/page.tsx`)),
           );
         }
-        assert.ok(await page.getByText("0 registros accesibles").count());
-        assert.ok(await page.getByText("Conteo no disponible").count());
+        assert.equal(await page.locator(".groupGrid section").count(), 3);
+        assert.equal(
+          await page.locator('.groupGrid a[href="/m/py"]').count(),
+          1,
+        );
+        assert.equal(
+          await page.locator('.groupGrid a[href="/m/task"]').count(),
+          1,
+        );
+        assert.equal(await page.getByText("No habilitado").count(), 0);
+        assert.equal(await page.getByText("Familia vacía").count(), 0);
+        assert.equal(
+          await page.getByText("Configuración", { exact: true }).count(),
+          0,
+        );
         const missingIcons = await page
           .locator(".dashboard i")
           .evaluateAll(
@@ -173,6 +152,22 @@ try {
             .locator(":focus")
             .evaluate((node) => getComputedStyle(node).outlineStyle),
           "solid",
+        );
+      }
+      if (fixture === "restricted") {
+        assert.equal(await page.locator(".groupGrid section").count(), 1);
+        assert.equal(await page.locator(".groupGrid a").count(), 1);
+        assert.equal(
+          await page.locator(".groupGrid a").getAttribute("href"),
+          "/m/py",
+        );
+      }
+      if (fixture === "empty") {
+        assert.equal(await page.locator(".groupGrid section").count(), 0);
+        assert.ok(
+          await page
+            .getByText("No tienes accesos configurados para el dashboard.")
+            .count(),
         );
       }
       await page.screenshot({
@@ -197,7 +192,7 @@ try {
   assert.equal(new URL((await request).url()).pathname, "/api/auth/signout");
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: 25 visual fixtures, overflow, icons, keyboard focus, all link targets and signout POST. Screenshots:",
+    "PASS: 30 visual fixtures, groups, permissions, empty states, overflow, icons, keyboard focus, all link targets and signout POST. Screenshots:",
     output,
   );
 } finally {

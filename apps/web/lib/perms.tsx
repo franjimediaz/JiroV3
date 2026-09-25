@@ -1,9 +1,25 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { permissionGranted } from "./auth/permissionRules";
 
-export type Accion = "ver" | "crear" | "actualizar" | "eliminar" |"importar"|"exportar"| "*";
+export type Accion =
+  | "ver"
+  | "crear"
+  | "actualizar"
+  | "eliminar"
+  | "importar"
+  | "exportar"
+  | "*";
 export type Permiso = { modulo: string; accion: Accion | string };
 
 type Ctx = {
@@ -15,49 +31,22 @@ type Ctx = {
 
 const PermsContext = createContext<Ctx | null>(null);
 
-// Normalización “de verdad”
-const aliasAccion: Record<string, Accion> = {
-  read: "ver",
-  view: "ver",
-  list: "ver",
-  get: "ver",
-  create: "crear",
-  add: "crear",
-  new: "crear",
-  edit: "actualizar",
-  update: "actualizar",
-  delete: "eliminar",
-  remove: "eliminar",
-};
-
-function normalizarModulo(input: string): string {
-  if (!input) return "";
-  let m = String(input).trim().toLowerCase();
-  m = m.split("?")[0].split("#")[0];
-  m = m.replace(/^\/+/, "");
-  m = m.replace(/^public\./, "");
-  m = m.replace(/\\/g, "/");
-
-  // si viene como ruta, nos quedamos con el último segmento
-  if (m.includes("/")) m = m.split("/").filter(Boolean).pop() || m;
-  if (m.includes(".")) m = m.split(".").filter(Boolean).pop() || m;
-
-  return m;
-}
-
-function normalizarAccion(a: any): Accion {
-  const k = String(a || "ver").trim().toLowerCase();
-  return aliasAccion[k] || (k as Accion);
-}
-
 export function PermisosProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [loading, setLoading] = useState(true);
   const [permisos, setPermisos] = useState<Permiso[]>([]);
+  const requestId = useRef(0);
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    const current = ++requestId.current;
     setLoading(true);
+    setPermisos([]);
     try {
-      const res = await fetch("/api/perms", { credentials: "include" });
+      const res = await fetch("/api/perms", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (current !== requestId.current) return;
 
       const ct = res.headers.get("content-type") || "";
       if (!res.ok) {
@@ -71,47 +60,50 @@ export function PermisosProvider({ children }: { children: React.ReactNode }) {
       }
 
       const data = await res.json();
+      if (current !== requestId.current) return;
       const raw = Array.isArray(data?.permisos) ? data.permisos : [];
 
-      const norm: Permiso[] = raw.map((p: any) => ({
-        modulo: normalizarModulo(p.modulo),
-        accion: normalizarAccion(p.accion),
-      }));
-
+      const norm: Permiso[] = raw.filter(
+        (p: unknown): p is Permiso =>
+          !!p &&
+          typeof p === "object" &&
+          "modulo" in p &&
+          typeof p.modulo === "string" &&
+          "accion" in p &&
+          typeof p.accion === "string",
+      );
       setPermisos(norm);
     } catch {
-      setPermisos([]);
+      if (current === requestId.current) setPermisos([]);
     } finally {
-      setLoading(false);
+      if (current === requestId.current) setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    load();
   }, []);
 
-  const hasPermiso = (modulo: string, accion: Accion = "ver") => {
-    const m = normalizarModulo(modulo);
-    const a = normalizarAccion(accion);
+  const invalidatePendingRequest = useCallback(() => {
+    requestId.current++;
+  }, []);
+  useEffect(() => {
+    load();
+    return invalidatePendingRequest;
+  }, [load, pathname, invalidatePendingRequest]);
 
-    return permisos.some((p) => {
-      const pm = normalizarModulo(p.modulo);
-      const pa = normalizarAccion(p.accion);
-
-      const matchModulo = pm === "*" || pm === m;
-      const matchAccion = pa === "*" || pa === a;
-      return matchModulo && matchAccion;
-    });
-  };
+  const hasPermiso = useCallback(
+    (modulo: string, accion: Accion = "ver") => {
+      return permissionGranted(permisos, modulo, accion);
+    },
+    [permisos],
+  );
 
   const value = useMemo<Ctx>(
     () => ({ loading, permisos, hasPermiso, refresh: load }),
-    [loading, permisos]
+    [loading, permisos, hasPermiso, load],
   );
 
-  return <PermsContext.Provider value={value}>{children}</PermsContext.Provider>;
+  return (
+    <PermsContext.Provider value={value}>{children}</PermsContext.Provider>
+  );
 }
-
 
 export function usePerms() {
   const ctx = useContext(PermsContext);
