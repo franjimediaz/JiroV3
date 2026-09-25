@@ -75,7 +75,7 @@ export default function MainShell({
         </div>
       </nav>
 
-      <div className="container-fluid layout-min-vh">
+      <div className="container-fluid px-0 layout-min-vh">
         <div className="main-shell-layout">
           <div className={`main-shell-sidebar d-none d-lg-block ${desktopReady && sidebarMini ? "is-mini" : ""}`}>
             <SidebarWithPerms
@@ -94,9 +94,9 @@ export default function MainShell({
             title="Navegacion"
           />
 
-          <main className="main-shell-content flex-grow-1 p-3 p-lg-4">
-            <div className="bg-white rounded shadow-sm p-3 p-lg-4">{children}</div>
-            <footer className="text-center mt-4 mb-2 text-muted small">
+          <main className="main-shell-content flex-grow-1 bg-white rounded shadow-sm">
+            {children}
+            <footer className="text-center mt-auto pt-3 text-muted small">
               © {new Date().getFullYear()} JiRo v2 · Next.js + Supabase
             </footer>
           </main>

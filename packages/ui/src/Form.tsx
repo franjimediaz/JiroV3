@@ -1259,7 +1259,7 @@ export default function Form({
   };
 
   return (
-    <form className="d-flex flex-column gap-4" onSubmit={handleSubmit}>
+    <form className="jiro-record-form d-flex flex-column gap-3" onSubmit={handleSubmit}>
       {showMainTabs && (
         <div className="d-flex gap-4 mb-3 border-bottom" style={{ 
         overflowX: "auto",

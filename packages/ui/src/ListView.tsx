@@ -190,7 +190,7 @@ export default function ListView({
   );
 
   return (
-    <div className="card" style={{ borderColor: "rgb(136, 135, 135)" }}>
+    <div className="card jiro-list-view" style={{ borderColor: "rgb(136, 135, 135)" }}>
       {/* HEADER */}
       <div className="card-header d-flex justify-content-between  align-items-center">
         <div className="d-flex align-items-center gap-2">

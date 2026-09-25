@@ -1,7 +1,8 @@
 .container {
-  padding: 32px;
-  max-width: 1120px;
-  margin: 0 auto;
+  padding: 0;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
 }
 
 .header {
@@ -330,7 +331,7 @@
 
 @media (max-width: 768px) {
   .container {
-    padding: 20px;
+    padding: 0;
   }
 
   .header {

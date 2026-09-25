@@ -1570,7 +1570,7 @@ const editorTabs = [
         <div className={styles.switchRow}>
           <div>
             <label className={styles.label} htmlFor="module-dashboard">Dashboard</label>
-            <p className={styles.help} id="module-dashboard-help">Mostrar este módulo como acceso en el dashboard de inicio.</p>
+            
           </div>
           <input
             id="module-dashboard"
@@ -1587,6 +1587,7 @@ const editorTabs = [
         </div>
         <div>
           <label className={styles.label}>ui.color</label>
+          <p>
           <input
             type="color"
             className={styles.color}
@@ -1597,8 +1598,9 @@ const editorTabs = [
               setRawText(JSON.stringify(next, null, 2));
             }}
             {...readOnlyAttr}
-            style={{ padding: 0, height: 42 }}
+            style={{ padding: 1, height: 42 }}
           />
+          </p>
         </div>
 
         <div style={{ gridColumn: "1 / -1" }}>
@@ -1611,7 +1613,9 @@ const editorTabs = [
               setRawText(JSON.stringify(next, null, 2));
             }}
           />
+          
         </div>
+        
 
         <div style={{ gridColumn: "1 / -1", marginTop: 12 }}>
           <UiFormActionsEditor

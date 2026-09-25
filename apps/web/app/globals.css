@@ -28,7 +28,7 @@
     --foreground: #ededed;
   }
 }
-.layout-min-vh { min-height: calc(100vh - 56px); }
+.layout-min-vh { min-height: calc(100vh - 90px); }
 .sidebar-sticky { position: sticky; top: 12px; }
 html,
 body {
@@ -450,11 +450,9 @@ a {
   border: 1px solid var(--sel-border);
   box-shadow: var(--sel-shadow);
 
-  transform: translateY(8px);
-  animation: selIn 140ms ease-out forwards;
+  transform: none;
+  animation: none;
 }
-
-@keyframes selIn { to { transform: translateY(0); } }
 
 /* Header */
 .selModal__header {
@@ -848,7 +846,52 @@ a {
 
 .main-shell-content {
   min-width: 0;
-  transition: padding 0.22s ease;
+  display: flex;
+  flex-direction: column;
+  margin: 12px;
+  padding: 12px;
+  transition: none;
+}
+
+/* Page wrappers share the shell gutter instead of adding Bootstrap width caps
+   and a second vertical gutter. Keep nested field/grid containers untouched. */
+.main-shell-content > .container,
+.main-shell-content > .container-fluid {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+  padding: 0 !important;
+}
+
+.jiro-list-view,
+.jiro-record-form {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
+.main-shell-content :is(.jiro-list-view, form) :is(.card-body, .card-header) {
+  padding: 12px;
+}
+
+/* Data surfaces render immediately; loading indicators keep their animation. */
+.main-shell-content :is(.jiro-list-view, form),
+.main-shell-content :is(.jiro-list-view, form) *:not(.spinner-border):not(.spinner-grow) {
+  animation: none !important;
+  transition: none !important;
+}
+
+.main-shell-content :is(.jiro-list-view, form) :is(.card, .card-form, .field-box):hover,
+.main-shell-content .jiro-list-view:hover {
+  transform: none;
+}
+
+@media (max-width: 575.98px) {
+  .main-shell-content {
+    margin: 8px;
+    padding: 8px;
+  }
 }
 
 .sidebar-topbar {
