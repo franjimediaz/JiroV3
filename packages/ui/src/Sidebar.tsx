@@ -320,10 +320,21 @@ function NavItem({
 
   if (node.tipo === "carpeta") return null;
 
+  if (!node.route || node.route === "#") {
+    return (
+      <li className="nav-item">
+        <span className={`${itemClass} disabled`} style={indent} aria-disabled="true" title="Acceso no disponible">
+          {icon}
+          {label}
+        </span>
+      </li>
+    );
+  }
+
   return (
     <li className="nav-item">
       <a
-        href={node.route ?? "#"}
+        href={node.route}
         className={itemClass}
         style={indent}
         title={node.nombre}
@@ -367,14 +378,14 @@ function SidebarUser({ miniMode = false }: { miniMode?: boolean }) {
         >
           <ul className="list-unstyled mb-0">
             <li>
-              <a href="/mi-perfil" className="dropdown-item d-flex align-items-center gap-2" title="Mi perfil">
+              <button type="button" disabled className="dropdown-item d-flex align-items-center gap-2" title="Perfil no disponible">
                 <i className="bi bi-person" />
                 <span className={`${miniMode ? "visually-hidden" : ""}`}>Mi perfil</span>
                 {miniMode ? <span className="small">Perfil</span> : null}
-              </a>
+              </button>
             </li>
             <li>
-              <form action="/auth/signout" method="post" className="m-0">
+              <form action="/api/auth/signout" method="post" className="m-0">
                 <button className="dropdown-item d-flex align-items-center gap-2 text-danger" type="submit" title="Salir">
                   <i className="bi bi-box-arrow-right" />
                   <span className={`${miniMode ? "visually-hidden" : ""}`}>Salir</span>
