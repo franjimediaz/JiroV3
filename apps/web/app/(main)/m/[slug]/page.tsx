@@ -9,6 +9,7 @@ import {
   filterRowsWithDefaultFilters,
   resolveDefaultFiltersForQuery,
 } from "@/lib/moduleDefaultFilters";
+import { applyAuditTrailDefaultOrder, enrichAuditTrailRows } from "@/lib/audit/auditTrailRows";
 import type { QueryFilter } from "@repo/types";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,7 @@ export default async function ListPage({
   if (defaultFilters.canQueryDirectly) {
     query = applyQueryFilters(query, defaultFilters.filters as QueryFilter[]);
   }
+  query = applyAuditTrailDefaultOrder(table, query);
   query = query.limit(200);
 
   const { data, error } = await query;
@@ -58,12 +60,13 @@ export default async function ListPage({
   const rows = defaultFilters.canQueryDirectly
     ? data || []
     : filterRowsWithDefaultFilters(data || [], defaultFilters.group);
+  const displayRows = await enrichAuditTrailRows(table, rows, { modulesBySlug });
 
   return (
     <main className="container py-4">
       <ListPageClient
         schema={schema}
-        rows={rows}
+        rows={displayRows}
         moduleSlug={slug}
         baseRoute={`/m/${slug}/`}
         titleSingular={titleSingular}

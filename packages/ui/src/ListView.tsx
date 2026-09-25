@@ -7,7 +7,14 @@ import type {
   ListViewExportPayload,
   ListViewProps,
 } from "@repo/types";
-import { getEffectiveModuleCapabilities, normalizeFieldConfig, normalizeModuleSchema } from "@repo/types";
+import {
+  formatAuditActionLabel,
+  formatAuditMetadataPreview,
+  getEffectiveModuleCapabilities,
+  isAuditEventsTable,
+  normalizeFieldConfig,
+  normalizeModuleSchema,
+} from "@repo/types";
 import { ActionMenu } from "./ActionMenu";
 import { dataProvider } from "./providers/DataProvider";
 import  SelectorTabla  from "./components/fields/Selector";
@@ -23,7 +30,8 @@ import {
 
 type FilterValue =
   | string
-  | { value: string; label: string };
+  | { value: string; label: string }
+  | { from?: string; to?: string };
 
 export default function ListView({
   schema,
@@ -41,6 +49,7 @@ export default function ListView({
   const normalizedSchema = useMemo(() => normalizeModuleSchema(schema), [schema]);
   const capabilities = useMemo(() => getEffectiveModuleCapabilities(normalizedSchema), [normalizedSchema]);
   const primaryKey = normalizedSchema.db.primaryKey || "id";
+  const isAuditTrail = isAuditEventsTable(normalizedSchema.db.table);
   const [showFilters, setShowFilters] = useState(false);
 
   // Columnas de la lista
@@ -93,18 +102,40 @@ export default function ListView({
       const cell = row[f.name];
       if (cell === null || cell === undefined) return false;
 
+      if (isDateRangeFilter(f, fv)) {
+        const time = new Date(cell).getTime();
+        if (Number.isNaN(time)) return false;
+        if (fv.from) {
+          const from = new Date(fv.from).getTime();
+          if (!Number.isNaN(from) && time < from) return false;
+        }
+        if (fv.to) {
+          const to = new Date(`${fv.to}T23:59:59.999`).getTime();
+          if (!Number.isNaN(to) && time > to) return false;
+        }
+        continue;
+      }
+
+      if (f.type === "boolean") {
+        const wanted = typeof fv === "string" ? fv : "";
+        if (!wanted) continue;
+        if (wanted === "true" && cell !== true) return false;
+        if (wanted === "false" && cell !== false) return false;
+        continue;
+      }
+
       // ✅ selectorTabla: filtra por id exacto (lo más lógico)
       if (f.type === "selectorTabla") {
-        const wanted = typeof fv === "object" ? fv.value : String(fv);
+        const wanted = typeof fv === "object" && "value" in fv ? fv.value : String(fv);
         if (!wanted) continue;
         if (String(cell) !== wanted) return false;
         continue;
       }
 
       // ✅ resto: contains (tu comportamiento actual)
-      const cellStr = String(cell).toLowerCase();
+      const cellStr = String(getAuditTrailSearchValue(row, f.name, cell)).toLowerCase();
       const filterStr =
-        (typeof fv === "string" ? fv : fv.label).toLowerCase().trim();
+        (typeof fv === "string" ? fv : "label" in fv ? fv.label : "").toLowerCase().trim();
 
       if (filterStr && !cellStr.includes(filterStr)) return false;
     }
@@ -266,6 +297,7 @@ export default function ListView({
                 const val = filters[f.name];
                 const isSelector = f.type === "selectorTabla";
                 const ref = (f as any).ref || {};
+                const rangeVal = typeof val === "object" && val !== null && ("from" in val || "to" in val) ? val : {};
 
                 return (
                   <div key={f.name} className="col-12 col-md-3">
@@ -284,7 +316,7 @@ export default function ListView({
                         filters={ref.filters}
                         sort={ref.sort}
                         value={
-                          typeof val === "object" && val !== null
+                          typeof val === "object" && val !== null && "value" in val
                             ? val.value
                             : val || ""
                         }
@@ -296,6 +328,37 @@ export default function ListView({
                         }
                         placeholder={`Filtrar ${f.label}`}
                       />
+                    ) : f.type === "date" || f.type === "datetime" ? (
+                      <div className="d-flex gap-1">
+                        <input
+                          type="date"
+                          className="form-control form-control-sm"
+                          aria-label={`Desde ${f.label}`}
+                          value={rangeVal.from || ""}
+                          onChange={(e) =>
+                            handleFilterChange(f.name, { ...rangeVal, from: e.target.value })
+                          }
+                        />
+                        <input
+                          type="date"
+                          className="form-control form-control-sm"
+                          aria-label={`Hasta ${f.label}`}
+                          value={rangeVal.to || ""}
+                          onChange={(e) =>
+                            handleFilterChange(f.name, { ...rangeVal, to: e.target.value })
+                          }
+                        />
+                      </div>
+                    ) : f.type === "boolean" ? (
+                      <select
+                        className="form-select form-select-sm"
+                        value={typeof val === "string" ? val : ""}
+                        onChange={(e) => handleFilterChange(f.name, e.target.value)}
+                      >
+                        <option value="">Todos</option>
+                        <option value="true">Exito</option>
+                        <option value="false">Fallo</option>
+                      </select>
                     ) : (
                       <input
                         type="text"
@@ -377,7 +440,7 @@ export default function ListView({
                   )}
                   {listFields.map((f) => (
                     <td key={f.name} className="text-center hover-cell" style={{borderRight: "1px solid rgb(0, 0, 0)"}}>
-                      {renderCell(row[f.name], f, labelCache, pendingRelationKeys, relationStatusByKey)}
+                      {renderCell(row[f.name], f, labelCache, pendingRelationKeys, relationStatusByKey, row, isAuditTrail)}
                     </td>
                   ))}
 
@@ -479,9 +542,16 @@ function renderCell(
   field: Field,
   labelCache: Record<string, RelationDisplayEntry>,
   pendingKeys: Record<string, boolean>,
-  relationStatusByKey: RelationDisplayStatusMap
+  relationStatusByKey: RelationDisplayStatusMap,
+  row?: Record<string, any>,
+  isAuditTrail?: boolean
 ) {
   if (value === null || value === undefined || value === "") return "—";
+
+  if (isAuditTrail && row) {
+    const auditValue = renderAuditTrailCell(value, field, row);
+    if (auditValue !== null) return auditValue;
+  }
 
   if (typeof value === "object" && !Array.isArray(value)) return renderStructuredValue(value);
 
@@ -593,6 +663,75 @@ function renderStructuredValue(value: unknown) {
   } catch {
     return String(value);
   }
+}
+
+function isDateRangeFilter(field: Field, value: FilterValue): value is { from?: string; to?: string } {
+  return (
+    (field.type === "date" || field.type === "datetime") &&
+    typeof value === "object" &&
+    value !== null &&
+    ("from" in value || "to" in value)
+  );
+}
+
+function getAuditTrailSearchValue(row: Record<string, any>, fieldName: string, value: unknown) {
+  if (fieldName === "actor_user_id") return `${row.actor_label || ""} ${row.actor_email || ""} ${value || ""}`;
+  if (fieldName === "module") return `${row.module_label || ""} ${value || ""}`;
+  if (fieldName === "action") return `${row.action_label || formatAuditActionLabel(value)} ${value || ""}`;
+  if (fieldName === "resource_id") return `${row.resource_label || ""} ${value || ""}`;
+  if (fieldName === "request_id") return value || "";
+  if (fieldName === "metadata") return row.metadata_preview || "";
+  return value;
+}
+
+function renderAuditTrailCell(value: any, field: Field, row: Record<string, any>) {
+  if (field.name === "actor_user_id") {
+    return (
+      <span className="d-inline-flex flex-column align-items-center">
+        <span>{row.actor_label || "Usuario desconocido"}</span>
+        {row.actor_email && <small className="text-muted">{row.actor_email}</small>}
+      </span>
+    );
+  }
+
+  if (field.name === "module") {
+    return <span title={String(value)}>{row.module_label || String(value)}</span>;
+  }
+
+  if (field.name === "action") {
+    const label = row.action_label || formatAuditActionLabel(value);
+    return <span title={String(value)}>{label || String(value)}</span>;
+  }
+
+  if (field.name === "success") {
+    return value === true ? (
+      <span className="badge bg-success-subtle text-success border border-success-subtle">Exito</span>
+    ) : (
+      <span className="badge bg-danger-subtle text-danger border border-danger-subtle">Fallo</span>
+    );
+  }
+
+  if (field.name === "resource_id") {
+    return (
+      <code title={String(value)} style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
+        {row.resource_label || String(value)}
+      </code>
+    );
+  }
+
+  if (field.name === "request_id") {
+    return (
+      <code title={String(value)} style={{ whiteSpace: "normal", wordBreak: "break-word" }}>
+        {String(value)}
+      </code>
+    );
+  }
+
+  if (field.name === "metadata") {
+    return renderStructuredValue(row.metadata_preview || formatAuditMetadataPreview(value));
+  }
+
+  return null;
 }
 
 function getPageItems(current: number, total: number): Array<number | "..."> {

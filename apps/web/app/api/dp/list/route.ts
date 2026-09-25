@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
 import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 import { handleApiError } from "@/lib/auth/handleApiError";
+import { applyAuditTrailDefaultOrder, enrichAuditTrailRows } from "@/lib/audit/auditTrailRows";
 
 export async function GET(req: Request) {
   const requestId = crypto.randomUUID();
@@ -44,7 +45,9 @@ export async function GET(req: Request) {
       queryClient = supabaseAdmin;
     }
 
-    let query = queryClient.from(resolved.table).select("*").limit(limit);
+    let query = queryClient.from(resolved.table).select("*");
+    query = applyAuditTrailDefaultOrder(resolved.table, query);
+    query = query.limit(limit);
 
     if (q.trim()) {
       query = query.ilike(selectedDisplayField, `%${q.trim()}%`);
@@ -55,7 +58,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ tableName: resolved.table, error }, { status: 500 });
     }
 
-    return NextResponse.json({ tableName: resolved.table, moduleSlug: resolved.slug, data });
+    const rows = await enrichAuditTrailRows(resolved.table, data ?? []);
+    return NextResponse.json({ tableName: resolved.table, moduleSlug: resolved.slug, data: rows });
   } catch (error) {
     return handleApiError(error, requestId, { route: "/api/dp/list", method: "GET", moduleSlug });
   }

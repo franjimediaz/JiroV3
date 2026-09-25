@@ -158,4 +158,20 @@ export {
   getEffectiveModuleReadMode,
 } from "./moduleReadMode";
 export type { ModuleReadMode } from "./moduleReadMode";
+export {
+  AUDIT_EVENTS_TABLE,
+  AUDIT_ACTION_LABELS,
+  isAuditEventsTable,
+  formatAuditActionLabel,
+  formatAuditSuccessLabel,
+  formatAuditActorLabel,
+  formatAuditModuleLabel,
+  formatAuditResourceLabel,
+  formatAuditMetadataPreview,
+  decorateAuditTrailRows,
+} from "./auditTrailPresentation";
+export type {
+  AuditTrailActor,
+  AuditTrailModuleLabel,
+} from "./auditTrailPresentation";
 

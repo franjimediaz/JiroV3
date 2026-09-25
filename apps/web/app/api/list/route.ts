@@ -10,7 +10,8 @@ import {
 import { badRequest } from "@/lib/auth/apiError";
 import { handleApiError } from "@/lib/auth/handleApiError";
 import { requireModulePermission } from "@/lib/auth/requireModulePermission";
-import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
+import { resolveModuleConfig, resolveModuleIndex } from "@/lib/modules/resolveModuleConfig";
+import { applyAuditTrailDefaultOrder, enrichAuditTrailRows } from "@/lib/audit/auditTrailRows";
 
 type ListFilter = QueryFilter;
 type ListSort = { field: string; dir: "asc" | "desc"; direction?: "asc" | "desc" };
@@ -69,6 +70,9 @@ export async function POST(req: Request) {
     }
 
     const sort = Array.isArray(body?.sort) ? body.sort : [];
+    if (sort.length === 0) {
+      q = applyAuditTrailDefaultOrder(resolved.table, q);
+    }
     for (const s of sort) {
       if (!s || typeof s !== "object") continue;
       const field = String((s as any).field || "").trim();
@@ -91,7 +95,9 @@ export async function POST(req: Request) {
     }
 
     const rows = defaultFilters.canQueryDirectly ? data ?? [] : filterRowsWithDefaultFilters(data ?? [], defaultFilters.group);
-    return NextResponse.json({ ok: true, data: rows });
+    const moduleIndex = resolved.table === "audit_events" ? await resolveModuleIndex() : undefined;
+    const displayRows = await enrichAuditTrailRows(resolved.table, rows, { modulesBySlug: moduleIndex?.modulesBySlug });
+    return NextResponse.json({ ok: true, data: displayRows });
   } catch (error) {
     return handleApiError(error, requestId, { route: "/api/list", method: "POST", moduleSlug });
   }

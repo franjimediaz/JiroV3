@@ -3,6 +3,7 @@ import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 import type { ModuleSchema } from "@repo/types";
 import type { ModuleReadMode } from "@repo/types";
 import { resolveModuleConfig, resolveModuleIndex } from "@/lib/modules/resolveModuleConfig";
+import { enrichAuditTrailRows } from "@/lib/audit/auditTrailRows";
 
 export async function fetchModuleRowBySlug(slug: string) {
   const resolved = await resolveModuleConfig(slug);
@@ -41,5 +42,7 @@ export async function fetchRowById(
   const { data, error } = await queryClient.from(table).select("*").eq(primaryKey, id).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  return { ...data, meta: (data as any).meta || { overrides: {} } };
+  const rows = await enrichAuditTrailRows(table, [data as Record<string, unknown>]);
+  const row = rows[0] || data;
+  return { ...row, meta: (row as any).meta || { overrides: {} } };
 }

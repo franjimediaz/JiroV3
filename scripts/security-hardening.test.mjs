@@ -457,4 +457,51 @@ describe("security hardening regression checks", () => {
     assert.match(listView, /renderStructuredValue/);
     assert.match(listView, /JSON\.stringify\(value\)/);
   });
+
+  it("presents audit_events as a server-enriched audit trail without direct client lookups", () => {
+    const auditRows = source("apps/web/lib/audit/auditTrailRows.ts");
+    const presentation = source("packages/types/auditTrailPresentation.ts");
+    const listPage = source("apps/web/app/(main)/m/[slug]/page.tsx");
+    const listRoute = source("apps/web/app/api/list/route.ts");
+    const dpListRoute = source("apps/web/app/api/dp/list/route.ts");
+    const modulesServer = source("apps/web/lib/modules.server.ts");
+    const listView = source("packages/ui/src/ListView.tsx");
+
+    assert.match(presentation, /AUDIT_EVENTS_TABLE = "audit_events"/);
+    assert.match(presentation, /"record\.create": "Crear registro"/);
+    assert.match(presentation, /"record\.update": "Modificar registro"/);
+    assert.match(presentation, /"record\.delete": "Eliminar registro"/);
+    assert.match(presentation, /"file\.upload": "Subir archivo"/);
+    assert.match(presentation, /"users\.create": "Crear usuario"/);
+    assert.match(presentation, /"users\.roles\.update": "Cambiar rol"/);
+    assert.match(presentation, /"workflows\.run": "Ejecutar workflow"/);
+    assert.match(presentation, /return AUDIT_ACTION_LABELS\[key\] \|\| key/);
+    assert.match(presentation, /return "Sistema"/);
+    assert.match(presentation, /return "Usuario desconocido"/);
+    assert.match(presentation, /metadata_preview/);
+
+    assert.match(auditRows, /\.from\("users"\)/);
+    assert.match(auditRows, /\.select\("uid,name,email"\)/);
+    assert.match(auditRows, /\.in\("uid", actorIds\)/);
+    assert.doesNotMatch(auditRows, /\.select\("\*"\)/);
+    assert.match(auditRows, /query\.order\("created_at", \{ ascending: false \}\)/);
+
+    assert.match(listPage, /applyAuditTrailDefaultOrder\(table, query\)/);
+    assert.match(listPage, /enrichAuditTrailRows\(table, rows, \{ modulesBySlug \}\)/);
+    assert.match(listRoute, /sort\.length === 0[\s\S]*applyAuditTrailDefaultOrder\(resolved\.table, q\)/);
+    assert.match(listRoute, /resolveModuleIndex\(\)/);
+    assert.match(listRoute, /enrichAuditTrailRows\(resolved\.table, rows/);
+    assert.match(dpListRoute, /applyAuditTrailDefaultOrder\(resolved\.table, query\)/);
+    assert.match(dpListRoute, /enrichAuditTrailRows\(resolved\.table, data \?\? \[\]\)/);
+    assert.match(modulesServer, /enrichAuditTrailRows\(table, \[data as Record<string, unknown>\]\)/);
+
+    assert.match(listView, /isAuditEventsTable\(normalizedSchema\.db\.table\)/);
+    assert.match(listView, /actor_label/);
+    assert.match(listView, /action_label/);
+    assert.match(listView, /metadata_preview/);
+    assert.match(listView, /request_id/);
+    assert.match(listView, /resource_label/);
+    assert.match(listView, /aria-label=\{`Desde \$\{f\.label\}`\}/);
+    assert.match(listView, /<option value="true">Exito<\/option>/);
+  });
 });
