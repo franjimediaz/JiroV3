@@ -1002,18 +1002,19 @@ export async function resolvePdfContext(args: ResolveArgs) {
     relatedResolversByKey.get(resolver.relatedKey)!.push(resolver);
   }
 
-  if (recordResolvers.length) {
-    const [enrichedRecord] = await applyLabelResolversToRows({
-      supabase,
-      cache,
-      rows: [record],
-      resolvers: recordResolvers,
-    });
-    Object.assign(record, enrichedRecord);
-  }
-
-  await Promise.all(
-    Array.from(relatedResolversByKey.entries()).map(async ([relatedKey, resolvers]) => {
+  // Record and related label lookups are independent; hydration needs both.
+  await Promise.all([
+    (async () => {
+      if (!recordResolvers.length) return;
+      const [enrichedRecord] = await applyLabelResolversToRows({
+        supabase,
+        cache,
+        rows: [record],
+        resolvers: recordResolvers,
+      });
+      Object.assign(record, enrichedRecord);
+    })(),
+    ...Array.from(relatedResolversByKey.entries()).map(async ([relatedKey, resolvers]) => {
       related[relatedKey] = await applyLabelResolversToRows({
         supabase,
         cache,
@@ -1021,7 +1022,7 @@ export async function resolvePdfContext(args: ResolveArgs) {
         resolvers,
       });
     }),
-  );
+  ]);
 
   const py = await hydrateBelongsToTree({
     supabase,

@@ -52,6 +52,7 @@ async function readErrorPayload(response: Response) {
 }
 
 export async function GET(req: Request) {
+  const totalStartedAt = performance.now();
   const requestId = getRequestId(req);
   try {
     const ip = getClientIp(req);
@@ -74,11 +75,13 @@ export async function GET(req: Request) {
     const supabase = await createClient();
 
     // 1) Cargar plantilla activa
+    const templateStartedAt = performance.now();
     const { data: tplRow, error } = await supabase
       .from("pdf_templates")
       .select("*")
       .eq("slug", slug)
       .maybeSingle();
+    logPdfTiming("templateQuery", templateStartedAt);
 
     if (error) {
       return NextResponse.json(
@@ -128,6 +131,7 @@ export async function GET(req: Request) {
     let upstreamDetails: any = null;
 
     if (serviceUrl && serviceSecret) {
+      const serviceStartedAt = performance.now();
       try {
         const r = await fetch(`${serviceUrl.replace(/\/$/, "")}/generate`, {
           method: "POST",
@@ -171,12 +175,15 @@ export async function GET(req: Request) {
           recordId,
           sourceTable: tplRow.source_table,
         });
+      } finally {
+        logPdfTiming("pdfService", serviceStartedAt);
       }
     } else {
       upstreamError = "PDF service no configurado; usando generador local";
     }
 
     if (!body) {
+      const localStartedAt = performance.now();
       try {
         body = await htmlToPdfBuffer(html);
         generator = "local";
@@ -189,6 +196,8 @@ export async function GET(req: Request) {
           },
           { status: 500 },
         );
+      } finally {
+        logPdfTiming("pdfLocal", localStartedAt);
       }
     }
 
@@ -209,5 +218,7 @@ export async function GET(req: Request) {
     );
   } catch (error) {
     return handleApiError(error, requestId, { route: "/api/pdf/generate", method: "GET" });
+  } finally {
+    logPdfTiming("total", totalStartedAt);
   }
 }

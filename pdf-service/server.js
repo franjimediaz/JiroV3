@@ -3,6 +3,7 @@ import { chromium } from "playwright";
 import { createRequire } from "node:module";
 import crypto from "node:crypto";
 import net from "node:net";
+import { performance } from "node:perf_hooks";
 
 const app = express();
 app.use(express.json({ limit: process.env.PDF_MAX_BODY_SIZE || "1mb" }));
@@ -18,6 +19,51 @@ const ALLOWED_RESOURCE_HOSTS = (process.env.PDF_ALLOWED_RESOURCE_HOSTS || "")
   .map((host) => host.trim().toLowerCase())
   .filter(Boolean);
 let activeJobs = 0;
+// 0 disables scheduled recycling. Invalid values use the default.
+const configuredMaxJobs = Number(process.env.PDF_BROWSER_MAX_JOBS ?? 100);
+const BROWSER_MAX_JOBS = Number.isSafeInteger(configuredMaxJobs) && configuredMaxJobs >= 0
+  ? configuredMaxJobs : 100;
+let browserState = null;
+let browserLaunch = null;
+
+async function acquireBrowser() {
+  while (true) {
+    if (!browserState) {
+      if (!browserLaunch) {
+        browserLaunch = launchBrowser().then((browser) => {
+          const state = { browser, jobs: 0, active: 0 };
+          browser.on("disconnected", () => {
+            if (browserState === state) browserState = null;
+          });
+          browserState = state;
+        }).finally(() => { browserLaunch = null; });
+      }
+      await browserLaunch;
+    }
+    const state = browserState;
+    if (!state) continue;
+    if (!state.browser.isConnected()) {
+      if (browserState === state) browserState = null;
+      continue;
+    }
+    state.jobs += 1;
+    state.active += 1;
+    // Retire this generation without interrupting its active jobs.
+    if (BROWSER_MAX_JOBS > 0 && state.jobs >= BROWSER_MAX_JOBS) browserState = null;
+    return state;
+  }
+}
+
+function retireBrowser(state) {
+  if (browserState === state) browserState = null;
+}
+
+async function releaseBrowser(state) {
+  state.active -= 1;
+  if (state.active === 0 && state !== browserState) {
+    await state.browser.close();
+  }
+}
 
 function buildLaunchOptions() {
   const executablePath =
@@ -32,6 +78,31 @@ function buildLaunchOptions() {
   }
 
   return options;
+}
+
+async function launchBrowser() {
+  const launchOptions = buildLaunchOptions();
+  console.info("PDF service launch config", {
+    environment: process.env.NODE_ENV || "development",
+    platform: process.platform,
+    playwrightVersion,
+    executablePath: launchOptions.executablePath || "playwright-managed",
+    hasServiceSecret: Boolean(SERVICE_SECRET),
+  });
+
+  try {
+    return await chromium.launch(launchOptions);
+  } catch (error) {
+    console.error("PDF service browser launch failed", {
+      environment: process.env.NODE_ENV || "development",
+      platform: process.platform,
+      playwrightVersion,
+      executablePath: launchOptions.executablePath || "playwright-managed",
+      errorMessage: error?.message || String(error),
+      errorStack: error?.stack || null,
+    });
+    throw error;
+  }
 }
 
 function timingSafeBearer(authHeader) {
@@ -79,6 +150,43 @@ function isAllowedResourceUrl(rawUrl) {
   }
 }
 
+// Host-only diagnostics: never log Storage paths, signed query strings or HTML.
+function resourceHost(rawUrl) {
+  try { return new URL(rawUrl).hostname || "inline"; }
+  catch { return "relative-or-invalid"; }
+}
+
+async function waitForPdfImages(page) {
+  const failedImages = await page.evaluate(async () => {
+    const images = Array.from(document.images);
+    return (await Promise.all(images.map(async (image) => {
+      // Off-screen lazy images must also be included in the printed document.
+      image.loading = "eager";
+      try {
+        await image.decode();
+        if (image.naturalWidth > 0) return null;
+      } catch { /* Report an unavailable image without exposing its signed URL. */ }
+      const src = image.currentSrc || image.getAttribute("src") || "";
+      try { return new URL(src).hostname || "inline"; }
+      catch { return "relative-or-invalid"; }
+    }))).filter(Boolean);
+  });
+  if (failedImages.length) {
+    console.warn("PDF images unavailable", { hosts: [...new Set(failedImages)] });
+  }
+}
+
+async function timePdfStage(label, work) {
+  const startedAt = performance.now();
+  try {
+    return await work();
+  } finally {
+    if (process.env.PDF_TIMING_LOGS === "1") {
+      console.info("[pdf-service] " + label + ": " + Math.round(performance.now() - startedAt) + "ms");
+    }
+  }
+}
+
 async function withTimeout(work, ms) {
   let timeout;
   try {
@@ -111,6 +219,7 @@ app.post("/generate", async (req, res) => {
     return res.status(429).json({ ok: false, error: "Too many requests" });
   }
   activeJobs += 1;
+  const totalStartedAt = performance.now();
 
   try {
     const auth = req.headers["authorization"] || "";
@@ -130,51 +239,38 @@ app.post("/generate", async (req, res) => {
       return res.status(413).json({ ok: false, error: "html demasiado grande" });
     }
 
-    const launchOptions = buildLaunchOptions();
-    console.info("PDF service launch config", {
-      environment: process.env.NODE_ENV || "development",
-      platform: process.platform,
-      playwrightVersion,
-      executablePath: launchOptions.executablePath || "playwright-managed",
-      hasServiceSecret: Boolean(SERVICE_SECRET),
-    });
-
-    let browser;
-    try {
-      browser = await chromium.launch(launchOptions);
-    } catch (error) {
-      console.error("PDF service browser launch failed", {
-        environment: process.env.NODE_ENV || "development",
-        platform: process.platform,
-        playwrightVersion,
-        executablePath: launchOptions.executablePath || "playwright-managed",
-        errorMessage: error?.message || String(error),
-        errorStack: error?.stack || null,
-      });
-      throw error;
-    }
+    const state = await timePdfStage("browser", acquireBrowser);
+    let context;
+    let page;
 
     try {
-      const context = await browser.newContext({
+      context = await timePdfStage("context", () => state.browser.newContext({
         javaScriptEnabled: process.env.PDF_ENABLE_JAVASCRIPT === "1",
-      });
+      }));
+      const blockedHosts = new Set();
       await context.route("**/*", async (route) => {
         const url = route.request().url();
         if (isAllowedResourceUrl(url)) return route.continue();
+        const host = resourceHost(url);
+        if (!blockedHosts.has(host)) {
+          blockedHosts.add(host);
+          console.warn("PDF resource blocked by policy", { host, configuration: "PDF_ALLOWED_RESOURCE_HOSTS" });
+        }
         return route.abort();
       });
-      const page = await context.newPage();
+      page = await timePdfStage("page", () => context.newPage());
       const pdf = await withTimeout(async () => {
-        await page.setContent(html, { waitUntil: "load", timeout: JOB_TIMEOUT_MS });
+        await timePdfStage("setContent", () =>
+          page.setContent(html, { waitUntil: "load", timeout: JOB_TIMEOUT_MS }));
         await page.waitForTimeout(50);
-        return page.pdf({
+        await timePdfStage("images", () => waitForPdfImages(page));
+        return timePdfStage("page.pdf", () => page.pdf({
           format: "A4",
           printBackground: true,
           preferCSSPageSize: true,
           margin: { top: "24px", right: "24px", bottom: "24px", left: "24px" },
-        });
+        }));
       }, JOB_TIMEOUT_MS + 2_000);
-      await context.close();
 
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(
@@ -183,8 +279,25 @@ app.post("/generate", async (req, res) => {
       );
       res.setHeader("Cache-Control", "no-store");
       return res.status(200).send(pdf);
+    } catch (error) {
+      retireBrowser(state);
+      throw error;
     } finally {
-      await browser?.close();
+      try {
+        try {
+          await page?.close();
+        } finally {
+          await context?.close();
+        }
+      } catch (error) {
+        retireBrowser(state);
+        console.error("PDF service context cleanup failed", { message: error?.message || String(error) });
+      } finally {
+        // Cleanup must not send a second response or mask the rendering error.
+        await releaseBrowser(state).catch((error) => {
+          console.error("PDF service browser cleanup failed", { message: error?.message || String(error) });
+        });
+      }
     }
   } catch (e) {
     console.error("PDF SERVICE ERROR:", {
@@ -199,6 +312,9 @@ app.post("/generate", async (req, res) => {
     });
   } finally {
     activeJobs = Math.max(0, activeJobs - 1);
+    if (process.env.PDF_TIMING_LOGS === "1") {
+      console.info(`[pdf-service] total: ${Math.round(performance.now() - totalStartedAt)}ms`);
+    }
   }
 });
 

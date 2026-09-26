@@ -181,22 +181,31 @@ async function getBrowser(forceFresh = false) {
   }
 }
 
+async function timePdfStage<T>(label: string, work: () => Promise<T>): Promise<T> {
+  const startedAt = performance.now();
+  try {
+    return await work();
+  } finally {
+    logPdfTiming(label, startedAt);
+  }
+}
+
 async function renderPdfWithBrowser(html: string, forceFreshBrowser = false) {
-  const browser = await getBrowser(forceFreshBrowser);
-  const page = await browser.newPage();
+  const browser = await timePdfStage("local.browser", () => getBrowser(forceFreshBrowser));
+  const page = await timePdfStage("local.page", () => browser.newPage());
 
   try {
     page.setDefaultNavigationTimeout(PDF_PAGE_TIMEOUT_MS);
     page.setDefaultTimeout(PDF_PAGE_TIMEOUT_MS);
 
-    await page.setContent(html, {
+    await timePdfStage("local.setContent", () => page.setContent(html, {
       waitUntil: "load",
       timeout: PDF_PAGE_TIMEOUT_MS,
-    });
+    }));
 
     await new Promise((resolve) => setTimeout(resolve, PDF_RENDER_DELAY_MS));
 
-    const pdf = await page.pdf(PDF_OPTIONS);
+    const pdf = await timePdfStage("local.page.pdf", () => page.pdf(PDF_OPTIONS));
     return Buffer.from(pdf);
   } finally {
     await page.close().catch(() => undefined);

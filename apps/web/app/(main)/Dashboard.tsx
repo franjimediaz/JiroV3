@@ -18,7 +18,7 @@ function ModuleLink({ item }: { item: DashboardModule }) {
       </span>
       <span className={styles.moduleContent}>
         <span className={styles.moduleName}>{item.name}</span>
-        <span className={styles.hint}>Abrir módulo</span>
+        
       </span>
       <Icon name="bi bi-arrow-up-right" />
     </>
@@ -44,17 +44,17 @@ export function Dashboard({
     <div className={styles.dashboard}>
       <header className={styles.hero}>
         <div className={styles.heroBody}>
-          <span className={styles.eyebrow}>JIRO · INICIO</span>
+          <span className={styles.eyebrow}>JIRO</span>
           <h1>Todo el proyecto en una portada.</h1>
           <p>Accede a tus módulos y continúa con el trabajo de hoy.</p>
           {first?.href && (
             <Link
               className={styles.primaryAction}
-              href={first.href}
+              href="/m/mytask"
               prefetch={false}
             >
               <Icon name="bi bi-arrow-right" />
-              <span>Abrir {first.name}</span>
+              <span>Ir a mis tareas</span>
             </Link>
           )}
         </div>

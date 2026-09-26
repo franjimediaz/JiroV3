@@ -115,8 +115,8 @@ export async function resolvePdfDatasets(args: {
   const definitions = Array.isArray(args.template?.datasets) ? (args.template.datasets as PdfDatasetDefinition[]) : [];
   const datasets: Record<string, AnyObj> = {};
 
-  for (const definition of definitions) {
-    if (!definition?.id) continue;
+  const resolvedDatasets = await Promise.all(definitions.map(async (definition) => {
+    if (!definition?.id) return null;
 
     let rows: AnyObj[] = [];
 
@@ -187,7 +187,7 @@ export async function resolvePdfDatasets(args: {
       (definition.aggregates || []).map((aggregate) => [aggregate.as, computeAggregate(rows, aggregate)])
     );
 
-    datasets[definition.id] = {
+    return {
       id: definition.id,
       label: definition.label || definition.id,
       rows,
@@ -196,6 +196,10 @@ export async function resolvePdfDatasets(args: {
       first: rows[0] ?? null,
       count: rows.length,
     };
+  }));
+
+  for (const dataset of resolvedDatasets) {
+    if (dataset) datasets[dataset.id] = dataset;
   }
 
   return datasets;
