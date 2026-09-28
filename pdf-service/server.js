@@ -48,6 +48,9 @@ async function acquireBrowser() {
     }
     state.jobs += 1;
     state.active += 1;
+    if (process.env.PDF_TIMING_LOGS === "1") {
+      console.info("[pdf-service] browser", { action: state.jobs === 1 ? "created" : "reused" });
+    }
     // Retire this generation without interrupting its active jobs.
     if (BROWSER_MAX_JOBS > 0 && state.jobs >= BROWSER_MAX_JOBS) browserState = null;
     return state;
@@ -156,6 +159,49 @@ function resourceHost(rawUrl) {
   catch { return "relative-or-invalid"; }
 }
 
+// Paths can themselves contain credentials or private object names: omit them.
+function logImageResource(event, rawUrl, details = {}) {
+  if (process.env.PDF_TIMING_LOGS !== "1") return;
+  console.info(`[pdf-service] image.${event}`, { hostname: resourceHost(rawUrl), ...details });
+}
+
+function observeImageRequests(page) {
+  page.on("response", (response) => {
+    if (response.request().resourceType() !== "image") return;
+    logImageResource("response", response.request().url(), {
+      status: response.status(), responseHostname: resourceHost(response.url()),
+    });
+  });
+  page.on("requestfailed", (request) => {
+    if (request.resourceType() !== "image") return;
+    // Never log arbitrary browser error text: it may include the signed URL.
+    const failure = request.failure()?.errorText;
+    const knownFailures = new Set([
+      "net::ERR_FAILED", "net::ERR_ABORTED", "net::ERR_BLOCKED_BY_CLIENT",
+      "net::ERR_BLOCKED_BY_RESPONSE", "net::ERR_NAME_NOT_RESOLVED",
+      "net::ERR_CONNECTION_REFUSED", "net::ERR_CONNECTION_RESET",
+      "net::ERR_CONNECTION_CLOSED", "net::ERR_CONNECTION_TIMED_OUT",
+      "net::ERR_TIMED_OUT", "net::ERR_CERT_AUTHORITY_INVALID",
+      "net::ERR_CERT_DATE_INVALID", "net::ERR_TOO_MANY_REDIRECTS",
+      "net::ERR_HTTP_RESPONSE_CODE_FAILURE", "net::ERR_INTERNET_DISCONNECTED",
+    ]);
+    logImageResource("requestfailed", request.url(), {
+      failure: knownFailures.has(failure) ? failure : "other-or-unknown",
+    });
+  });
+}
+
+async function logImagePrintState(page) {
+  const images = await page.evaluate(() => Array.from(document.images, (image) => {
+    let hostname = "relative-or-invalid";
+    try { hostname = new URL(image.currentSrc || image.src).hostname || "inline"; }
+    catch { /* Do not return raw src values from the page. */ }
+    return { hostname, complete: image.complete,
+      naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight };
+  }));
+  for (const image of images) console.info("[pdf-service] image.beforePrint", image);
+}
+
 async function waitForPdfImages(page) {
   const failedImages = await page.evaluate(async () => {
     const images = Array.from(document.images);
@@ -239,6 +285,16 @@ app.post("/generate", async (req, res) => {
       return res.status(413).json({ ok: false, error: "html demasiado grande" });
     }
 
+    if (process.env.PDF_TIMING_LOGS === "1") {
+      console.info("[pdf-service] generation", {
+        allowedResourceHosts: ALLOWED_RESOURCE_HOSTS.map((host) => {
+          // Only emit actual host entries, never a misconfigured URL or token query.
+          try { return new URL(`https://${host}`).host === host ? host : "invalid-host-entry"; }
+          catch { return "invalid-host-entry"; }
+        }),
+        javaScriptEnabled: process.env.PDF_ENABLE_JAVASCRIPT === "1",
+      });
+    }
     const state = await timePdfStage("browser", acquireBrowser);
     let context;
     let page;
@@ -250,7 +306,11 @@ app.post("/generate", async (req, res) => {
       const blockedHosts = new Set();
       await context.route("**/*", async (route) => {
         const url = route.request().url();
-        if (isAllowedResourceUrl(url)) return route.continue();
+        const allowed = isAllowedResourceUrl(url);
+        if (process.env.PDF_TIMING_LOGS === "1" && route.request().resourceType() === "image") {
+          logImageResource("route", url, { action: allowed ? "allowed" : "blocked" });
+        }
+        if (allowed) return route.continue();
         const host = resourceHost(url);
         if (!blockedHosts.has(host)) {
           blockedHosts.add(host);
@@ -259,11 +319,16 @@ app.post("/generate", async (req, res) => {
         return route.abort();
       });
       page = await timePdfStage("page", () => context.newPage());
+      if (process.env.PDF_TIMING_LOGS === "1") observeImageRequests(page);
       const pdf = await withTimeout(async () => {
         await timePdfStage("setContent", () =>
           page.setContent(html, { waitUntil: "load", timeout: JOB_TIMEOUT_MS }));
         await page.waitForTimeout(50);
         await timePdfStage("images", () => waitForPdfImages(page));
+        if (process.env.PDF_TIMING_LOGS === "1") {
+          // Diagnostics must not turn an otherwise successful PDF into an error.
+          await logImagePrintState(page).catch(() => console.info("[pdf-service] image.beforePrint unavailable"));
+        }
         return timePdfStage("page.pdf", () => page.pdf({
           format: "A4",
           printBackground: true,

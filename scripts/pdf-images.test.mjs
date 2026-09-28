@@ -6,12 +6,53 @@ import test from "node:test";
 const source = readFileSync("pdf-service/server.js", "utf8");
 function imageHelpers(hosts = []) {
   const warnings = [];
+  const logs = [];
   const sandbox = { URL, net: { isIP: (host) => /^\d+\.\d+\.\d+\.\d+$/.test(host) ? 4 : 0 },
-    ALLOWED_RESOURCE_HOSTS: hosts, console: { warn: (...args) => warnings.push(args) }, document: { images: [] } };
+    process: { env: {} },
+    ALLOWED_RESOURCE_HOSTS: hosts, console: { warn: (...args) => warnings.push(args), info: (...args) => logs.push(args) }, document: { images: [] } };
   vm.createContext(sandbox);
   vm.runInContext(source.slice(source.indexOf("function isPrivateIp"), source.indexOf("async function timePdfStage")), sandbox);
-  return { sandbox, warnings };
+  return { sandbox, warnings, logs };
 }
+
+test("image diagnostics omit credentials, paths, queries and arbitrary failure text", async () => {
+  const { sandbox, logs } = imageHelpers();
+  const url = "https://user:password@images.example/private/path-token.png?token=query-secret#fragment-secret";
+  sandbox.logImageResource("route", url, { action: "allowed" });
+  assert.equal(logs.length, 0, "diagnostics are disabled by default");
+  sandbox.process.env.PDF_TIMING_LOGS = "1";
+  const events = {};
+  sandbox.observeImageRequests({ on: (event, callback) => { events[event] = callback; } });
+  const request = { resourceType: () => "image", url: () => url,
+    failure: () => ({ errorText: "net::ERR_FAILED" }) };
+  sandbox.logImageResource("route", url, { action: "allowed" });
+  sandbox.logImageResource("route", url, { action: "blocked" });
+  events.response({ request: () => request, status: () => 302,
+    url: () => "https://cdn.example/private/path-token?token=query-secret" });
+  events.requestfailed(request);
+  events.requestfailed({ ...request, failure: () => ({ errorText: `failed ${url}` }) });
+  const count = logs.length;
+  events.response({ request: () => ({ resourceType: () => "script" }) });
+  events.requestfailed({ resourceType: () => "script" });
+  assert.equal(logs.length, count, "only images are observed");
+  sandbox.document.images = [
+    { currentSrc: url, complete: true, naturalWidth: 32, naturalHeight: 16 },
+    { src: "data:image/png;base64,inline-secret", complete: false, naturalWidth: 0, naturalHeight: 0 },
+  ];
+  await sandbox.logImagePrintState({ evaluate: fn => fn() });
+  const serialized = JSON.stringify(logs);
+  assert.doesNotMatch(serialized, /https?:|password|user:|private|path-token|query-secret|fragment-secret|inline-secret|\?|token=/);
+  assert.match(serialized, /"status":302,"responseHostname":"cdn.example"/);
+  assert.match(serialized, /net::ERR_FAILED/);
+  assert.match(serialized, /other-or-unknown/);
+  assert.match(serialized, /"complete":true,"naturalWidth":32,"naturalHeight":16/);
+  assert.match(serialized, /"complete":false,"naturalWidth":0,"naturalHeight":0/);
+  sandbox.process.env.PDF_TIMING_LOGS = "0";
+  const beforeDisabled = logs.length;
+  events.response({ request: () => request, status: () => 200, url: () => url });
+  events.requestfailed(request);
+  assert.equal(logs.length, beforeDisabled);
+});
 
 test("Storage needs its exact allowlisted HTTPS host; private and unlisted hosts remain blocked", () => {
   const host = "xflhljlfgzqczydrfwws.supabase.co";
@@ -26,7 +67,7 @@ test("Storage needs its exact allowlisted HTTPS host; private and unlisted hosts
 
 test("a valid image is decoded before page.pdf, and the resource route does not abort it", async () => {
   const host = "xflhljlfgzqczydrfwws.supabase.co";
-  const { sandbox, warnings } = imageHelpers([host]);
+  const { sandbox, warnings, logs } = imageHelpers([host, "images.example/private?token=config-secret"]);
   let decodeDone = false;
   let finishDecode;
   let pdfCalled = false;
@@ -36,9 +77,10 @@ test("a valid image is decoded before page.pdf, and the resource route does not 
     decode: () => new Promise(resolve => { finishDecode = () => { decodeDone = true; resolve(); }; }) };
   sandbox.document.images = [image];
   const page = {
-    async setContent() { let continued = false; await intercept({ request: () => ({ url: () => image.currentSrc }), continue: async () => { continued = true; }, abort: async () => assert.fail("valid image was blocked") }); assert.ok(continued); },
+    on() {},
+    async setContent() { let continued = false; await intercept({ request: () => ({ url: () => image.currentSrc, resourceType: () => "image" }), continue: async () => { continued = true; }, abort: async () => assert.fail("valid image was blocked") }); assert.ok(continued); },
     async waitForTimeout() {}, async evaluate(fn) { return fn(); },
-    async pdf() { assert.equal(decodeDone, true); pdfCalled = true; return Buffer.from("%PDF-test"); },
+    async pdf() { assert.equal(decodeDone, true); assert.ok(logs.some(([event]) => event === "[pdf-service] image.beforePrint")); pdfCalled = true; return Buffer.from("%PDF-test"); },
     async close() {},
   };
   Object.assign(sandbox, { app: { post(_path, callback) { handler = callback; } }, activeJobs: 0,
@@ -46,7 +88,7 @@ test("a valid image is decoded before page.pdf, and the resource route does not 
     timingSafeBearer: () => true, acquireBrowser: async () => ({ browser: { async newContext() { return { async route(_glob, fn) { intercept = fn; }, async newPage() { return page; }, async close() {} }; } } }),
     releaseBrowser: async () => {}, retireBrowser() {}, timePdfStage: async (_label, work) => work(),
     withTimeout: async work => work(), sanitizeDisposition: () => "inline", sanitizeFilename: () => "test.pdf",
-    process: { env: {} }, Buffer, playwrightVersion: "test",
+    process: { env: { PDF_TIMING_LOGS: "1" } }, Buffer, playwrightVersion: "test",
   });
   vm.runInContext(source.slice(source.indexOf('app.post("/generate"'), source.indexOf("const port =")), sandbox);
   const res = { setHeader() {}, status(code) { this.code = code; return this; }, send() { return this; } };
@@ -60,6 +102,10 @@ test("a valid image is decoded before page.pdf, and the resource route does not 
   assert.equal(res.code, 200);
   assert.equal(pdfCalled, true);
   assert.equal(warnings.length, 0);
+  assert.ok(logs.some(([event, data]) => event === "[pdf-service] generation" && data.allowedResourceHosts[0] === host && data.javaScriptEnabled === false));
+  assert.ok(logs.some(([event, data]) => event === "[pdf-service] image.route" && data.action === "allowed"));
+  assert.doesNotMatch(JSON.stringify(logs), /config-secret|\?|token=/);
+  assert.match(JSON.stringify(logs), /invalid-host-entry/);
 });
 
 test("failed and relative image diagnostics do not reveal signed paths or tokens", async () => {
