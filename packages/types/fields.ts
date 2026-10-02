@@ -681,7 +681,8 @@ export type DuplicateAction = BaseFormAction & {
  * 5) Acciones externas (placeholder)
  */
 export type ExternalAction = BaseFormAction & {
-    kind?: "pdf" | "url" | "email" | "print";
+    type?: "external";
+    kind?: "pdf" | "url" | "email" | "print" | "custom";
     pdf?: {
     templateSlug?: string;      // slug en pdf_templates
     recordIdTemplate?: string;  // "{{id}}" por defecto
@@ -692,9 +693,17 @@ export type ExternalAction = BaseFormAction & {
     params?: Record<string, any>;
 };
 
+export type WorkflowAction = BaseFormAction & {
+  type: "workflow";
+  workflowKey: string;
+  input?: any;
+  after?: { navigateTo?: string };
+};
+
 export type FormAction =
   | CreateRelatedAction
   | NavigateAction
   | RecalculateAction
   | DuplicateAction
-  | ExternalAction;
+  | ExternalAction
+  | WorkflowAction;

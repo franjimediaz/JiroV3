@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect, useRef, useCallback} from "react";
 import styles from "./modulo-detalle.module.css";
-import { applyModuleUiPatch } from "@repo/types";
+import { applyModuleUiPatch, WORKFLOW_CATALOG } from "@repo/types";
 import  Selector from "../components/fields/Selector";
 import {IconPicker} from "@repo/ui";
 import type { CalendarSpecialViewConfig, CalendarViewMode, ConfigurableAuditEvent, Field as FieldSchema, ModuleCapabilityKey, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
@@ -1629,10 +1629,7 @@ const editorTabs = [
             fieldsByTable={fieldsByTable}
             loadingByTable={loadingByTable}
             ensureTableFields={ensureTableFields}
-            workflowCatalog={[
-              { key: "derive.createFromParent", label: "Generar presupuesto (snapshot tareas)" },
-              { key: "invoice.generateFromBudget", label: "Generar factura desde presupuesto" },
-            ]}
+            workflowCatalog={WORKFLOW_CATALOG}
           />
         </div>
       </div>

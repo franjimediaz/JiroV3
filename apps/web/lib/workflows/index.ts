@@ -1,12 +1,10 @@
 import { budgetGenerateFromTasks } from "./budget.generateFromTasks";
 import { deriveCreateFromParent } from "./derive.createFromParent";
+import { recordsCopyRelated } from "./records.copyRelated";
+import { WORKFLOW_KEYS, type WorkflowKey } from "@repo/types";
 
-export const WORKFLOW_KEYS = {
-  deriveCreateFromParent: "derive.createFromParent",
-  budgetGenerateFromTasks: "budget.generateFromTasks",
-} as const;
-
-export type WorkflowKey = (typeof WORKFLOW_KEYS)[keyof typeof WORKFLOW_KEYS];
+export { WORKFLOW_KEYS } from "@repo/types";
+export type { WorkflowKey } from "@repo/types";
 
 export type WorkflowContext = {
   recordId: string;
@@ -26,6 +24,7 @@ type WorkflowHandler = (args: { context: WorkflowContext; input?: any }) => Prom
 export const workflowRegistry: Record<WorkflowKey, WorkflowHandler> = {
   [WORKFLOW_KEYS.deriveCreateFromParent]: deriveCreateFromParent,
   [WORKFLOW_KEYS.budgetGenerateFromTasks]: budgetGenerateFromTasks,
+  [WORKFLOW_KEYS.recordsCopyRelated]: recordsCopyRelated,
 };
 
 function assertWorkflowArgs(args: RunWorkflowArgs) {
@@ -42,7 +41,9 @@ function assertWorkflowArgs(args: RunWorkflowArgs) {
 
 export async function runWorkflow(args: RunWorkflowArgs) {
   assertWorkflowArgs(args);
-  const handler = workflowRegistry[args.workflowKey as WorkflowKey];
+  const handler = Object.prototype.hasOwnProperty.call(workflowRegistry, args.workflowKey)
+    ? workflowRegistry[args.workflowKey as WorkflowKey]
+    : undefined;
   if (!handler) {
     throw new Error(`Workflow no soportado: ${args.workflowKey}`);
   }

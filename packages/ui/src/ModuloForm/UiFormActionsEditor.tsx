@@ -4,6 +4,8 @@ import React, { useMemo, useState, useEffect } from "react";
 import Selector from "../components/fields/Selector";
 import type { Field as FieldSchema, VisibilityConfig } from "@repo/types";
 import { VisibilityConfigEditor } from "./FieldRow";
+import { WORKFLOW_CATALOG } from "@repo/types";
+import CopyRelatedWorkflowEditor, { WorkflowJsonEditor } from "./CopyRelatedWorkflowEditor";
 
 type UiMode = "view" | "edit" | "create";
 type UiActionType =
@@ -349,16 +351,8 @@ export default function UiFormActionsEditor({
       type === "workflow"
         ? ({
             ...base,
-            workflowKey: "derive.createFromParent",
-            input: {
-              kind: "derive",
-              source: { parentTable: "", parentIdTemplate: "{{id}}" },
-              target: { parentTable: "" },
-              maps: { parent: {}, child: {} },
-              defaults: { parent: {}, child: {} },
-              sourceUpdates: { parent: {}, child: {} },
-              children: [],
-            } satisfies DeriveWorkflowInput,
+            workflowKey: "",
+            input: {},
             after: { navigateTo: "" },
           } as any)
         : base;
@@ -1266,6 +1260,11 @@ function UiFormActionItem({
   workflowCatalog?: WorkflowCatalogItem[];
 }) {
   const targetTable = a.target?.table || "";
+  const catalog = WORKFLOW_CATALOG.map((item) => ({
+    ...item,
+    label: workflowCatalog?.find((custom) => custom.key === item.key)?.label || item.label,
+  }));
+  const unknownWorkflow = Boolean(a.workflowKey && !catalog.some((item) => item.key === a.workflowKey));
 
   useEffect(() => {
     if (!targetTable) return;
@@ -1308,7 +1307,7 @@ function UiFormActionItem({
           <div style={{ gridColumn: "1 / -1" }}>
             <label className={styles.label}>workflowKey</label>
 
-            {workflowCatalog && workflowCatalog.length > 0 ? (
+            {catalog.length > 0 ? (
               <select
                 className={styles.input}
                 value={(a as any).workflowKey || ""}
@@ -1316,7 +1315,8 @@ function UiFormActionItem({
                 disabled={readOnly}
               >
                 <option value="">— Selecciona workflow —</option>
-                {workflowCatalog.map((w) => (
+                {unknownWorkflow && <option value={a.workflowKey}>{a.workflowKey} (fuera del catálogo)</option>}
+                {catalog.map((w) => (
                   <option key={w.key} value={w.key}>
                     {w.label}
                   </option>
@@ -1332,12 +1332,19 @@ function UiFormActionItem({
               />
             )}
 
+            {unknownWorkflow && <div role="alert" className={styles.hint}>
+              Este workflow no está en el catálogo ejecutable. Se conserva su configuración; el backend rechazará su ejecución si no está registrado.
+            </div>}
             <div className={styles.hint} style={{ marginTop: 6 }}>
               Para derivaciones pro usa <code>derive.createFromParent</code>.
             </div>
           </div>
 
-          {String((a as any).workflowKey || "") === "derive.createFromParent" ? (
+          {a.workflowKey === "records.copyRelated" ? (
+            <CopyRelatedWorkflowEditor value={a.input} onChange={(input) => updateFormAction(idx, { input })}
+              readOnly={readOnly} styles={styles} sourceFields={sourceFields}
+              getTableFields={getTableFields} ensureTableFields={ensureTableFields} />
+          ) : String((a as any).workflowKey || "") === "derive.createFromParent" ? (
             <WorkflowDeriveEditor
               idx={idx}
               action={a}
@@ -1347,7 +1354,7 @@ function UiFormActionItem({
               getTableFields={getTableFields}
               ensureTableFields={ensureTableFields}
             />
-          ) : (
+          ) : !unknownWorkflow ? (
             <WorkflowInputEditor
               value={(a as any).input}
               onChange={(next) => updateFormAction(idx, { input: next } as any)}
@@ -1355,7 +1362,9 @@ function UiFormActionItem({
               styles={styles}
               sourceFields={sourceFields} // fallback
             />
-          )}
+          ) : null}
+
+          <WorkflowJsonEditor value={a.input} onChange={(input) => updateFormAction(idx, { input })} readOnly={readOnly} styles={styles} />
 
           <div style={{ gridColumn: "1 / -1", marginTop: 10 }}>
             <label className={styles.label}>after.navigateTo (opcional)</label>

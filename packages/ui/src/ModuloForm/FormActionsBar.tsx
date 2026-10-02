@@ -1,121 +1,19 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import type { ModuleSchema } from "@repo/types";
 import { ActionMenu } from "../ActionMenu";
 import { applyCompute } from "../engines/computeEngine"; // ajusta ruta real si difiere
 import { dataProvider } from "../providers/DataProvider"; // ajusta ruta real si difiere
 import { downloadPdf, openPdfInNewTab, openPdfInSameTab } from "../pdf";
 import { evaluateActionVisibility } from "../engines/visibilityEngine";
-import type { VisibilityConfig } from "@repo/types";
+import type { FormAction, ActionDisabledWhen as DisabledWhen } from "@repo/types";
+export type {
+  FormAction, WorkflowAction, CreateRelatedAction, NavigateAction,
+  RecalculateAction, DuplicateAction, ExternalAction,
+} from "@repo/types";
 
 type Mode = "view" | "edit" | "create";
-
-/** ---------------- Types (config) ---------------- */
-
-export type FormAction =
-  | CreateRelatedAction
-  | NavigateAction
-  | RecalculateAction
-  | DuplicateAction
-  | ExternalAction
-  | WorkflowAction;
-
-type BaseAction = {
-  id: string;
-  label: string;
-  icon?: string; // ej: "bi bi-plus-lg"
-  variant?:
-    | "primary"
-    | "secondary"
-    | "success"
-    | "warning"
-    | "danger"
-    | "info"
-    | "light"
-    | "dark";
-  showIn?: Mode[]; // default: ["view","edit","create"]
-  confirm?: { title?: string; text: string };
-  disabledWhen?: DisabledWhen;
-  visibility?: VisibilityConfig;
-  // opcional: posicionarlo (por si luego quieres header/footer)
-  placement?: "top" | "bottom";
-};
-
-type DisabledWhen =
-  | { type: "missingFields"; fields: string[] } // si faltan -> disabled
-  | { type: "modeIs"; modes: Mode[] };
-
-export type CreateRelatedAction = BaseAction & {
-  type: "createRelated";
-  target: {
-    table: string; // tabla destino
-    moduleSlug?: string; // si prefieres navegar por módulo
-  };
-  /** Mapeo origen->destino: { destino: "campoOrigen" } */
-  fieldMap?: Record<string, string>;
-  /** Defaults en destino: { campoDestino: "valor fijo" } */
-  defaults?: Record<string, any>;
-  /** Si true, navega tras crear */
-  afterCreate?: {
-    navigateTo?: "record" | "list" | "none";
-    /** plantilla opcional si quieres forzar ruta */
-    hrefTemplate?: string; // ej "/obras/{{obraId}}/tareas/{{id}}?edit=true"
-    openEdit?: boolean; // si navega a record, añade ?edit=true
-  };
-};
-
-export type NavigateAction = BaseAction & {
-  type: "navigate";
-  target: {
-    table?: string; // navegación por tabla (si tu router es por tabla)
-    moduleSlug?: string; // o por módulo
-  };
-  hrefTemplate: string; // ej "/tareas/new?obraId={{id}}" o "/tabla/{{target.table}}?f={{id}}"
-};
-
-export type RecalculateAction = BaseAction & {
-  type: "recalculate";
-};
-
-export type DuplicateAction = BaseAction & {
-  type: "duplicate";
-  /** copia el registro actual (mismos campos) */
-  includeChildren?: boolean;
-  /** define qué campos NO duplicar */
-  omitFields?: string[]; // ej ["id","createdAt","updatedAt"]
-  afterDuplicate?: {
-    navigateTo?: "record" | "list" | "none";
-    openEdit?: boolean;
-  };
-};
-
-export type ExternalAction = BaseAction & {
-  type: "external";
-  kind: "pdf" | "email" | "print" | "custom";
-  endpoint: string;
-  open?: "tab" | "same";
-  params?: Record<string, any>;
-};
-
-export type WorkflowAction = BaseAction & {
-  type: "workflow";
-  workflowKey: string;
-
-  /**
-   * input se guarda en el schema y se envía al backend.
-   * Ej: { source: {...}, target: {...}, maps: {...}, defaults: {...} }
-   */
-  input?: any;
-
-  /**
-   * navegación opcional tras ejecutar:
-   * Ej: "/presupuestos/{{result.id}}?view=1"
-   */
-  after?: {
-    navigateTo?: string; // template
-  };
-};
 
 function tplString(v: any, ctx: any) {
   if (typeof v !== "string") return v;
@@ -178,6 +76,8 @@ export default function FormActionsBar(props: {
   } = props;
 
   const [busyId, setBusyId] = useState<string | null>(null);
+  const busyRef = useRef(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const effectiveActions = useMemo(() => {
@@ -259,12 +159,15 @@ export default function FormActionsBar(props: {
     });
 
   const handleAction = async (a: FormAction) => {
+    if (busyRef.current) return;
     setError(null);
+    setFeedback(null);
     if (isDisabled(a)) return;
 
     const ok = confirmIfNeeded(a);
     if (!ok) return;
 
+    busyRef.current = true;
     setBusyId(a.id);
     try {
       if (a.type === "recalculate") {
@@ -445,7 +348,10 @@ export default function FormActionsBar(props: {
 
         const res = await fetch("/api/workflows/run", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": globalThis.crypto?.randomUUID?.() || `workflow-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          },
           credentials: "include",
           body: JSON.stringify(payload),
         });
@@ -453,7 +359,12 @@ export default function FormActionsBar(props: {
         const json = await res.json().catch(() => null);
 
         if (!res.ok || !json?.ok) {
-          throw new Error(json?.error || `Workflow error (${res.status})`);
+          throw new Error(json?.error?.message || json?.error || `Workflow error (${res.status})`);
+        }
+
+        const counts = json.result;
+        if ([counts?.matched, counts?.created, counts?.skipped].every((n) => typeof n === "number")) {
+          setFeedback(`${counts.matched} registros encontrados · ${counts.created} creados · ${counts.skipped} omitidos (ya existentes)`);
         }
 
         const tpl = (a as any).after?.navigateTo;
@@ -471,6 +382,7 @@ export default function FormActionsBar(props: {
     } catch (e: any) {
       setError(e?.message || "Error ejecutando acción");
     } finally {
+      busyRef.current = false;
       setBusyId(null);
     }
   };
@@ -489,12 +401,14 @@ export default function FormActionsBar(props: {
               icon: a.icon ? (
                 <i className={a.icon} style={{ marginRight: 8 }} />
               ) : undefined,
+              disabled: busyId !== null,
               onClick: () => handleAction(a),
             };
           })}
         />
       </div>
 
+      {feedback && <div role="status" className="alert alert-success py-2 mb-0">{feedback}</div>}
       {error && <div className="alert alert-danger py-2 mb-0">{error}</div>}
     </div>
   );

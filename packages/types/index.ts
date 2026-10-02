@@ -22,6 +22,13 @@ export type {
     ModuloRow,
     ModuloNode,
     FormAction,
+    WorkflowAction,
+    CreateRelatedAction,
+    NavigateAction,
+    RecalculateAction,
+    DuplicateAction,
+    ExternalAction,
+    ActionDisabledWhen,
     OpenCreateModuleFn,
     Appareance,
     FormSection,
@@ -153,3 +160,5 @@ export type {
 } from "./moduleCapabilities";
 
 export { applyModuleUiPatch } from "./moduleUi";
+export { WORKFLOW_KEYS, WORKFLOW_CATALOG } from "./workflows";
+export type { WorkflowKey, CopyRelatedInput } from "./workflows";
