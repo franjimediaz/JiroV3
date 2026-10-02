@@ -21,9 +21,10 @@ function shouldLogPdfTimings() {
   return process.env.PDF_TIMING_LOGS === "1";
 }
 
-function logPdfTiming(label: string, startedAt: number) {
+function logPdfTiming(label: string, startedAt: number, benchmarkId: string | null = null) {
   if (!shouldLogPdfTimings()) return;
   console.info(`[pdf] ${label}: ${Math.round(performance.now() - startedAt)}ms`);
+  if (benchmarkId) console.info("[pdf-benchmark] " + JSON.stringify({ id: benchmarkId, scope: "web", stage: label, ms: performance.now() - startedAt }));
 }
 
 async function readErrorPayload(response: Response) {
@@ -54,6 +55,9 @@ async function readErrorPayload(response: Response) {
 export async function GET(req: Request) {
   const totalStartedAt = performance.now();
   const requestId = getRequestId(req);
+  const candidateId = req.headers.get("x-pdf-benchmark-id") || "";
+  const benchmarkId = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidateId) ? candidateId : null;
+  const logTiming = (label: string, startedAt: number) => logPdfTiming(label, startedAt, benchmarkId);
   try {
     const ip = getClientIp(req);
     await enforceRateLimit({ key: `pdf-generate:${ip}`, limit: 30, windowMs: 60_000 });
@@ -81,7 +85,7 @@ export async function GET(req: Request) {
       .select("*")
       .eq("slug", slug)
       .maybeSingle();
-    logPdfTiming("templateQuery", templateStartedAt);
+    logTiming("templateQuery", templateStartedAt);
 
     if (error) {
       return NextResponse.json(
@@ -111,12 +115,12 @@ export async function GET(req: Request) {
       labelResolvers,
       template,
     });
-    logPdfTiming("resolvePdfContext", resolveStartedAt);
+    logTiming("resolvePdfContext", resolveStartedAt);
 
     // 5) HTML
     const renderStartedAt = performance.now();
     const html = renderTemplateToHtml(template, ctx);
-    logPdfTiming("renderTemplateToHtml", renderStartedAt);
+    logTiming("renderTemplateToHtml", renderStartedAt);
 
     // 6) PDF
     const serviceUrl = process.env.PDF_SERVICE_URL;
@@ -138,6 +142,7 @@ export async function GET(req: Request) {
           headers: {
             "content-type": "application/json",
             authorization: `Bearer ${serviceSecret}`,
+            ...(benchmarkId ? { "x-pdf-benchmark-id": benchmarkId } : {}),
           },
           body: JSON.stringify({
             html,
@@ -176,7 +181,7 @@ export async function GET(req: Request) {
           sourceTable: tplRow.source_table,
         });
       } finally {
-        logPdfTiming("pdfService", serviceStartedAt);
+        logTiming("pdfService", serviceStartedAt);
       }
     } else {
       upstreamError = "PDF service no configurado; usando generador local";
@@ -197,7 +202,7 @@ export async function GET(req: Request) {
           { status: 500 },
         );
       } finally {
-        logPdfTiming("pdfLocal", localStartedAt);
+        logTiming("pdfLocal", localStartedAt);
       }
     }
 
@@ -219,6 +224,6 @@ export async function GET(req: Request) {
   } catch (error) {
     return handleApiError(error, requestId, { route: "/api/pdf/generate", method: "GET" });
   } finally {
-    logPdfTiming("total", totalStartedAt);
+    logTiming("total", totalStartedAt);
   }
 }

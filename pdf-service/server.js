@@ -4,8 +4,10 @@ import { createRequire } from "node:module";
 import crypto from "node:crypto";
 import net from "node:net";
 import { performance } from "node:perf_hooks";
+import { createHtmlCapture } from "./capture-html.js";
 
 const app = express();
+const captureHtml = createHtmlCapture();
 app.use(express.json({ limit: process.env.PDF_MAX_BODY_SIZE || "1mb" }));
 
 const SERVICE_SECRET = process.env.PDF_SERVICE_SECRET;
@@ -26,7 +28,7 @@ const BROWSER_MAX_JOBS = Number.isSafeInteger(configuredMaxJobs) && configuredMa
 let browserState = null;
 let browserLaunch = null;
 
-async function acquireBrowser() {
+async function acquireBrowser(benchmarkId = null) {
   while (true) {
     if (!browserState) {
       if (!browserLaunch) {
@@ -50,6 +52,7 @@ async function acquireBrowser() {
     state.active += 1;
     if (process.env.PDF_TIMING_LOGS === "1") {
       console.info("[pdf-service] browser", { action: state.jobs === 1 ? "created" : "reused" });
+      if (benchmarkId) console.info("[pdf-benchmark] " + JSON.stringify({ id: benchmarkId, scope: "service", browser: state.jobs === 1 ? "created" : "reused" }));
     }
     // Retire this generation without interrupting its active jobs.
     if (BROWSER_MAX_JOBS > 0 && state.jobs >= BROWSER_MAX_JOBS) browserState = null;
@@ -222,13 +225,14 @@ async function waitForPdfImages(page) {
   }
 }
 
-async function timePdfStage(label, work) {
+async function timePdfStage(label, work, benchmarkId = null) {
   const startedAt = performance.now();
   try {
     return await work();
   } finally {
     if (process.env.PDF_TIMING_LOGS === "1") {
       console.info("[pdf-service] " + label + ": " + Math.round(performance.now() - startedAt) + "ms");
+      if (benchmarkId) console.info("[pdf-benchmark] " + JSON.stringify({ id: benchmarkId, scope: "service", stage: label, ms: performance.now() - startedAt }));
     }
   }
 }
@@ -266,6 +270,9 @@ app.post("/generate", async (req, res) => {
   }
   activeJobs += 1;
   const totalStartedAt = performance.now();
+  const candidateId = req.headers["x-pdf-benchmark-id"];
+  const benchmarkId = typeof candidateId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidateId) ? candidateId : null;
+  const timeStage = (label, work) => timePdfStage(label, work, benchmarkId);
 
   try {
     const auth = req.headers["authorization"] || "";
@@ -285,6 +292,10 @@ app.post("/generate", async (req, res) => {
       return res.status(413).json({ ok: false, error: "html demasiado grande" });
     }
 
+    if (process.env.PDF_CAPTURE_MODE === "diagnostic") {
+      await captureHtml(html, filename);
+    }
+
     if (process.env.PDF_TIMING_LOGS === "1") {
       console.info("[pdf-service] generation", {
         allowedResourceHosts: ALLOWED_RESOURCE_HOSTS.map((host) => {
@@ -295,12 +306,12 @@ app.post("/generate", async (req, res) => {
         javaScriptEnabled: process.env.PDF_ENABLE_JAVASCRIPT === "1",
       });
     }
-    const state = await timePdfStage("browser", acquireBrowser);
+    const state = await timeStage("browser", () => acquireBrowser(benchmarkId));
     let context;
     let page;
 
     try {
-      context = await timePdfStage("context", () => state.browser.newContext({
+      context = await timeStage("context", () => state.browser.newContext({
         javaScriptEnabled: process.env.PDF_ENABLE_JAVASCRIPT === "1",
       }));
       const blockedHosts = new Set();
@@ -318,18 +329,18 @@ app.post("/generate", async (req, res) => {
         }
         return route.abort();
       });
-      page = await timePdfStage("page", () => context.newPage());
+      page = await timeStage("page", () => context.newPage());
       if (process.env.PDF_TIMING_LOGS === "1") observeImageRequests(page);
       const pdf = await withTimeout(async () => {
-        await timePdfStage("setContent", () =>
+        await timeStage("setContent", () =>
           page.setContent(html, { waitUntil: "load", timeout: JOB_TIMEOUT_MS }));
-        await page.waitForTimeout(50);
-        await timePdfStage("images", () => waitForPdfImages(page));
+        await timeStage("renderDelay", () => page.waitForTimeout(50));
+        await timeStage("images", () => waitForPdfImages(page));
         if (process.env.PDF_TIMING_LOGS === "1") {
           // Diagnostics must not turn an otherwise successful PDF into an error.
           await logImagePrintState(page).catch(() => console.info("[pdf-service] image.beforePrint unavailable"));
         }
-        return timePdfStage("page.pdf", () => page.pdf({
+        return timeStage("page.pdf", () => page.pdf({
           format: "A4",
           printBackground: true,
           preferCSSPageSize: true,
@@ -337,6 +348,9 @@ app.post("/generate", async (req, res) => {
         }));
       }, JOB_TIMEOUT_MS + 2_000);
 
+      if (process.env.PDF_TIMING_LOGS === "1" && benchmarkId) {
+        console.info("[pdf-benchmark] " + JSON.stringify({ id: benchmarkId, scope: "service", stage: "responseReady", ms: performance.now() - totalStartedAt }));
+      }
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader(
         "Content-Disposition",
@@ -348,20 +362,25 @@ app.post("/generate", async (req, res) => {
       retireBrowser(state);
       throw error;
     } finally {
+      const cleanupStartedAt = performance.now();
       try {
         try {
-          await page?.close();
+          await timeStage("page.close", () => page?.close());
         } finally {
-          await context?.close();
+          await timeStage("context.close", () => context?.close());
         }
       } catch (error) {
         retireBrowser(state);
         console.error("PDF service context cleanup failed", { message: error?.message || String(error) });
       } finally {
         // Cleanup must not send a second response or mask the rendering error.
-        await releaseBrowser(state).catch((error) => {
+        await timeStage("browser.release", () => releaseBrowser(state)).catch((error) => {
           console.error("PDF service browser cleanup failed", { message: error?.message || String(error) });
         });
+        if (process.env.PDF_TIMING_LOGS === "1") {
+          console.info(`[pdf-service] cleanup: ${Math.round(performance.now() - cleanupStartedAt)}ms`);
+          if (benchmarkId) console.info("[pdf-benchmark] " + JSON.stringify({ id: benchmarkId, scope: "service", stage: "cleanup", ms: performance.now() - cleanupStartedAt }));
+        }
       }
     }
   } catch (e) {
@@ -379,6 +398,7 @@ app.post("/generate", async (req, res) => {
     activeJobs = Math.max(0, activeJobs - 1);
     if (process.env.PDF_TIMING_LOGS === "1") {
       console.info(`[pdf-service] total: ${Math.round(performance.now() - totalStartedAt)}ms`);
+      if (benchmarkId) console.info("[pdf-benchmark] " + JSON.stringify({ id: benchmarkId, scope: "service", stage: "total", ms: performance.now() - totalStartedAt }));
     }
   }
 });
