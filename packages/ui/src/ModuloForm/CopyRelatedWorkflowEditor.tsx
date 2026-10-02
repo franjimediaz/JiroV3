@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Selector from "../components/fields/Selector";
+import { COPY_RELATED_MAX_DEPTH } from "@repo/types";
 
 type Field = { name: string; label?: string };
 type Styles = Record<string, string>;
@@ -98,10 +99,11 @@ function PairsEditor({ value, onChange, sourceFields, targetFields, literals, re
   </div>;
 }
 
-export default function CopyRelatedWorkflowEditor({ value = {}, onChange, sourceFields: currentFields, getTableFields, ensureTableFields, readOnly, styles }: {
+export default function CopyRelatedWorkflowEditor({ value = {}, onChange, sourceFields: currentFields, getTableFields, ensureTableFields, readOnly, styles, depth = 1 }: {
   value?: Input; onChange: (value: Input) => void;
   sourceFields: Field[]; getTableFields: (table: string) => Field[]; ensureTableFields?: (table: string) => void;
   readOnly?: boolean; styles: Styles;
+  depth?: number;
 }) {
   const source = asObject(value.source);
   const target = asObject(value.target);
@@ -126,13 +128,15 @@ export default function CopyRelatedWorkflowEditor({ value = {}, onChange, source
   return <div style={{ gridColumn: "1 / -1" }} className={styles.card}>
     <h4>Origen</h4>
     {tableSelector("source", "Módulo origen")}
-    <FieldSelect {...selectProps} label="Campo del origen a comparar" fields={sourceFields} value={match.field}
+    {depth === 1 ? <><FieldSelect {...selectProps} label="Campo del origen a comparar" fields={sourceFields} value={match.field}
       onChange={(field) => patch({ source: { ...source, match: { ...match, field } } })} />
     <FieldSelect {...selectProps} label="Valor desde el registro actual" fields={currentFields} value={match.valueFromRecord}
-      onChange={(valueFromRecord) => patch({ source: { ...source, match: { ...match, valueFromRecord } } })} />
+      onChange={(valueFromRecord) => patch({ source: { ...source, match: { ...match, valueFromRecord } } })} /></> :
+      <FieldSelect {...selectProps} label="Campo origen que enlaza con el padre origen" fields={sourceFields} value={source.parentField}
+        onChange={(parentField) => patch({ source: { ...source, parentField } })} />}
     <h4>Destino</h4>
     {tableSelector("target", "Módulo destino")}
-    <FieldSelect {...selectProps} label="Campo que recibe el ID del registro actual" fields={targetFields} value={target.parentField}
+    <FieldSelect {...selectProps} label={depth === 1 ? "Campo que recibe el ID del registro actual" : "Campo que recibe el ID del padre destino creado o reutilizado"} fields={targetFields} value={target.parentField}
       onChange={(parentField) => patch({ target: { ...target, parentField } })} />
     <PairsEditor {...selectProps} sourceFields={sourceFields} targetFields={targetFields} value={asObject(value.map)} onChange={(map) => patch({ map })} />
     <PairsEditor {...selectProps} literals sourceFields={sourceFields} targetFields={targetFields} value={asObject(value.defaults)} onChange={(defaults) => patch({ defaults })} />
@@ -145,5 +149,22 @@ export default function CopyRelatedWorkflowEditor({ value = {}, onChange, source
       <FieldSelect {...selectProps} label="Campo destino que guarda el identificador del origen" fields={targetFields} value={dedupe.targetSourceIdField}
         onChange={(targetSourceIdField) => patch({ dedupe: { ...dedupe, targetSourceIdField } })} />
     </>}
+    <h4>Hijos relacionados · nivel {depth}</h4>
+    {depth < COPY_RELATED_MAX_DEPTH && <button type="button" className={styles.btnAdd} disabled={readOnly}
+      onClick={() => patch({ children: [...(Array.isArray(value.children) ? value.children : []), {
+        source: { table: "", parentField: "" }, target: { table: "", parentField: "" }, map: {}, defaults: {},
+      }] })}>+ Añadir hijo</button>}
+    {depth >= COPY_RELATED_MAX_DEPTH && <div className={styles.hint}>Máximo de {COPY_RELATED_MAX_DEPTH} niveles, incluida la raíz.</div>}
+    {Array.isArray(value.children) && value.children.map((child, index) => <div key={index} className={styles.card}>
+      <div className={styles.actionsRow}>Hijo {index + 1}
+        <button type="button" className={styles.btn} disabled={readOnly}
+          onClick={() => patch({ children: (value.children as unknown[]).filter((_, i) => i !== index) })}>Eliminar hijo</button>
+      </div>
+      {depth < COPY_RELATED_MAX_DEPTH ? <CopyRelatedWorkflowEditor value={asObject(child)}
+        onChange={(next) => patch({ children: (value.children as unknown[]).map((item, i) => i === index ? next : item) })}
+        sourceFields={sourceFields} getTableFields={getTableFields} ensureTableFields={ensureTableFields}
+        readOnly={readOnly} styles={styles} depth={depth + 1} /> :
+        <div role="alert">Este hijo supera la profundidad máxima. Elimina el hijo o corrige el JSON; su configuración se conserva.</div>}
+    </div>)}
   </div>;
 }

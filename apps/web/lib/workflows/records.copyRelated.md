@@ -45,8 +45,9 @@ Las consultas se paginan para respetar los límites de PostgREST sin truncar las
 ## Atomicidad y concurrencia
 
 No hay una abstracción transaccional compartida en el motor actual. Las lecturas y la comprobación
-de existentes son peticiones separadas; todo el lote nuevo se envía en una sola sentencia INSERT.
-Un fallo de inserción se propaga, sin reintentar inserts individuales ni declarar éxito parcial.
+de existentes son peticiones separadas. Sin hijos, todo el lote nuevo se envía en una sola sentencia
+INSERT. En árboles, cada rama inserta su propio lote, con la excepción de correlación descrita abajo.
+Un fallo se propaga sin declarar éxito parcial ni reintentar automáticamente inserts fallidos.
 
 La comprobación previa no garantiza exclusión entre ejecuciones simultáneas ni detecta filas ocultas
 por RLS. Para garantizar unicidad concurrente, el responsable del módulo debe definir una restricción
@@ -70,3 +71,50 @@ sigue rechazando claves no registradas. `derive.createFromParent` y sus helpers 
 Pruebas: `node --test scripts/workflows.test.mjs`. Incluyen consultas simuladas, fallos de lote,
 paginación, reejecuciones, tipos, catálogo, handlers legacy y eventos reales de componentes mediante
 un harness de hooks. No sustituyen una prueba integrada con la base de datos y sus políticas RLS.
+
+## Copia multinivel mediante children
+
+`children?: CopyRelatedChild[]` permite varias ramas y hasta **3 niveles en total**: raíz (1),
+hijos (2), nietos (3). Un cuarto nivel se rechaza antes de escribir. `children` ausente o vacío
+mantiene exactamente el camino de ejecución de un solo nivel. Cada hijo tiene la misma configuración
+de destino, mapeos, defaults y deduplicación, pero su origen usa `parentField` en lugar de `match`:
+
+```json
+{
+  "source": { "table": "template_task_material", "parentField": "template_task_id" },
+  "target": { "table": "task_material", "parentField": "task_id" },
+  "map": { "material_id": "material_id", "quantity": "quantity" },
+  "dedupe": {
+    "enabled": true,
+    "sourceIdField": "id",
+    "targetSourceIdField": "template_task_material_id"
+  }
+}
+```
+
+Añade ese objeto a `children` del ejemplo inicial. `source.parentField` referencia la clave primaria
+del padre **origen**; `target.parentField` recibe la clave primaria del padre **destino**, recién creado
+o reutilizado. Se respetan las claves primarias configuradas en los módulos. La identidad de dedupe
+puede ser distinta de esa clave primaria. Los existentes nunca se actualizan, pero sus hijos sí se
+procesan para completar los faltantes. Destinos ambiguos para una misma identidad producen un error.
+
+Los hijos se consultan para todos los padres, agrupando los filtros IN en bloques de hasta 100 IDs
+y paginando los resultados. Los nodos con deduplicación usan bulk y correlacionan el resultado por
+padre e identidad de origen; **no se presupone el orden de RETURNING**. Los padres necesitan permiso
+SELECT/RLS para recuperar sus IDs. Si un nodo con hijos tiene dedupe desactivado, no hay una identidad
+persistida para correlacionar un bulk genérico: sus inserciones son individuales con retorno del ID.
+Las hojas mantienen bulk incluso sin dedupe. No se inventan UUIDs para claves que podrían ser numéricas.
+
+`result.matched/created/skipped` conserva los contadores de la raíz. Con hijos, `meta.levels` contiene
+una entrada por rama (`path`, `level`, `sourceTable`, `targetTable`, contadores), incluso cuando no hay
+coincidencias; `meta.totals` suma todas las ramas. Por ejemplo, dos padres y tres hijos nuevos devuelven
+`result.created = 2` y `meta.totals.created = 5`.
+
+No hay transacción global entre niveles: si falla un hijo, los padres y ramas anteriores pueden
+haber quedado creados. Con dedupe en todos los niveles, una nueva ejecución reutiliza esos registros
+y completa los faltantes. Sin dedupe, reejecutar puede duplicar registros. Las restricciones UNIQUE
+siguen siendo necesarias para garantizar exclusión concurrente por nivel.
+
+El editor visual permite añadir/eliminar hijos y nietos, configurarlos con los campos cargados de
+cada módulo y conservar JSON/raw. Una configuración JSON que exceda la profundidad se conserva
+con aviso en el editor y se rechaza al ejecutarla.

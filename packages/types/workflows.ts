@@ -28,4 +28,11 @@ export type CopyRelatedInput = {
     sourceIdField?: string;
     targetSourceIdField?: string;
   };
+  children?: CopyRelatedChild[];
 };
+
+export type CopyRelatedChild = Omit<CopyRelatedInput, "source"> & {
+  source: { table: string; parentField: string };
+};
+
+export const COPY_RELATED_MAX_DEPTH = 3;

@@ -12,6 +12,7 @@ function load(file, imports = {}, suffix = "") {
   });
   const module = { exports: {} };
   new Function("require", "module", "exports", outputText)((name) => {
+    if (name === "@repo/types" && !(name in imports)) return metadata;
     assert.ok(name in imports, `Unexpected dependency ${name} in ${file}`);
     return imports[name];
   }, module, module.exports);
@@ -33,8 +34,8 @@ function backend({ existing = [], sources = [
   { id: "s1", group_id: "chosen", name: "One", rank: 2 },
   { id: "s2", group_id: "chosen", name: "Two", rank: 3 },
   { id: "other", group_id: "another", name: "Other", rank: 0 },
-], record = { pk: "parent", selected_group: "chosen" }, pageSize = 500, failRead, failInsert } = {}) {
-  const tables = { parent_table: record ? [record] : [], source_table: sources, target_table: [...existing] };
+], record = { pk: "parent", selected_group: "chosen" }, pageSize = 500, failRead, failInsert, extraTables = {}, extraModules = {} } = {}) {
+  const tables = { parent_table: record ? [record] : [], source_table: sources, target_table: [...existing], ...structuredClone(extraTables) };
   const inserts = [];
   const calls = [];
   const resolutions = [];
@@ -43,23 +44,30 @@ function backend({ existing = [], sources = [
     const query = {
       select(columns, options) { calls.push({ table, columns, options }); return query; },
       eq(field, value) { filters.push([field, value]); calls.push({ table, field, value }); return query; },
+      in(field, value) { filters.push([field, value, true]); calls.push({ table, field, value }); return query; },
       order() { return query; },
       async maybeSingle() { return { data: tables[table].find((row) => filters.every(([f, v]) => row[f] === v)), error: null }; },
       async range(start, end) {
         if (failRead === table) return { error: { message: "read denied" } };
-        const matching = tables[table].filter((row) => filters.every(([f, v]) => row[f] === v));
+        const matching = tables[table].filter((row) => filters.every(([f, v, isIn]) => isIn ? v.includes(row[f]) : row[f] === v));
         return { data: matching.slice(start, Math.min(end + 1, start + pageSize)), count: matching.length, error: null };
       },
-      async insert(rows) {
+      insert(rows) {
         inserts.push({ table, rows });
-        if (failInsert) return { error: failInsert };
-        tables[table].push(...rows);
-        return { error: null };
+        const list = Array.isArray(rows) ? rows : [rows];
+        const inserted = list.map((row, index) => ({ id: `${table}-${tables[table].length + index}`, ...row }));
+        if (!failInsert) tables[table].push(...inserted);
+        // Deliberately reverse RETURNING: correlation must never rely on order.
+        const response = { error: failInsert || null, data: [...inserted].reverse() };
+        return {
+          then: (success, failure) => Promise.resolve(response).then(success, failure),
+          select() { return { then: (success, failure) => Promise.resolve(response).then(success, failure), single: async () => ({ ...response, data: inserted[0] }) }; },
+        };
       },
     };
     return query;
   }, schema() { return client; } };
-  const modules = { parents: ["parent_table", "pk"], blueprints: ["source_table", "id"], entries: ["target_table", "id"] };
+  const modules = { parents: ["parent_table", "pk"], blueprints: ["source_table", "id"], entries: ["target_table", "id"], ...extraModules };
   const { recordsCopyRelated } = load("apps/web/lib/workflows/records.copyRelated.ts", {
     "@/lib/supabase/server": { createClient: async () => client },
     "@/lib/modules/resolveModuleConfig": { resolveModuleConfig: async (ref) => {
@@ -71,8 +79,112 @@ function backend({ existing = [], sources = [
     "@/lib/auth/apiError": errors,
     "@/lib/validation/workflows": validation,
   });
-  return { run: (input = config(), context = { recordId: "parent", tableSlug: "parents" }) => recordsCopyRelated({ context, input }), inserts, calls, resolutions };
+  return { run: (input = config(), context = { recordId: "parent", tableSlug: "parents" }) => recordsCopyRelated({ context, input }), inserts, calls, resolutions, tables };
 }
+
+function childConfig() {
+  return { source: { table: "components", parentField: "blueprint_id" }, target: { table: "parts", parentField: "entry_id" },
+    map: { quantity: "quantity" }, defaults: { status: "new" },
+    dedupe: { enabled: true, sourceIdField: "id", targetSourceIdField: "component_id" } };
+}
+function treeBackend(options = {}) {
+  return backend({
+    extraModules: { components: ["component_table", "id"], parts: ["part_table", "id"], details: ["detail_table", "id"], copies: ["copy_table", "id"] },
+    extraTables: {
+      component_table: [{ id: "m1", blueprint_id: "s1", quantity: 4 }, { id: "m2", blueprint_id: "s1", quantity: 5 }, { id: "m3", blueprint_id: "s2", quantity: 6 }],
+      part_table: [], detail_table: [{ id: "d1", component_id: "m1", quantity: 8 }], copy_table: [],
+      ...options.extraTables,
+    }, ...Object.fromEntries(Object.entries(options).filter(([key]) => key !== "extraTables")),
+  });
+}
+
+describe("records.copyRelated children", () => {
+  const treeConfig = () => ({ ...config(), children: [childConfig()] });
+  it("keeps children: [] exactly equivalent to legacy one-level configuration", async () => {
+    const legacy = await backend().run();
+    assert.deepEqual(await backend().run({ ...config(), children: [] }), legacy);
+  });
+  it("copies tasks and materials, correlating reversed bulk results and reporting root and child counters", async () => {
+    const api = treeBackend();
+    const out = await api.run(treeConfig());
+    assert.deepEqual(out.result, { matched: 2, created: 2, skipped: 0 });
+    assert.deepEqual(out.meta.totals, { matched: 5, created: 5, skipped: 0 });
+    assert.deepEqual(out.meta.levels.map(({ path, level, matched, created, skipped }) => ({ path, level, matched, created, skipped })), [
+      { path: "root", level: 1, matched: 2, created: 2, skipped: 0 },
+      { path: "root.children[0]", level: 2, matched: 3, created: 3, skipped: 0 },
+    ]);
+    const parents = new Map(api.tables.target_table.map((row) => [row.blueprint_id, row.id]));
+    assert.deepEqual(api.tables.part_table.map(({ entry_id, component_id, quantity, status }) => ({ entry_id, component_id, quantity, status })), [
+      { entry_id: parents.get("s1"), component_id: "m1", quantity: 4, status: "new" },
+      { entry_id: parents.get("s1"), component_id: "m2", quantity: 5, status: "new" },
+      { entry_id: parents.get("s2"), component_id: "m3", quantity: 6, status: "new" },
+    ]);
+    assert.equal(api.inserts.length, 2);
+    assert.ok(api.inserts.every((call) => Array.isArray(call.rows)));
+  });
+  it("reuses an existing parent and creates missing children without updating existing rows", async () => {
+    const old = { id: "existing", owner_id: "parent", blueprint_id: "s1", title: "Unchanged" };
+    const part = { id: "existing-part", entry_id: "existing", component_id: "m1", quantity: 999 };
+    const api = treeBackend({ existing: [old], extraTables: { part_table: [part] }, pageSize: 1 });
+    const out = await api.run(treeConfig());
+    assert.deepEqual(out.result, { matched: 2, created: 1, skipped: 1 });
+    assert.deepEqual(out.meta.totals, { matched: 5, created: 3, skipped: 2 });
+    assert.deepEqual(api.tables.target_table[0], old);
+    assert.deepEqual(api.tables.part_table[0], part);
+    assert.equal(api.tables.part_table.find((row) => row.component_id === "m2").entry_id, "existing");
+    assert.deepEqual((await api.run(treeConfig())).meta.totals, { matched: 5, created: 0, skipped: 5 });
+    assert.equal(api.inserts.length, 2);
+  });
+  it("creates grandchildren under the destination child even when ancestors already exist", async () => {
+    const input = treeConfig();
+    input.children[0].children = [{ ...childConfig(), source: { table: "details", parentField: "component_id" }, target: { table: "copies", parentField: "part_id" } }];
+    const api = treeBackend({ existing: [{ id: "existing", owner_id: "parent", blueprint_id: "s1" }], extraTables: { part_table: [{ id: "part-existing", entry_id: "existing", component_id: "m1" }] } });
+    const out = await api.run(input);
+    assert.equal(api.tables.copy_table[0].part_id, "part-existing");
+    assert.equal(out.meta.levels[2].level, 3);
+    assert.deepEqual(out.meta.totals, { matched: 6, created: 4, skipped: 2 });
+  });
+  it("supports sibling child configurations and zero matching children", async () => {
+    const input = treeConfig();
+    input.children.push({ ...childConfig(), source: { table: "details", parentField: "component_id" }, target: { table: "copies", parentField: "entry_id" } });
+    const api = treeBackend();
+    const out = await api.run(input);
+    assert.equal(out.meta.levels.length, 3);
+    assert.equal(out.meta.levels[2].matched, 0);
+    input.children[1].source = { table: "components", parentField: "blueprint_id" };
+    const second = treeBackend();
+    assert.deepEqual((await second.run(input)).meta.totals, { matched: 8, created: 8, skipped: 0 });
+    assert.equal(second.tables.copy_table.length, 3);
+  });
+  it("returns zero statistics for empty branches without issuing inserts", async () => {
+    const api = treeBackend({ sources: [] });
+    const out = await api.run(treeConfig());
+    assert.deepEqual(out.meta.totals, { matched: 0, created: 0, skipped: 0 });
+    assert.equal(out.meta.levels.length, 2);
+    assert.equal(api.inserts.length, 0);
+  });
+  it("falls back to individually correlated parent inserts without dedupe, keeping leaves bulk", async () => {
+    const input = treeConfig(); input.dedupe.enabled = false; input.children[0].dedupe.enabled = false;
+    const api = treeBackend();
+    assert.equal((await api.run(input)).meta.totals.created, 5);
+    assert.equal(api.inserts.length, 3);
+    assert.ok(!Array.isArray(api.inserts[0].rows));
+    assert.ok(Array.isArray(api.inserts[2].rows));
+    assert.equal(api.tables.part_table[0].entry_id, api.tables.target_table[0].id);
+    assert.equal(api.tables.part_table[2].entry_id, api.tables.target_table[1].id);
+  });
+  it("rejects depth > 3, invalid child fields and unknown nested modules before inserting", async () => {
+    const deep = treeConfig(); deep.children[0].children = [{ ...childConfig(), children: [childConfig()] }];
+    const api = treeBackend();
+    await assert.rejects(api.run(deep), /profundidad maxima de 3/);
+    const invalid = treeConfig(); invalid.children[0].source.parentField = "";
+    await assert.rejects(api.run(invalid), /children\[0\].*source.parentField/);
+    const missing = treeConfig(); missing.children[0].target.table = "unregistered";
+    await assert.rejects(api.run(missing), /Modulo no encontrado/);
+    assert.throws(() => validation.parseCopyRelatedInput({ ...config(), children: {} }), /children debe ser un array/);
+    assert.equal(api.inserts.length, 0);
+  });
+});
 
 describe("records.copyRelated", () => {
   it("reads the configured current-record value, maps multiple sources, defaults, parent and source identity in one bulk insert", async () => {
@@ -239,6 +351,27 @@ function findAll(tree, predicate) {
 }
 
 describe("workflow actions and editor behavior", () => {
+  it("edits and removes nested children visually, stops adding at depth 3 and preserves invalid deeper JSON", () => {
+    const h = hooks();
+    const editor = load("packages/ui/src/ModuloForm/CopyRelatedWorkflowEditor.tsx", { react: h.react, "../components/fields/Selector": {} });
+    const props = { value: config(), styles: {}, sourceFields: [], getTableFields: () => [], onChange: (value) => { props.value = value; } };
+    const render = () => h.render(editor.default, props);
+    const add = () => findAll(render(), (node) => node.type === "button" && node.props.children.join("").includes("Añadir hijo"))[0].props.onClick();
+    add(); add();
+    assert.equal(props.value.children.length, 2);
+    const child = findAll(render(), (node) => node.type === editor.default)[0];
+    assert.equal(child.props.depth, 2);
+    child.props.onChange({ ...child.props.value, children: [childConfig()], map: { quantity: "quantity" } });
+    assert.equal(props.value.children[0].children.length, 1);
+    assert.deepEqual(props.value.children[0].map, { quantity: "quantity" });
+    findAll(render(), (node) => node.type === "button" && node.props.children.join("") === "Eliminar hijo")[1].props.onClick();
+    assert.equal(props.value.children.length, 1);
+    const deep = { ...props, depth: 3, value: { ...childConfig(), children: [childConfig()] } };
+    const tree = h.render(editor.default, deep);
+    assert.equal(findAll(tree, (node) => node.type === "button" && node.props.children.join("").includes("Añadir hijo")).length, 0);
+    assert.equal(findAll(tree, (node) => node.props.role === "alert").length, 1);
+    assert.equal(deep.value.children.length, 1);
+  });
   it("new workflow actions start with a neutral input instead of inheriting another workflow contract", () => {
     const h = hooks();
     const editor = load("packages/ui/src/ModuloForm/UiFormActionsEditor.tsx", {

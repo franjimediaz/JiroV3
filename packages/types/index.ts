@@ -161,4 +161,5 @@ export type {
 
 export { applyModuleUiPatch } from "./moduleUi";
 export { WORKFLOW_KEYS, WORKFLOW_CATALOG } from "./workflows";
-export type { WorkflowKey, CopyRelatedInput } from "./workflows";
+export type { WorkflowKey, CopyRelatedInput, CopyRelatedChild } from "./workflows";
+export { COPY_RELATED_MAX_DEPTH } from "./workflows";
