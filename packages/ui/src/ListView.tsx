@@ -38,6 +38,10 @@ export default function ListView({
   onCreate,
   onExport,
   onImport,
+  onSearch,
+  toolbar = {},
+  pagination,
+  sorting,
 }: ListViewProps) {
   const normalizedSchema = useMemo(() => normalizeModuleSchema(schema), [schema]);
   const capabilities = useMemo(() => getEffectiveModuleCapabilities(normalizedSchema), [normalizedSchema]);
@@ -84,7 +88,7 @@ export default function ListView({
 
   // Aplicar filtros sobre data
   const filteredData = useMemo(() => {
-  if (!filterFields.length) return data;
+  if (pagination || !filterFields.length) return data;
 
   return data.filter((row) => {
     for (const f of filterFields) {
@@ -111,7 +115,7 @@ export default function ListView({
     }
     return true;
   });
-}, [data, filterFields, filters]);
+}, [data, filterFields, filters, pagination]);
 
   const pendingRelationKeys = useMemo(
     () =>
@@ -155,27 +159,40 @@ export default function ListView({
   }, [filteredData, listFields]);
 
 // ---------------- PAGINACIÓN ----------------
-  const [pageSize, setPageSize] = useState<number>(10); // ✅ por defecto 10
-  const [page, setPage] = useState<number>(1);
+  const [localPageSize, setLocalPageSize] = useState<number>(10); // ✅ por defecto 10
+  const [localPage, setLocalPage] = useState<number>(1);
 
-  const totalRows = filteredData.length;
+  const pageSize = pagination?.pageSize ?? localPageSize;
+  const page = pagination?.page ?? localPage;
+  const setPage = (next: React.SetStateAction<number>) => {
+    const value = typeof next === "function" ? next(page) : next;
+    if (pagination) pagination.onChange(value, pageSize);
+    else setLocalPage(value);
+  };
+  const setPageSize = (size: number) => {
+    if (pagination) pagination.onChange(1, size);
+    else setLocalPageSize(size);
+  };
+  const totalRows = pagination?.total ?? filteredData.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
 
   // Si cambian filtros o pageSize, vuelve a la primera página (evita páginas vacías)
   useEffect(() => {
-    setPage(1);
+    if (!pagination) setLocalPage(1);
   }, [pageSize, JSON.stringify(filters)]);
 
   // Si por cualquier razón page queda fuera de rango, corrige
   useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-    if (page < 1) setPage(1);
+    if (pagination) return;
+    if (page > totalPages) setLocalPage(totalPages);
+    if (page < 1) setLocalPage(1);
   }, [page, totalPages]);
 
   const pagedData = useMemo(() => {
+    if (pagination) return filteredData;
     const start = (page - 1) * pageSize;
     return filteredData.slice(start, start + pageSize);
-  }, [filteredData, page, pageSize]);
+  }, [filteredData, page, pageSize, pagination]);
 
 
   const icon = normalizedSchema.ui?.icon;
@@ -210,7 +227,7 @@ export default function ListView({
           )}
           
 
-          {onCreate && (
+          {toolbar.create !== false && capabilities.allowCreate && onCreate && (
             <button
               type="button"
               className="btn btn-sm jiro-list-action"
@@ -220,18 +237,18 @@ export default function ListView({
               
             </button>
           )}
-          {capabilities.allowSearch && filterFields.length > 0 && (
+          {toolbar.search !== false && capabilities.allowSearch && filterFields.length > 0 && (
             <button
               type="button"
               className="btn btn-sm jiro-list-action"
               title="Mostrar filtros"
               aria-pressed={showFilters}
-              onClick={() => setShowFilters(v => !v)}
+              onClick={() => onSearch ? onSearch() : setShowFilters(v => !v)}
             >
               <i className={`bi ${showFilters ? "bi-x-lg" : "bi-search"}`} />
             </button>
           )}
-          {onExport && (
+          {toolbar.export !== false && capabilities.allowExport && onExport && (
             <button
               type="button"
               className="btn btn-sm jiro-list-action"
@@ -243,7 +260,7 @@ export default function ListView({
               
             </button>
           )}
-          {onImport && (
+          {toolbar.import !== false && capabilities.allowImport && onImport && (
             <button
               type="button"
               className="btn btn-sm jiro-list-action"
@@ -261,7 +278,7 @@ export default function ListView({
 
       {/* FILTROS */}
       
-      {capabilities.allowSearch && filterFields.length > 0 && showFilters && (
+      {toolbar.search !== false && !onSearch && capabilities.allowSearch && filterFields.length > 0 && showFilters && (
           <div className="card-body border-bottom">
             <div className="row g-2">
               {filterFields.map((f) => {
@@ -326,8 +343,11 @@ export default function ListView({
                 <th className="text-start text-nowrap" ></th>
               )}
               {listFields.map((f) => (
-                <th key={f.name} className="text-center" >
-                  {f.label}
+                <th key={f.name} className="text-center" aria-sort={sorting?.field === f.name ? sorting.direction === "desc" ? "descending" : "ascending" : undefined}>
+                  {sorting && !f.virtual ? <button type="button" className="btn btn-sm p-0" style={{color: "inherit"}}
+                    onClick={() => sorting.onChange(f.name, sorting.field === f.name && sorting.direction === "asc" ? "desc" : "asc")}>
+                    {f.label} {sorting.field === f.name ? sorting.direction === "desc" ? "\u2193" : "\u2191" : ""}
+                  </button> : f.label}
                 </th>
               ))}
               

@@ -2,8 +2,9 @@
 
 import { useRef, useState, type ChangeEvent } from "react";
 import { ListView } from "@repo/ui";
+import { AdvancedSearchView } from "./AdvancedSearchView";
 import { getEffectiveModuleCapabilities, isModuleActionAvailable } from "@repo/types";
-import type { ListViewExportPayload, ModuleSchema } from "@repo/types";
+import type { ListViewExportPayload, ListViewProps, ModuleSchema } from "@repo/types";
 import { useRouter } from "next/navigation";
 import { RequirePerms, usePerms } from "@/lib/perms";
 import { createClient } from "@/lib/supabase/client";
@@ -25,6 +26,7 @@ export default function ListPageClient({
   baseRoute,
   titleSingular,
   modulesBySlug,
+  advancedSearch = false,
 }: {
   schema: ModuleSchema;
   rows: any[];
@@ -32,6 +34,7 @@ export default function ListPageClient({
   baseRoute: string;
   titleSingular: string;
   modulesBySlug?: Record<string, any>;
+  advancedSearch?: boolean;
 }) {
   const router = useRouter();
   const { loading, hasPermiso } = usePerms();
@@ -39,6 +42,7 @@ export default function ListPageClient({
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [dataVersion, setDataVersion] = useState(0);
   const table = String(schema.db.table || "").trim();
   const primaryKey = schema.db.primaryKey || "id";
   const capabilities = getEffectiveModuleCapabilities(schema);
@@ -100,6 +104,7 @@ export default function ListPageClient({
     }
 
     router.refresh();
+    setDataVersion(value => value + 1);
   };
 
   const handleView = async (row: any) => {
@@ -302,6 +307,7 @@ export default function ListPageClient({
       });
 
       router.refresh();
+      setDataVersion(value => value + 1);
     } catch (error: any) {
       await inform({
         title: "Error al importar",
@@ -315,17 +321,11 @@ export default function ListPageClient({
     }
   };
 
-  void modulesBySlug;
-
-  if (loading) return null;
-
-  return (
-    <RequirePerms modulo={moduleSlug} accion="ver">
-      <>
-        {modal}
+  const renderList = (overrides: Partial<ListViewProps> = {}) => (
         <ListView
           schema={schema}
           data={rows}
+          onSearch={capabilities.allowSearch && canView ? () => router.push(`/m/${encodeURIComponent(moduleSlug)}?view=search`) : undefined}
           onViewRow={canView ? handleView : undefined}
           onEditRow={canEdit ? handleEdit : undefined}
           onDeleteRow={canDelete ? handleDelete : undefined}
@@ -334,7 +334,21 @@ export default function ListPageClient({
           onImport={canImport ? handleImport : undefined}
           exportLoading={exporting}
           importLoading={importing}
+          {...overrides}
         />
+  );
+
+
+  if (loading) return null;
+
+  return (
+    <RequirePerms modulo={moduleSlug} accion="ver">
+      <>
+        {modal}
+        {advancedSearch ? capabilities.allowSearch && canView ? <AdvancedSearchView schema={schema} moduleSlug={moduleSlug}
+          modulesBySlug={modulesBySlug} onExport={canExport ? handleExport : undefined} revision={dataVersion}>
+          {result => renderList({...result, toolbar: {create: false, search: false}, onCreate: undefined, onSearch: undefined})}
+        </AdvancedSearchView> : <p role="alert">La búsqueda no está disponible.</p> : renderList()}
         <input
           ref={importInputRef}
           type="file"

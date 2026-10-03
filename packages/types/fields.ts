@@ -439,6 +439,10 @@ export type ListViewProps = {
   loading?: boolean;
   exportLoading?: boolean;
   importLoading?: boolean;
+  toolbar?: { create?: boolean; search?: boolean; import?: boolean; export?: boolean };
+  onSearch?: () => void;
+  pagination?: { page: number; pageSize: number; total: number; onChange: (page: number, pageSize: number) => void };
+  sorting?: { field?: string; direction?: "asc" | "desc"; onChange: (field: string, direction: "asc" | "desc") => void };
 
   onViewRow?: (row: any) => void;
   onEditRow?: (row: any) => void;

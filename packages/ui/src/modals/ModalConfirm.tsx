@@ -3,6 +3,7 @@
 import React, { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import styles from "./ModalConfirm.module.css";
+import { getModuleColorVariables } from "../utils/colorContrast";
 
 let configurationLocks = 0;
 let bodyOverflow = "";
@@ -29,6 +30,7 @@ type Props = {
   configuration?: boolean;
   suspended?: boolean;
   confirmDisabled?: boolean;
+  moduleColor?: string;
 };
 
 export default function ModalConfirm({
@@ -46,6 +48,7 @@ export default function ModalConfirm({
   configuration = false,
   suspended = false,
   confirmDisabled = false,
+  moduleColor,
 }: Props) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -96,8 +99,11 @@ export default function ModalConfirm({
   if (!open) return null;
 
   const modal = (
-    <div className={`${styles.overlay} ${configuration ? styles.configuration : ""}`} role="dialog" aria-modal="true"
-      aria-labelledby={titleId} ref={dialogRef} tabIndex={-1} style={suspended ? { display: "none" } : undefined}>
+    <div className={`${styles.overlay} ${configuration ? styles.configuration : ""} ${moduleColor !== undefined ? styles.themed : ""}`} role="dialog" aria-modal="true"
+      aria-labelledby={titleId} ref={dialogRef} tabIndex={-1} style={{
+        ...(moduleColor !== undefined ? getModuleColorVariables(moduleColor) : {}),
+        ...(suspended ? { display: "none" } : {}),
+      } as React.CSSProperties}>
       {/* BACKDROP */}
       <div
         className={styles.backdrop}

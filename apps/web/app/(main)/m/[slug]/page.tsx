@@ -44,6 +44,9 @@ export default async function ListPage({
   }
   const { modulesBySlug } = await fetchAllModulesIndex();
 
+  if (sp.view === "search") return <ListPageClient schema={schema} rows={[]} moduleSlug={slug}
+    baseRoute={`/m/${slug}/`} titleSingular={titleSingular} modulesBySlug={modulesBySlug} advancedSearch />;
+
   const supabase = await createClient();
   const runtimeContext = await buildModuleDefaultFilterRuntimeContext(supabase);
   const defaultFilters = resolveDefaultFiltersForQuery(schema?.db?.defaultFilters, runtimeContext);

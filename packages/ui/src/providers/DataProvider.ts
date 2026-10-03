@@ -143,6 +143,9 @@ export const dataProvider: DataProvider & {
         filters: input.filters,
         sort: input.sort,
         limit: input.limit,
+        offset: input.offset,
+        advancedFilters: input.advancedFilters,
+        purpose: input.purpose,
         hasStyle: input.hasStyle,
         styleIconField: input.styleIconField,
         styleColorField: input.styleColorField,
@@ -150,8 +153,8 @@ export const dataProvider: DataProvider & {
     });
 
     if (!res.ok) {
-      const txt = await res.text();
-      throw new Error(`dataProvider.list error (${res.status}): ${txt}`);
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json?.error?.message || json?.detail || `Error consultando datos (${res.status})`);
     }
 
     const json = await res.json();
@@ -159,7 +162,7 @@ export const dataProvider: DataProvider & {
       throw new Error(json?.detail || "dataProvider.list error");
     }
 
-    return { data: Array.isArray(json.data) ? json.data : [] };
+    return { data: Array.isArray(json.data) ? json.data : [], ...(typeof json.count === "number" ? { count: json.count } : {}) };
   },
 
   async create(input: CreateInput): Promise<CreateResult> {

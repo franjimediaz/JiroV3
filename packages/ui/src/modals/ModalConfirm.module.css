@@ -126,6 +126,20 @@
 .configuration .body { overflow: auto; min-height: 0; background: var(--card, #fff); color: var(--text, #111827); }
 .configuration .header, .configuration .footer { flex-shrink: 0; }
 .configuration .body input, .configuration .body select, .configuration .body textarea { max-width: 100%; }
+.themed .headerPrimary { background: var(--module-color); color: var(--module-contrast); }
+.themed .body { background: #fff; color: #171717; }
+.themed .headerPrimary .close { filter: none; background: none; color: inherit; width: 1.5rem; height: 1.5rem; }
+.themed .headerPrimary .close::before { content: "×"; font-size: 1.5rem; line-height: 1; }
+.themed .confirm:not(:global(.btn-danger)) {
+  --bs-btn-bg: var(--module-color);
+  --bs-btn-color: var(--module-contrast);
+  --bs-btn-border-color: var(--module-color);
+  --bs-btn-hover-bg: var(--module-color-light);
+  --bs-btn-hover-color: var(--module-light-contrast);
+  --bs-btn-hover-border-color: var(--module-color-light);
+  --bs-btn-active-bg: var(--module-color-light);
+  --bs-btn-active-color: var(--module-light-contrast);
+}
 @media (max-width: 600px) {
   .configuration { padding: 6px; }
   .configuration .content { max-height: calc(100dvh - 12px); }

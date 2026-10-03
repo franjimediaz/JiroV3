@@ -921,21 +921,82 @@ a {
 .jiro-list-view .jiro-list-action[aria-pressed="true"] { box-shadow: inset 0 -3px currentColor; }
 .jiro-list-menu { background: #ffffff; }
 .jiro-list-menu .am-danger { color: #a11212; }
-.jiro-record-form .jiro-form-primary {
+:is(.jiro-record-form, .jiro-advanced-search) .jiro-form-primary {
   background: var(--module-color);
   color: var(--module-contrast);
   border: 1px solid var(--module-color);
 }
-.jiro-record-form .jiro-form-primary:hover:not(:disabled) {
+:is(.jiro-record-form, .jiro-advanced-search) .jiro-form-primary:hover:not(:disabled) {
   background: var(--module-color-light);
   color: var(--module-light-contrast);
 }
 .jiro-list-view :is(button, input, select):focus-visible,
 .jiro-list-menu .am-item:focus-visible,
-.jiro-record-form .jiro-form-primary:focus-visible {
+:is(.jiro-record-form, .jiro-advanced-search) .jiro-form-primary:focus-visible {
   outline: 2px solid #111827;
   outline-offset: 2px;
   box-shadow: 0 0 0 4px #ffffff;
+}
+
+.jiro-advanced-search .jiro-query-card {
+  border: 1px solid var(--module-border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+.jiro-advanced-search .jiro-query-header {
+  padding: 14px 18px;
+  background: var(--module-color);
+  color: var(--module-contrast);
+}
+.jiro-advanced-search .jiro-filter-group {
+  margin-top: 8px;
+  padding: 12px;
+  border-inline-start: 3px solid var(--module-color);
+  border-radius: 8px;
+  background: var(--module-color-soft);
+  color: var(--module-soft-contrast);
+  overflow-wrap: anywhere;
+}
+.jiro-advanced-search .jiro-filter-group .jiro-filter-group { background: #fff; }
+.jiro-advanced-search .jiro-filter-logic {
+  display: inline-block;
+  padding: 3px 8px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--module-color);
+  color: var(--module-contrast);
+}
+.jiro-advanced-search .jiro-filter-connector { margin: 6px 0; font-weight: 600; font-size: 0.8rem; }
+.jiro-advanced-search .jiro-filter-condition { line-height: 1.6; }
+.jiro-advanced-search fieldset {
+  border-color: var(--module-border) !important;
+  border-inline-start: 3px solid var(--module-color) !important;
+  background: var(--module-color-soft);
+  color: var(--module-soft-contrast);
+}
+.jiro-advanced-search fieldset fieldset { background: #fff; }
+.jiro-advanced-search fieldset legend { font-weight: 600; }
+.jiro-advanced-search fieldset .btn-outline-secondary {
+  color: var(--module-soft-contrast);
+  border-color: var(--module-color);
+  background: #fff;
+}
+.jiro-advanced-search fieldset .btn-outline-secondary:hover {
+  background: var(--module-color);
+  color: var(--module-contrast);
+}
+.jiro-advanced-search :is(input, select, textarea):focus {
+  border-color: var(--module-color);
+  outline: 2px solid var(--module-color);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+@media (max-width: 600px) {
+  .jiro-advanced-search fieldset { padding: 10px !important; }
+  .jiro-advanced-search .jiro-filter-group { padding: 8px; }
 }
 
 .main-shell-sidebar {
