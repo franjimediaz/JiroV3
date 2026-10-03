@@ -21,6 +21,11 @@ export function ActionMenu({
   size = "sm",
   disabled = false,
   ariaLabel = "Acciones",
+  trigger,
+  triggerClassName,
+  triggerTitle,
+  menuClassName,
+  menuStyle,
 }: ActionMenuProps) {
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -125,16 +130,17 @@ export function ActionMenu({
       <button
         ref={btnRef}
         type="button"
-        className={`am-btn am-btn-${size}`}
+        className={`am-btn am-btn-${size}${triggerClassName ? ` ${triggerClassName}` : ""}`}
+        title={triggerTitle}
         onClick={toggle}
         aria-label={ariaLabel}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
       >
-        <span className="am-dots" aria-hidden>
+        {trigger ?? <span className="am-dots" aria-hidden>
           ⋮
-        </span>
+        </span>}
       </button>
 
       {mounted &&
@@ -142,9 +148,10 @@ export function ActionMenu({
         createPortal(
           <div
             ref={menuRef}
-            className="am-menu"
+            className={`am-menu${menuClassName ? ` ${menuClassName}` : ""}`}
             role="menu"
             style={{
+              ...menuStyle,
               position: "fixed",
               top: pos.top,
               left: pos.left,

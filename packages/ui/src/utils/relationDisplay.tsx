@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import type { Field } from "@repo/types";
+import { getRecordName, getRecordNameFieldName, type Field, type ModuleSchema } from "@repo/types";
+import { getRecordNameSchema } from "./recordNameSchema";
 
 export type RelationDisplayEntry = {
   label: string;
@@ -129,10 +130,10 @@ export function collectRelationPendingKeys(params: {
   return pendingKeys;
 }
 
-export function buildRelationDisplayEntry(config: RelationDisplayConfig, row: any): RelationDisplayEntry | null {
+export function buildRelationDisplayEntry(config: RelationDisplayConfig, row: any, schema?: ModuleSchema): RelationDisplayEntry | null {
   if (!row || typeof row !== "object") return null;
 
-  const label = String(row?.[config.displayField] ?? row?.[config.valueField] ?? "");
+  const label = getRecordName(row, schema, { legacyField: config.displayField, valueField: config.valueField });
   if (!label) return null;
 
   return {
@@ -190,10 +191,12 @@ export function getRelationDisplayResult(params: {
   statusByKey?: RelationDisplayStatusMap;
 }) {
   const { config, rawValue, cache, pendingKeys, statusByKey } = params;
-  const arrayObjectEntry = getRelationArrayObjectDisplayEntry(config, rawValue);
+  const rawIds = normalizeRelationIds(rawValue, config.multiple);
+  const hasCachedName = rawIds.length > 0 && rawIds.every(id => cache[getRelationCacheKey(config, id)]);
+  const arrayObjectEntry = !hasCachedName && getRelationArrayObjectDisplayEntry(config, rawValue);
   if (arrayObjectEntry) return { kind: "resolved" as const, entry: arrayObjectEntry };
 
-  const objectEntry = getRelationObjectDisplayEntry(config, rawValue);
+  const objectEntry = !hasCachedName && getRelationObjectDisplayEntry(config, rawValue);
   if (objectEntry) return { kind: "resolved" as const, entry: objectEntry };
 
   const ids = normalizeRelationIds(rawValue, config.multiple);
@@ -237,7 +240,7 @@ export async function preloadRelationDisplayCache(params: {
   rows: any[];
   fields: Field[];
   getValue: (row: any, field: Field) => any;
-  dataProvider: { list?: (input: any) => Promise<any>; lookup?: (input: any) => Promise<any> };
+  dataProvider: { list?: (input: any) => Promise<any>; lookup?: (input: any) => Promise<any>; getSchema?: (slug: string) => Promise<ModuleSchema> };
   cache: Record<string, RelationDisplayEntry>;
   statusByKey?: RelationDisplayStatusMap;
 }) {
@@ -281,9 +284,10 @@ export async function preloadRelationDisplayCache(params: {
     if (!ids.length) continue;
 
     try {
+      const schema = await getRecordNameSchema(dataProvider, bucket.config.moduleSlug);
       const select = [
         bucket.config.valueField,
-        bucket.config.displayField,
+        getRecordNameFieldName(schema, bucket.config.displayField),
         ...(bucket.config.hasStyle ? [bucket.config.styleIconField, bucket.config.styleColorField] : []),
       ].filter((value, index, arr) => !!value && arr.indexOf(value) === index);
 
@@ -310,7 +314,7 @@ export async function preloadRelationDisplayCache(params: {
 
       for (const row of rowsResult) {
         const id = normalizeRelationId(row?.[bucket.config.valueField]);
-        const entry = buildRelationDisplayEntry(bucket.config, row);
+        const entry = buildRelationDisplayEntry(bucket.config, row, schema);
         if (!id || !entry) continue;
 
         const cacheKey = getRelationCacheKey(bucket.config, id);

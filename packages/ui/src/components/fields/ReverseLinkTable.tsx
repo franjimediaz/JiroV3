@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { Field, FieldType, ModuleSchema } from "@repo/types";
 import { dataProvider } from "../../providers/DataProvider";
 import { ActionMenu } from "../../ActionMenu";
+import { getContrastingTextColor, lightenColor } from "../../utils/colorContrast";
 import {
   collectRelationPendingKeys,
   getRelationDisplayConfig,
@@ -20,6 +21,7 @@ type Props = {
   field: Field;
   parentRecord: any;
   mode: Mode;
+  moduleColor?: string;
 };
 
 type ListFilterOp = "=" | "!=" | ">" | "<" | "in";
@@ -31,7 +33,7 @@ function toListOp(op: any): ListFilterOp {
   return "=";
 }
 
-export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
+export default function ReverseLinkTable({ field, parentRecord, mode, moduleColor }: Props) {
   if (field.type !== "ReverseLink") return null;
 
   const ref: any = (field as any).ref;
@@ -300,8 +302,8 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
   };
 
   return (
-    <div className="card">
-      <div className="card-header d-flex align-items-start justify-content-between gap-3">
+    <div className="card jiro-reverse-link">
+      <div className="card-header jiro-form-section-header d-flex align-items-start justify-content-between gap-3">
         <div>
           <div className="fw-semibold">{field.label || field.name}</div>
           <div className="small text-muted">{rows.length} registros</div>
@@ -334,11 +336,11 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
                           key={column.name}
                           style={{
                             width: 180,
-                            background: "linear-gradient(90deg, #112c66, #112c66, #112c66)",
-                            color: "white",
+                            background: "var(--jiro-section-bg, #112c66)",
+                            color: "var(--jiro-section-text, white)",
                             fontWeight: 600,
                             padding: "12px 16px",
-                            borderBottom: "2px solid #1e40af",
+                            borderBottom: "2px solid var(--jiro-section-bg, #1e40af)",
                             borderRight: "1px solid rgb(0, 0, 0)",
                           }}
                         >
@@ -348,11 +350,11 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
                       <th
                         style={{
                           width: 180,
-                          background: "linear-gradient(90deg, #112c66, #112c66)",
-                          color: "white",
+                          background: "var(--jiro-section-bg, #112c66)",
+                          color: "var(--jiro-section-text, white)",
                           fontWeight: 600,
                           padding: "12px 16px",
-                          borderBottom: "2px solid #1e40af",
+                          borderBottom: "2px solid var(--jiro-section-bg, #1e40af)",
                           
                         }}
                       >
@@ -379,6 +381,14 @@ export default function ReverseLinkTable({ field, parentRecord, mode }: Props) {
                         ))}
                         <td>
                           <ActionMenu
+                            triggerClassName="jiro-relation-button"
+                            menuClassName={moduleColor ? "jiro-relation-menu" : undefined}
+                            menuStyle={moduleColor ? {
+                              "--jiro-relation-button": lightenColor(moduleColor),
+                              "--jiro-relation-button-text": getContrastingTextColor(lightenColor(moduleColor)),
+                              "--jiro-relation-button-hover": lightenColor(moduleColor, 0.28),
+                              "--jiro-relation-button-hover-text": getContrastingTextColor(lightenColor(moduleColor, 0.28)),
+                            } as React.CSSProperties : undefined}
                             items={[
                               {
                                 label: "Ver",

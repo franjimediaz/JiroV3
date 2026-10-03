@@ -4,9 +4,11 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseTreeViewProvider } from "@/lib/utils/treeViewProvider";
 import { Form } from "@repo/ui";
-import { getEffectiveModuleCapabilities, isModuleActionAvailable } from "@repo/types";
+import { getEffectiveModuleCapabilities, isModuleActionAvailable, getRecordName } from "@repo/types";
 import type { ModuleSchema } from "@repo/types";
 import { RequirePerms, usePerms } from "@/lib/perms";
+
+import { RegisterRecordBreadcrumb } from "./RecordBreadcrumb";
 
 type Mode = "view" | "edit" | "create";
 
@@ -154,6 +156,8 @@ export default function FormClient({
   moduleSlug,
   // Si ya sabes la ruta (server), pásala para no depender de modulesBySlug
   baseRoute,
+  moduleTitle,
+  displayField,
   // Opcionales para resolución avanzada (treeview, rutas, etc.)
   modulesBySlug,
   schemasBySlug,
@@ -165,6 +169,8 @@ export default function FormClient({
 
   moduleSlug?: string;
   baseRoute?: string;
+  moduleTitle?: string;
+  displayField?: string;
 
   modulesBySlug?: ModulesBySlug;
   schemasBySlug?: Record<string, ModuleSchema>;
@@ -269,6 +275,13 @@ export default function FormClient({
 
   return (
     <RequirePerms modulo={resolved.slug} accion={requiredAction as any}>
+      {effectiveMode !== "create" && (
+        <RegisterRecordBreadcrumb
+          module={schema.ui?.titlePlural || moduleTitle || schema.ui?.titleSingular || resolved.slug}
+          title={getRecordName(initialData, schema, { legacyField: displayField || schema.ui?.displayField, valueField: resolved.primaryKey, fallback: moduleTitle || resolved.slug })}
+          href={resolved.baseRoute}
+        />
+      )}
       <div style={{ opacity: pending ? 0.7 : 1 }}>
         <Form
           schema={schema}

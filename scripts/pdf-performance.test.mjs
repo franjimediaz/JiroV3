@@ -180,10 +180,14 @@ test("context loads independent record and related labels concurrently with unch
     return query;
   } };
   const source = readFileSync("apps/web/lib/pdf/resolvePdfContext.ts", "utf8");
+  const recordNameModule = { exports: {} };
+  const recordNameCode = ts.transpileModule(readFileSync("packages/types/recordName.ts", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  new Function("exports", recordNameCode)(recordNameModule.exports);
   const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const sandbox = { exports: {}, process, console, require(name) {
     if (name === "@/lib/supabase/server") return { createClient: async () => supabase };
     if (name === "./resolvePdfDatasets") return { resolvePdfDatasets: async () => ({}) };
+    if (name === "@repo/types") return recordNameModule.exports;
     throw new Error(name);
   } };
   vm.createContext(sandbox);

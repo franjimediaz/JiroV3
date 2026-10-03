@@ -5,7 +5,7 @@ import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { isUUID } from "@/lib/utils/isUUID";
-import { normalizeModuleDefaultFilters, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
+import { normalizeModuleDefaultFilters, normalizeSelectorTableFilters, VALID_FIELD_TYPES, validateRecordNameFields } from "@repo/types";
 
 const TABLE = "modulos";
 const FIELD_NAMES = ["parent_id", "nombre", "slug", "route", "tipo", "orden", "activo", "props"];
@@ -45,6 +45,11 @@ function validateModuleProps(props: any): { ok: boolean; detail?: string } {
     }
   }
 
+  try {
+    validateRecordNameFields(props.fields);
+  } catch (error) {
+    return { ok: false, detail: error instanceof Error ? error.message : "Record name inválido" };
+  }
   return { ok: true };
 }
 

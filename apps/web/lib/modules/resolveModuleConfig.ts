@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { cache } from "react";
-import { normalizeModuleSchema, type NormalizedModuleSchema } from "@repo/types";
+import { getRecordNameFieldName, normalizeModuleSchema, type NormalizedModuleSchema } from "@repo/types";
 
 export type ResolvedModuleConfig = {
   id?: string;
@@ -103,7 +103,7 @@ export function resolveModuleConfigFromRow(row: any): ResolvedModuleConfig {
     isDataModule,
     requiresTable,
     titleSingular: String((props as any)?.ui?.titleSingular ?? row?.nombre ?? slug),
-    displayField: String((props as any)?.ui?.displayField ?? "id"),
+    displayField: getRecordNameFieldName(schema, (props as any)?.ui?.displayField ?? "id"),
   };
 }
 

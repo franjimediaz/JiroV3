@@ -8,6 +8,7 @@ import type {
   ListViewProps,
 } from "@repo/types";
 import { getEffectiveModuleCapabilities, normalizeFieldConfig, normalizeModuleSchema } from "@repo/types";
+import { getModuleColorVariables } from "./utils/colorContrast";
 import { ActionMenu } from "./ActionMenu";
 import { dataProvider } from "./providers/DataProvider";
 import  SelectorTabla  from "./components/fields/Selector";
@@ -178,7 +179,7 @@ export default function ListView({
 
 
   const icon = normalizedSchema.ui?.icon;
-  const color = normalizedSchema.ui?.color;
+  const palette = getModuleColorVariables(normalizedSchema.ui?.color);
   const tableName = normalizedSchema.db.table;
   const exportPayload = useMemo<ListViewExportPayload>(
     () => ({
@@ -190,11 +191,11 @@ export default function ListView({
   );
 
   return (
-    <div className="card jiro-list-view" style={{ borderColor: "rgb(136, 135, 135)" }}>
+    <div className="jiro-list-view d-flex flex-column" style={palette as React.CSSProperties}>
       {/* HEADER */}
-      <div className="card-header d-flex justify-content-between  align-items-center">
+      <div className="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div className="d-flex align-items-center gap-2">
-          {icon && <i className={icon} style={{ color, fontSize: 40 }} />}
+          {icon && <i className={icon} style={{ fontSize: 40 }} />}
           <div>
             <div className="fw-semibold " style={{ fontSize: 14 }}>
               {capitalize(tableName)}
@@ -212,7 +213,7 @@ export default function ListView({
           {onCreate && (
             <button
               type="button"
-              className="btn btn-sm btn-success"
+              className="btn btn-sm jiro-list-action"
               onClick={onCreate}
             >
               <i className="bi bi-plus-lg me-1" />
@@ -222,8 +223,9 @@ export default function ListView({
           {capabilities.allowSearch && filterFields.length > 0 && (
             <button
               type="button"
-              className="btn btn-sm btn-outline-secondary"
+              className="btn btn-sm jiro-list-action"
               title="Mostrar filtros"
+              aria-pressed={showFilters}
               onClick={() => setShowFilters(v => !v)}
             >
               <i className={`bi ${showFilters ? "bi-x-lg" : "bi-search"}`} />
@@ -232,7 +234,7 @@ export default function ListView({
           {onExport && (
             <button
               type="button"
-              className="btn btn-sm btn-success"
+              className="btn btn-sm jiro-list-action"
               onClick={() => void onExport(exportPayload)}
               disabled={exportLoading}
               title={exportLoading ? "Exportando" : "Exportar"}
@@ -244,7 +246,7 @@ export default function ListView({
           {onImport && (
             <button
               type="button"
-              className="btn btn-sm btn-success"
+              className="btn btn-sm jiro-list-action"
               onClick={onImport}
               disabled={importLoading}
               title={importLoading ? "Importando" : "Importar"}
@@ -321,12 +323,10 @@ export default function ListView({
           <thead>
             <tr>
               {(onViewRow || onEditRow || onDeleteRow) && (
-                <th className="text-start text-nowrap" style={{ background: color || "#5374a1ff" }}></th>
+                <th className="text-start text-nowrap" ></th>
               )}
               {listFields.map((f) => (
-                <th key={f.name} className="text-center" style={{ 
-                  background: color || "#5374a1ff",
-                  borderRight: "1px solid rgb(0, 0, 0)" }}>
+                <th key={f.name} className="text-center" >
                   {f.label}
                 </th>
               ))}
@@ -353,6 +353,9 @@ export default function ListView({
                   {(onViewRow || onEditRow || onDeleteRow) && (
                     <td className="text-start text-nowrap" >
                       <ActionMenu
+                        triggerClassName="jiro-list-action"
+                        menuClassName="sidebar-module-menu"
+                        menuStyle={palette as React.CSSProperties}
                         items={[
                           onViewRow && {
                             label: "Ver",
@@ -367,7 +370,7 @@ export default function ListView({
                           onDeleteRow && {
                             label: "Eliminar",
                             icon: <i className="bi bi-trash" />,
-                            variant: "danger",
+                            
                             onClick: () => onDeleteRow(row),
                           },
                         ]}
@@ -376,7 +379,7 @@ export default function ListView({
 
                   )}
                   {listFields.map((f) => (
-                    <td key={f.name} className="text-center hover-cell" style={{borderRight: "1px solid rgb(0, 0, 0)"}}>
+                    <td key={f.name} className="text-center hover-cell" >
                       {renderCell(row[f.name], f, labelCache, pendingRelationKeys, relationStatusByKey)}
                     </td>
                   ))}

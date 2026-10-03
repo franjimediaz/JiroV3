@@ -271,6 +271,7 @@ export type VisibilityConfig = {
 };
 
 export type BaseField = {
+  recordName?: boolean;
   name: string;
   label: string;
   required?: boolean;
@@ -385,6 +386,9 @@ export type UiTab =
                         visibility?: VisibilityConfig;
                       };
 export type ModuleUiSchema = {
+  titlePlural?: string;
+  titleSingular?: string;
+  displayField?: string;
   icon?: string;
   color?: string;
   sidebar?: boolean;
@@ -468,6 +472,11 @@ export type ActionMenuProps = {
   size?: "sm" | "md";
   disabled?: boolean;
   ariaLabel?: string;
+  trigger?: React.ReactNode;
+  triggerClassName?: string;
+  triggerTitle?: string;
+  menuClassName?: string;
+  menuStyle?: React.CSSProperties;
 };
 export type SeedNode = {
   slug: string;

@@ -27,8 +27,8 @@ type ModuloRow = {
   orden: number | null;
   parent_id: string | null;
   slug?: string | null;
-  tipo?: "carpeta" | "tabla" | "subtabla";
-  props?: {
+  tipo?: SidebarItem["tipo"];
+  props?: string | {
     ui?: {
       icon?: string;
       sidebar?: boolean;
@@ -43,19 +43,24 @@ function buildTree(rows: ModuloRow[]): SidebarItem[] {
 
   for (const r of rows) {
     const route = r.route ?? undefined;
+    let props = r.props;
+    if (typeof props === "string") {
+      try { props = JSON.parse(props) as Exclude<ModuloRow["props"], string>; }
+      catch { props = undefined; }
+    }
 
     byId.set(r.id, {
       id: r.id,
       nombre: r.nombre,
       slug: r.slug ?? r.id,
-      tipo: (r.tipo as any) ?? (route ? "tabla" : "carpeta"),
-      sidebar: r.props?.ui?.sidebar ?? false,
+      tipo: r.tipo ?? (route ? "tabla" : "carpeta"),
+      sidebar: props?.ui?.sidebar ?? false,
       route,
       hijos: [],
-      icon: r.props?.ui?.icon ?? undefined,
+      icon: props?.ui?.icon ?? undefined,
       // 👇 opcional si quieres ordenar mejor (si SidebarItem lo permite)
       orden: r.orden ?? 9999,
-    } as any);
+    });
   }
 
   for (const r of rows) {
@@ -71,7 +76,7 @@ function buildTree(rows: ModuloRow[]): SidebarItem[] {
   }
 
   const sortTree = (arr: SidebarItem[]) => {
-    arr.sort((a: any, b: any) => {
+    arr.sort((a, b) => {
       const ao = a.orden ?? 9999;
       const bo = b.orden ?? 9999;
       if (ao !== bo) return ao - bo;

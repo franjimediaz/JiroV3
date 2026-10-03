@@ -1,3 +1,4 @@
+import { validateRecordNameFields } from "./recordName";
 import type {
   Appareance,
   CalendarSpecialViewConfig,
@@ -423,6 +424,7 @@ export function normalizeModuleSchema(schema: unknown): NormalizedModuleSchema {
   const uiRaw = isRecord(raw.ui) ? raw.ui : {};
   const rootTable = toString(raw.table);
   const fields = Array.isArray(raw.fields) ? raw.fields.map(normalizeFieldConfig) : [];
+  validateRecordNameFields(fields);
   const tabs = Array.isArray(uiRaw.tabs) ? [...uiRaw.tabs] : [];
   const legacyFormSections = normalizeFormSections(uiRaw.formSections);
   const hasFormTab = tabs.some((tab) => isRecord(tab) && (tab.type || tab.kind || "form") === "form");

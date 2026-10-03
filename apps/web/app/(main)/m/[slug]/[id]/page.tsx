@@ -136,17 +136,17 @@ export default async function EntityPage({
   }
 
   return (
-    <main className="container py-4 bg-secondary bg-opacity-10 rounded">
       <FormClient
         schema={schema}
         initialData={row}
         mode={isEdit ? "edit" : "view"}
         moduleSlug={slug}
         baseRoute={baseRoute}
+        moduleTitle={mod.titleSingular}
+        displayField={mod.displayField}
         modulesBySlug={modulesBySlug}
         schemasBySlug={schemasBySlug}
         schemasByTable={schemasByTable}
       />
-    </main>
   );
 }

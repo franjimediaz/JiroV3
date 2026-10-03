@@ -2,6 +2,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { ModuleSchema } from "@repo/types";
+import { getRecordName } from "@repo/types";
 import FormClient from "./FormClient";
 
 export const dynamic = "force-dynamic";
@@ -198,7 +199,7 @@ export default async function EntityPage({
   const row = await fetchRowById(table, primaryKey, id);
   if (!row) notFound();
 
-  const display = (row as any)?.[CFG.displayField] ?? id;
+  const display = getRecordName(row, schema, { legacyField: CFG.displayField, valueField: primaryKey, fallback: id });
 
   // 4) descubre sources treeview desde schema (sin hardcode)
   const rawSources = extractTreeviewSourcesFromSchema(schema);

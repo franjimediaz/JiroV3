@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { dataProvider } from "../../providers/DataProvider";
 import { PopupSelector } from "../../modals/PopUpSelector";
 import {
+  getRecordName,
+  getRecordNameFieldName,
   matchesSelectorTableFilterGroup,
   resolveSelectorTableFiltersToQuery,
   type QueryFilter,
@@ -11,6 +13,7 @@ import {
   type SelectorTableFilterResolutionContext,
   type SelectorTableFiltersInput,
 } from "@repo/types";
+import { getRecordNameSchema } from "../../utils/recordNameSchema";
 
 type PopupItem = { value: string; label: string; raw?: any };
 type CacheEntry = { label: string; icon?: string; color?: string };
@@ -176,6 +179,7 @@ export default function SelectorTabla({
       setPopupLoading(true);
 
       try {
+        const schema = await getRecordNameSchema(dataProvider, moduleSlug);
         const nextFilters: QueryFilter[] = (resolvedFilters.filters || []).map((filter) => ({
           field: filter.field,
           op: filter.op as QueryFilter["op"],
@@ -185,7 +189,7 @@ export default function SelectorTabla({
 
         if (term) {
           nextFilters.push({
-            field: displayField,
+            field: getRecordNameFieldName(schema, displayField),
             op: "ilike",
             value: `%${term}%`,
           });
@@ -208,7 +212,7 @@ export default function SelectorTabla({
           : rawRows.filter((row: any) => matchesSelectorTableFilterGroup(row, resolvedFilters.group));
         const items: PopupItem[] = rows.map((row: any) => ({
           value: toStr(row[valueField]),
-          label: toStr(row[displayField]) || toStr(row[valueField]),
+          label: getRecordName(row, schema, { legacyField: displayField, valueField }),
           raw: row,
         }));
 
@@ -260,6 +264,7 @@ export default function SelectorTabla({
       if (!needResolve.length) return;
 
       try {
+        const schema = await getRecordNameSchema(dataProvider, moduleSlug);
         for (const id of needResolve) {
           const res = await list({
             moduleSlug,
@@ -272,7 +277,7 @@ export default function SelectorTabla({
 
           const row = Array.isArray(res?.data) ? res.data[0] : null;
           const nextEntry: CacheEntry = {
-            label: row ? toStr(row[displayField]) || id : id,
+            label: row ? getRecordName(row, schema, { legacyField: displayField, valueField, fallback: id }) : id,
             icon: row?.[styleIconField],
             color: row?.[styleColorField],
           };

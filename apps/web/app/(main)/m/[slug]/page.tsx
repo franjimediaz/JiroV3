@@ -61,7 +61,6 @@ export default async function ListPage({
     : filterRowsWithDefaultFilters(data || [], defaultFilters.group);
 
   return (
-    <main className="container py-4">
       <ListPageClient
         schema={schema}
         rows={rows}
@@ -70,6 +69,5 @@ export default async function ListPage({
         titleSingular={titleSingular}
         modulesBySlug={modulesBySlug}
       />
-    </main>
   );
 }

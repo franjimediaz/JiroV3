@@ -26,6 +26,7 @@ export type ListInput = {
 export type ListResult = { data: any[]; error?: any };
 
 export type DataProvider = {
+  getSchema?: (moduleSlug: string) => Promise<ModuleSchema>;
   aggregate: (
     input: AggregateInput,
     record: any,

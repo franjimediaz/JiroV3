@@ -5,8 +5,11 @@ export type SidebarItem = {
   route?: string;   
   hijos?: SidebarItem[];   
   icon?: string;
-  tipo?: "carpeta" | "tabla" | "subtabla"; 
+  tipo?: "carpeta" | "tabla" | "subtabla" | "vista";
+  orden?: number;
   sidebar?: boolean; 
   permisoKey?: string;  
   canView?:  boolean;
 };
+
+export type SidebarModuleSelection = { id: string; pathname: string };

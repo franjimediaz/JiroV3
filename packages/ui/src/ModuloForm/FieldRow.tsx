@@ -1485,6 +1485,16 @@ export function FieldRow({
                 />
               </div>
               <div className={styles.switchRow}>
+                <label className={styles.label}>Record name</label>
+                <input
+                  type="checkbox"
+                  aria-label="Record name"
+                  checked={field.recordName === true}
+                  onChange={(e) => onChange({ ...field, recordName: e.target.checked })}
+                  disabled={readOnly}
+                />
+              </div>
+              <div className={styles.switchRow}>
                 <label className={styles.label}>virtual</label>
                 <input
                   type="checkbox"

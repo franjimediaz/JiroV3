@@ -1,4 +1,4 @@
-export type { SidebarItem } from "./types";
+export type { SidebarItem, SidebarModuleSelection } from "./types";
 export { Sidebar } from "./Sidebar";
 export { ActionMenu } from "./ActionMenu";
 export { PopupSelector } from "./modals/PopUpSelector";

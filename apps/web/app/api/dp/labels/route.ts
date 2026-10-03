@@ -1,3 +1,4 @@
+import { getRecordNameFieldName, getRecordName } from "@repo/types";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { badRequest } from "@/lib/auth/apiError";
@@ -66,7 +67,7 @@ export async function POST(req: Request) {
       throw badRequest("Tabla no permitida");
     }
 
-    const labelField = requestedLabelField || resolved.displayField || "id";
+    const labelField = getRecordNameFieldName(resolved.schema, requestedLabelField || resolved.displayField || "id");
     assertIdentifier(labelField, "labelField");
     assertAllowedLabelField(resolved, labelField);
     await requireModulePermission(resolved.permissionsKey, "ver");
@@ -91,8 +92,7 @@ export async function POST(req: Request) {
     const map: Record<string, string> = {};
     for (const row of data || []) {
       const id = String((row as any)[idField]);
-      const label = (row as any)[labelField];
-      map[id] = label == null ? id : String(label);
+      map[id] = getRecordName(row, resolved.schema, { legacyField: labelField, valueField: idField });
     }
 
     return NextResponse.json({ ok: true, map, requestId });

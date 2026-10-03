@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { SidebarItem } from "@repo/ui";
+import { useCallback, useEffect, useState } from "react";
+import type { SidebarItem, SidebarModuleSelection } from "@repo/ui";
 import { SidebarWithPerms } from "./SidebarWithPerms";
 
+import { RecordBreadcrumbProvider, RecordBreadcrumbTrail } from "@/lib/RecordBreadcrumb";
+
 const SIDEBAR_MINI_STORAGE_KEY = "jiro.sidebar.mini";
+const SIDEBAR_MODULE_STORAGE_KEY = "jiro.sidebar.module";
 
 export default function MainShell({
   items,
@@ -16,16 +19,26 @@ export default function MainShell({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarMini, setSidebarMini] = useState(false);
   const [desktopReady, setDesktopReady] = useState(false);
+  const [moduleSelection, setModuleSelection] = useState<SidebarModuleSelection | null>(null);
 
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(SIDEBAR_MINI_STORAGE_KEY);
       if (saved === "1") setSidebarMini(true);
+      const moduleId = window.localStorage.getItem(SIDEBAR_MODULE_STORAGE_KEY);
+      if (moduleId) setModuleSelection({ id: moduleId, pathname: "" });
     } catch {
       // noop
     } finally {
       setDesktopReady(true);
     }
+  }, []);
+
+  const selectModule = useCallback((selection: SidebarModuleSelection) => {
+    setModuleSelection(selection);
+    try {
+      window.localStorage.setItem(SIDEBAR_MODULE_STORAGE_KEY, selection.id);
+    } catch { /* Navigation still works when storage is unavailable. */ }
   }, []);
 
   useEffect(() => {
@@ -46,9 +59,9 @@ export default function MainShell({
   };
 
   return (
-    <>
+    <RecordBreadcrumbProvider>
       <nav className="navbar navbar-dark bg-dark py-0">
-        <div className="container-fluid">
+        <div className="container-fluid flex-nowrap gap-2">
           <button
             className="btn btn-outline-light d-lg-none"
             type="button"
@@ -72,15 +85,17 @@ export default function MainShell({
               className="d-inline-block align-text-top"
             />
           </a>
+          <RecordBreadcrumbTrail />
         </div>
       </nav>
 
-      <div className="container-fluid px-0 layout-min-vh">
-        <div className="main-shell-layout">
+        <div className="main-shell-layout layout-min-vh">
           <div className={`main-shell-sidebar d-none d-lg-block ${desktopReady && sidebarMini ? "is-mini" : ""}`}>
             <SidebarWithPerms
               items={items}
               variant="fixed"
+              moduleSelection={moduleSelection}
+              onModuleChange={selectModule}
               miniMode={desktopReady && sidebarMini}
               onToggleMini={toggleSidebarMini}
             />
@@ -89,19 +104,20 @@ export default function MainShell({
           <SidebarWithPerms
             items={items}
             variant="drawer"
+            moduleSelection={moduleSelection}
+            onModuleChange={selectModule}
             isOpen={sidebarOpen}
             onClose={() => setSidebarOpen(false)}
             title="Navegacion"
           />
 
-          <main className="main-shell-content flex-grow-1 bg-white rounded shadow-sm">
+          <main className="main-shell-content flex-grow-1">
             {children}
             <footer className="text-center mt-auto pt-3 text-muted small">
               © {new Date().getFullYear()} JiRo v2 · Next.js + Supabase
             </footer>
           </main>
         </div>
-      </div>
-    </>
+    </RecordBreadcrumbProvider>
   );
 }

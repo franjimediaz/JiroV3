@@ -1,3 +1,4 @@
+import { getRecordNameFieldName } from "@repo/types";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
@@ -26,7 +27,7 @@ export async function GET(req: Request) {
     }
     await requireModulePermission(resolved.permissionsKey, "ver");
     const declaredFields = new Set((resolved.schema.fields || []).map((field) => field.name));
-    const selectedDisplayField = declaredFields.has(displayField) ? displayField : resolved.displayField || "id";
+    const selectedDisplayField = getRecordNameFieldName(resolved.schema, declaredFields.has(displayField) ? displayField : resolved.displayField || "id");
 
     if (!declaredFields.has(selectedDisplayField) && selectedDisplayField !== resolved.primaryKey && selectedDisplayField !== "id") {
       return NextResponse.json(

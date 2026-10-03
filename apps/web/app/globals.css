@@ -225,7 +225,7 @@ a {
 
 .form-text {
   font-size: 11px;
-  color: #020000 !important;
+  color: #000000 !important;
 }
 /* ============================
    INPUTS: Modern Dark Controls
@@ -832,6 +832,120 @@ a {
   min-height: calc(100vh - 90px);
 }
 
+.record-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  color: #ffffff;
+}
+.record-breadcrumb a,
+.record-breadcrumb [aria-current] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-breadcrumb a { color: #ffffff; max-width: 45%; }
+.record-breadcrumb [aria-current] { flex: 1; }
+
+.jiro-list-view {
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid var(--module-border);
+}
+.jiro-list-view > .card-header,
+.jiro-list-view > .card-header :is(.fw-semibold, .text-muted),
+.jiro-list-view thead th {
+  background: var(--module-color);
+  color: var(--module-contrast) !important;
+}
+.jiro-list-view > .card-body {
+  background: var(--module-color-soft);
+  color: var(--module-soft-contrast);
+  border-color: var(--module-border) !important;
+}
+.jiro-list-view > .card-header .fw-semibold { opacity: 1; }
+.jiro-list-view .table {
+  --bs-table-bg: #ffffff;
+  --bs-table-color: #111827;
+  --bs-table-border-color: var(--module-border);
+  --bs-table-hover-bg: var(--module-color-soft);
+  --bs-table-hover-color: var(--module-soft-contrast);
+  --bs-table-active-bg: var(--module-color-light);
+  --bs-table-active-color: var(--module-light-contrast);
+}
+.jiro-list-view :is(th, td) { border-inline-end: 1px solid var(--module-border); }
+.jiro-list-view :is(.form-control, .form-select) { border-color: var(--module-border); }
+.jiro-list-view .pagination {
+  --bs-pagination-color: #111827;
+  --bs-pagination-border-color: var(--module-border);
+  --bs-pagination-hover-bg: var(--module-color-light);
+  --bs-pagination-hover-color: var(--module-light-contrast);
+  --bs-pagination-hover-border-color: var(--module-color);
+  --bs-pagination-active-bg: var(--module-color);
+  --bs-pagination-active-color: var(--module-contrast);
+  --bs-pagination-active-border-color: var(--module-color);
+  --bs-pagination-focus-color: var(--module-light-contrast);
+  --bs-pagination-focus-bg: var(--module-color-light);
+}
+.jiro-list-view .page-link {
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid var(--module-border);
+}
+.jiro-list-view .page-link:hover {
+  background: var(--module-color-light);
+  color: var(--module-light-contrast);
+}
+.jiro-list-view .page-item.active .page-link {
+  background: var(--module-color);
+  color: var(--module-contrast);
+}
+.jiro-list-view .page-item.disabled .page-link {
+  background: var(--module-color-soft);
+  color: #595959;
+}
+.jiro-list-view .card-body > .d-flex { flex-wrap: wrap; }
+.jiro-list-view .jiro-list-action,
+.jiro-list-menu .am-item:not(.am-danger) {
+  background: var(--module-color);
+  color: var(--module-contrast);
+  border: 1px solid var(--module-contrast);
+}
+.jiro-list-view .jiro-list-action:hover:not(:disabled),
+.jiro-list-menu .am-item:not(.am-danger):hover:not(:disabled) {
+  background: var(--module-action-hover);
+  color: var(--module-action-text);
+}
+.jiro-list-view .jiro-list-action[aria-pressed="true"] { box-shadow: inset 0 -3px currentColor; }
+.jiro-list-menu { background: #ffffff; }
+.jiro-list-menu .am-danger { color: #a11212; }
+.jiro-record-form .jiro-form-primary,
+.jiro-record-form .jiro-form-tab.is-active {
+  background: var(--module-color);
+  color: var(--module-contrast);
+  border: 1px solid var(--module-color);
+}
+.jiro-record-form .jiro-form-tab {
+  background: var(--module-color-soft);
+  color: var(--module-soft-contrast);
+  border: 1px solid var(--module-border);
+  white-space: nowrap;
+}
+.jiro-record-form .jiro-form-tab.is-active { box-shadow: inset 0 -3px currentColor; font-weight: 600; }
+.jiro-record-form :is(.jiro-form-primary, .jiro-form-tab):hover:not(:disabled) {
+  background: var(--module-color-light);
+  color: var(--module-light-contrast);
+}
+.jiro-list-view :is(button, input, select):focus-visible,
+.jiro-list-menu .am-item:focus-visible,
+.jiro-record-form :is(.jiro-form-primary, .jiro-form-tab):focus-visible {
+  outline: 2px solid #111827;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px #ffffff;
+}
+
 .main-shell-sidebar {
   width: 16.6667%;
   min-width: 264px;
@@ -845,11 +959,13 @@ a {
 }
 
 .main-shell-content {
+  background: #ffffff;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  margin: 12px;
-  padding: 12px;
+  flex-basis: 0;
+  margin: 0;
+  padding: 8px;
   transition: none;
 }
 
@@ -871,6 +987,103 @@ a {
   max-width: none;
 }
 
+.jiro-record-form .jiro-form-section-header {
+  background: var(--jiro-section-bg, #e2e8f0);
+}
+
+/* Module accents stay inside forms; all base surfaces remain white. */
+.main-shell-content :has(> .jiro-record-form),
+.jiro-record-form,
+.jiro-record-form :is(.card, .card-form, .card-body, .field-box) {
+  background: #ffffff;
+}
+
+.jiro-record-form .field-box {
+  border-color: var(--jiro-field-border);
+  border-inline-start: 3px solid var(--jiro-section-bg);
+  color: #111827;
+}
+
+.jiro-record-form :is(.card, .card-form),
+.jiro-record-form :is(.card, .card-form):hover {
+  backdrop-filter: none;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+
+.jiro-record-form .field-box:hover,
+.jiro-record-form .field-box:focus-within {
+  border-color: var(--jiro-section-bg);
+  box-shadow: 0 0 0 1px var(--jiro-field-border);
+}
+
+.jiro-record-form .field-box > .form-label {
+  color: #000000;
+}
+
+.jiro-record-form .field-box :is(.form-control, .form-select, [contenteditable]) {
+  background-color: #ffffff;
+  color: #111827;
+}
+
+.jiro-record-form .field-box :is(.form-control, .form-select):focus:not(.is-invalid):not(.is-valid) {
+  border-color: var(--jiro-section-bg);
+  outline: 2px solid #111827;
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.jiro-record-form .field-box :is(input, select, textarea):disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.jiro-record-form :is(.jiro-reverse-link, .jiro-reverse-links > .card) {
+  border-color: var(--jiro-field-border);
+}
+
+.jiro-record-form .jiro-reverse-links > .card > .card-header {
+  background: var(--jiro-section-bg);
+}
+
+.jiro-relation-menu .am-item,
+.jiro-record-form .jiro-relation-button {
+  background: var(--jiro-relation-button);
+  color: var(--jiro-relation-button-text);
+  border: 1px solid var(--jiro-field-border);
+}
+
+.jiro-relation-menu .am-item:hover:not(:disabled),
+.jiro-record-form .jiro-relation-button:hover:not(:disabled) {
+  background: var(--jiro-relation-button-hover);
+  color: var(--jiro-relation-button-hover-text);
+}
+
+.jiro-record-form .jiro-relation-button.active {
+  box-shadow: inset 0 -3px 0 currentColor;
+  font-weight: 600;
+}
+
+.jiro-relation-menu .am-item:focus-visible,
+.jiro-record-form .jiro-relation-button:focus-visible {
+  outline: 2px solid #111827;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px #ffffff;
+}
+
+.jiro-relation-menu { background: #ffffff; }
+
+.jiro-record-form .field-box .form-check-input:not(:checked) {
+  background-color: #ffffff;
+}
+
+.jiro-record-form .field-box .form-check-label { color: #111827; }
+
+/* Scoped overrides for Bootstrap muted text and the existing global header colors. */
+.jiro-record-form .jiro-form-section-header,
+.jiro-record-form .jiro-form-section-header :is(.fw-semibold, .small, .text-muted) {
+  color: var(--jiro-section-text, #000000) !important;
+}
+
 .main-shell-content :is(.jiro-list-view, form) :is(.card-body, .card-header) {
   padding: 12px;
 }
@@ -889,8 +1102,7 @@ a {
 
 @media (max-width: 575.98px) {
   .main-shell-content {
-    margin: 8px;
-    padding: 8px;
+    padding: 6px;
   }
 }
 
@@ -969,12 +1181,42 @@ a {
   transition: opacity 0.14s ease, transform 0.14s ease, max-width 0.14s ease, margin 0.14s ease;
 }
 
-.sidebar-item-icon.is-hidden {
-  opacity: 0;
-  max-width: 0;
-  width: 0;
-  transform: scale(0.85);
+.sidebar-module-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  position: relative;
+  margin-bottom: 1rem;
+  color: #334155;
 }
+
+.sidebar-module-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  color: #334155;
+  background: rgba(255, 255, 255, 0.72);
+}
+.sidebar-module-trigger:hover { color: #0f172a; background: #fff; }
+.sidebar-module-menu { max-height: min(256px, calc(100dvh - 16px)); overflow-y: auto; }
+.sidebar-module-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-module-selector.is-mini .sidebar-module-trigger { justify-content: center; padding: 0.5rem; }
+.sidebar-module-selector:focus-within { outline: 2px solid #3b82f6; outline-offset: 2px; }
+.sidebar-common-links { margin-top: 1rem; }
+.sidebar-common-title { font-size: 0.75rem; color: #64748b; margin-bottom: 0.5rem; }
 
 .sidebar-item-label {
   display: inline-block;
@@ -1007,7 +1249,7 @@ a {
 .sidebar-nav-link.is-mini,
 .sidebar-folder-btn.is-mini,
 .sidebar-user-btn.is-mini {
-  justify-content: center;
+  justify-content: center !important;
   padding-left: 0.5rem !important;
   padding-right: 0.5rem !important;
 }
@@ -1017,15 +1259,13 @@ a {
   padding-right: 0.5rem !important;
 }
 
+.sidebar-user-btn { color: #334155; background: transparent; border: 0; min-height: 40px; }
+.sidebar-user-btn:hover { color: #0f172a; background: #e2e8f0; }
+
 .sidebar-subnav-mini {
   margin-left: 0 !important;
 }
 
-@media (min-width: 992px) {
-  .sidebar-desktop.is-mini .sidebarCollapse {
-    overflow: visible;
-  }
-}
 /* Chrome, Safari, Edge, Opera */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {

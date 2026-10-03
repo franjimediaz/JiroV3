@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {ActionMenu} from "../../ActionMenu";
 import { normalizeTreeViewConfig } from "@repo/types";
+import { dataProvider as schemaProvider } from "../../providers/DataProvider";
 import {
   collectRelationPendingKeys,
   type RelationDisplayStatusMap,
@@ -575,7 +576,7 @@ const pendingLookupKeys = useMemo(
       rows,
       fields: relationFields,
       getValue: (row, field) => row?.[field.name],
-      dataProvider: provider,
+      dataProvider: { ...provider, getSchema: schemaProvider.getSchema },
       cache: lookupCache,
       statusByKey: lookupStatusByKey,
     })

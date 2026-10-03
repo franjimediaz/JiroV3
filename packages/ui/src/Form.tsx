@@ -24,6 +24,8 @@ import DetachedFieldInput from "./components/fields/FieldInput";
 import ModuleCalendarView from "./components/specialViews/ModuleCalendarView";
 import PdfTemplatePreview from "./PdfTemplatePreview";
 import PlanEditorView from "./components/specialViews/PlanEditorView/PlanEditorView";
+import { getFormSectionColors, getContrastingTextColor, lightenColor, getModuleColorVariables } from "./utils/colorContrast";
+import { getRecordNameSchema } from "./utils/recordNameSchema";
 import {
   buildRelationDisplayEntry,
   getRelationCacheKey,
@@ -568,6 +570,7 @@ export default function Form({
       setFieldLoading(field.name, true);
 
       try {
+        const relationSchema = await getRecordNameSchema(dataProvider, config.moduleSlug);
         const missingIds = ids.filter((id) => !displayCacheRef.current[getRelationCacheKey(config, id)]);
         let rows: any[] = [];
 
@@ -602,7 +605,7 @@ export default function Form({
           if (rowId === null || rowId === undefined || rowId === "") continue;
 
           const cacheKey = getRelationCacheKey(config, String(rowId));
-          const entry = buildRelationDisplayEntry(config, row);
+          const entry = buildRelationDisplayEntry(config, row, relationSchema);
           if (!entry) continue;
           displayCacheRef.current[cacheKey] = {
             value: entry.label,
@@ -849,7 +852,7 @@ export default function Form({
       </button>
 
       {effectiveMode === "view" && canEdit && (
-        <button type="button" className="btn btn-warning px-4" onClick={handleEdit}>
+        <button type="button" className="btn jiro-form-primary px-4" onClick={handleEdit}>
           Editar
         </button>
       )}
@@ -857,13 +860,7 @@ export default function Form({
       {(effectiveMode === "edit" || effectiveMode === "create") && (
         <button
           type="submit"
-          className="btn btn-primary px-5"
-          style={{
-            background: "linear-gradient(90deg, #2563eb, #3b82f6)",
-            border: "none",
-            borderRadius: 10,
-            boxShadow: "0 4px 12px rgba(37, 99, 235, 0.35)",
-          }}
+          className="btn jiro-form-primary px-5"
         >
           Guardar
         </button>
@@ -1124,11 +1121,11 @@ export default function Form({
               <div key={section.id} className="card">
                 <button
                   type="button"
-                  className="card-header d-flex justify-content-between align-items-center w-100"
+                  className="card-header jiro-form-section-header d-flex justify-content-between align-items-center w-100"
                   onClick={() => toggleSection(section.id)}
+                  aria-expanded={isOpen}
                   style={{
                     cursor: "pointer",
-                    background: "transparent",
                     border: "none",
                     textAlign: "left",
                   }}
@@ -1163,7 +1160,7 @@ export default function Form({
 
   const renderTreeViewContent = () => (
     <div className="card">
-      <div className="card-header">
+      <div className="card-header jiro-form-section-header">
         <div className="fw-semibold">{treeViewConfig?.ui?.title || ""}</div>
         <div className="small text-muted">
           {treeViewConfig?.source?.table ? `Tabla: ${treeViewConfig.source.table}` : ""}
@@ -1202,7 +1199,7 @@ export default function Form({
 
   const renderCalendarContent = () => (
     <div className="card">
-      <div className="card-header">
+      <div className="card-header jiro-form-section-header">
         <div className="fw-semibold">{calendarConfig?.ui?.title || "Calendario"}</div>
         <div className="small text-muted">
           Módulo fuente: {calendarConfig?.sourceModuleSlug || calendarConfig?.sourceTable || "-"}
@@ -1258,8 +1255,22 @@ export default function Form({
     return renderSpecialView(activeTab.config);
   };
 
+  const sectionColors = getFormSectionColors(normalizedSchema.ui?.color);
+  const relationButtonColor = lightenColor(sectionColors.background);
+  const relationButtonHover = lightenColor(sectionColors.background, 0.28);
+
   return (
-    <form className="jiro-record-form d-flex flex-column gap-3" onSubmit={handleSubmit}>
+    <form className="jiro-record-form d-flex flex-column gap-3" onSubmit={handleSubmit}
+      style={{
+        ...getModuleColorVariables(sectionColors.background),
+        "--jiro-section-bg": sectionColors.background,
+        "--jiro-section-text": sectionColors.foreground,
+        "--jiro-field-border": lightenColor(sectionColors.background, 0.65),
+        "--jiro-relation-button": relationButtonColor,
+        "--jiro-relation-button-text": getContrastingTextColor(relationButtonColor),
+        "--jiro-relation-button-hover": relationButtonHover,
+        "--jiro-relation-button-hover-text": getContrastingTextColor(relationButtonHover),
+      } as React.CSSProperties}>
       {showMainTabs && (
         <div className="d-flex gap-4 mb-3 border-bottom" style={{ 
         overflowX: "auto",
@@ -1274,14 +1285,8 @@ export default function Form({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTabId(tab.id)}
-                className="btn btn-link px-0"
-                style={{
-                  textDecoration: "none",
-                  fontWeight: isActive ? 600 : 500,
-                  color: isActive ? "#2563eb" : "#64748b",
-                  borderBottom: isActive ? "2px solid #2563eb" : "2px solid transparent",
-                  borderRadius: 0,
-                }}
+                className={`btn jiro-form-tab ${isActive ? "is-active" : ""}`}
+                aria-pressed={isActive}
               >
                 {tab.label}
               </button>
@@ -1305,7 +1310,7 @@ export default function Form({
       )}
 
       {showReverseLinks && reverseLinkFields.length > 0 && (
-        <div className="d-flex flex-column gap-3">
+        <div className="jiro-reverse-links d-flex flex-column gap-3">
           <div className="card">
             <div className="card-header pb-0">
               <ul className="nav nav-tabs card-header-tabs">
@@ -1316,7 +1321,7 @@ export default function Form({
                     <li className="nav-item" key={field.name}>
                       <button
                         type="button"
-                        className={`nav-link bg-primary text-light ${isActive ? "active" : ""}`}
+                        className={`nav-link jiro-relation-button ${isActive ? "active" : ""}`}
                         onClick={() => setActiveReverseLink(field.name)}
                       >
                         {(field.label as string) || field.name}
@@ -1330,7 +1335,7 @@ export default function Form({
             <div className="card-body">
               {reverseLinkFields.map((field) => {
                 if (activeReverseLink !== field.name) return null;
-                return <ReverseLinkTable key={field.name} field={field} parentRecord={values} mode={effectiveMode} />;
+                return <ReverseLinkTable key={field.name} field={field} parentRecord={values} mode={effectiveMode} moduleColor={sectionColors.background} />;
               })}
             </div>
           </div>

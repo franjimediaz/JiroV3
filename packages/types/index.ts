@@ -1,5 +1,6 @@
 ﻿export * from "./supabase";
 export type { Database } from "./supabase";
+export * from "./recordName";
 export type { 
     Field,
     Compute,

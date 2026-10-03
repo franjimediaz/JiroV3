@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import type { SidebarItem } from "./types";
-import { isActive, isBranchActive, isExactActive } from "./utils";
+import type { SidebarItem, SidebarModuleSelection } from "./types";
+import { isBranchActive, isExactActive } from "./utils";
+import { filterSidebarTree, getSelectableModules, selectSidebarModule, getStandaloneItems, getActiveSidebarIds } from "./sidebarTree";
+import { ActionMenu } from "./ActionMenu";
 
 export type SidebarVariant = "fixed" | "drawer";
 
@@ -16,6 +18,8 @@ export function Sidebar({
   miniMode = false,
   onToggleMini,
   canView,
+  moduleSelection,
+  onModuleChange,
 }: {
   items: SidebarItem[];
   title?: string;
@@ -26,9 +30,24 @@ export function Sidebar({
   onToggleMini?: () => void;
   icon?: string;
   canView?: (slug: string) => boolean;
+  moduleSelection?: SidebarModuleSelection | null;
+  onModuleChange?: (selection: SidebarModuleSelection) => void;
 }) {
   const pathname = usePathname();
   const previousPathnameRef = useRef(pathname);
+  const [localSelection, setLocalSelection] = useState<SidebarModuleSelection | null>(null);
+  const selection = moduleSelection ?? localSelection;
+  const visibleItems = useMemo(() => filterSidebarTree(items, canView), [items, canView]);
+  const modules = useMemo(() => getSelectableModules(visibleItems), [visibleItems]);
+  const selectedModule = useMemo(() => selectSidebarModule(visibleItems, pathname, selection), [visibleItems, pathname, selection]);
+  const standaloneItems = useMemo(() => getStandaloneItems(visibleItems), [visibleItems]);
+  const changeModule = onModuleChange ?? setLocalSelection;
+
+  useEffect(() => {
+    if (selectedModule && (selection?.id !== selectedModule.id || selection?.pathname !== pathname)) {
+      changeModule({ id: selectedModule.id, pathname });
+    }
+  }, [selectedModule, selection, pathname, changeModule]);
 
   useEffect(() => {
     if (variant !== "drawer" || !isOpen) return;
@@ -51,29 +70,7 @@ export function Sidebar({
     onClose?.();
   }, [variant, isOpen, onClose, pathname]);
 
-  const activeSet = useMemo(() => {
-    const set = new Set<string>();
-
-    const visit = (node: SidebarItem): boolean => {
-      const hasChildren = (node.hijos?.length ?? 0) > 0;
-      const isFolder = node.tipo === "carpeta" || (hasChildren && (!node.route || node.route.trim() === ""));
-
-      if (!isFolder && canView && !canView(node.slug)) return false;
-
-      if (node.sidebar === true && node.tipo !== "carpeta") {
-        return (node.hijos ?? []).some(visit);
-      }
-
-      const here = node.route ? isActive(pathname, node.route) : false;
-      const childActive = (node.hijos ?? []).some(visit);
-
-      if (here || childActive) set.add(node.id);
-      return here || childActive;
-    };
-
-    items.forEach(visit);
-    return set;
-  }, [items, pathname, canView]);
+  const activeSet = useMemo(() => getActiveSidebarIds(visibleItems, pathname), [visibleItems, pathname]);
 
   const [openSet, setOpenSet] = useState<Set<string>>(new Set());
 
@@ -91,15 +88,44 @@ export function Sidebar({
   };
 
   const tree = (
+    <>
+    {modules.length > 0 && <div className={`sidebar-module-selector ${miniMode && variant === "fixed" ? "is-mini" : ""}`}>
+      <ActionMenu
+        key={`${pathname}:${selectedModule?.id}:${variant === "drawer" ? isOpen : "fixed"}`}
+        align="start"
+        ariaLabel={`Módulo: ${selectedModule?.nombre || "Seleccionar"}`}
+        triggerTitle={selectedModule?.nombre}
+        triggerClassName="sidebar-module-trigger"
+        menuClassName="sidebar-module-menu"
+        trigger={<>
+          <i className={`bi ${selectedModule?.icon || "bi-folder"}`} aria-hidden="true" />
+          {!(miniMode && variant === "fixed") && <>
+            <span className="sidebar-module-name">{selectedModule?.nombre}</span>
+            <i className="bi bi-chevron-down" aria-hidden="true" />
+          </>}
+        </>}
+        items={modules.map((entry) => ({
+          label: entry.nombre,
+          title: entry.moduleLabel,
+          icon: entry.icon ? <i className={`bi ${entry.icon}`} aria-hidden="true" /> : undefined,
+          onClick: () => changeModule({ id: entry.id, pathname }),
+        }))}
+      />
+    </div>}
     <NavTree
-      nodes={items}
+      nodes={selectedModule?.hijos || []}
       openSet={openSet}
       toggleNode={toggleNode}
       activeSet={activeSet}
-      canView={canView}
       miniMode={miniMode && variant === "fixed"}
       onNavigate={variant === "drawer" ? onClose : undefined}
     />
+    {standaloneItems.length > 0 && <div className="sidebar-common-links">
+      {modules.length > 0 && <div className={miniMode && variant === "fixed" ? "visually-hidden" : "sidebar-common-title"}>Accesos generales</div>}
+      <NavTree nodes={standaloneItems} openSet={openSet} toggleNode={toggleNode} activeSet={activeSet}
+        miniMode={miniMode && variant === "fixed"} onNavigate={variant === "drawer" ? onClose : undefined} />
+    </div>}
+    </>
   );
 
   if (variant === "drawer") {
@@ -153,7 +179,7 @@ export function Sidebar({
             </button>
           ) : null}
         </div>
-        {miniMode ? null : tree}
+        {tree}
       </div>
       <SidebarUser miniMode={miniMode} />
     </aside>
@@ -256,7 +282,7 @@ function NavItem({
     .filter(Boolean)
     .join(" ");
 
-  const icon = node.icon ? <i className={`bi ${node.icon} sidebar-item-icon ${miniMode ? "is-hidden" : "me-2"}`} /> : null;
+  const icon = <i aria-hidden="true" className={`bi ${node.icon || (isFolder ? "bi-folder" : "bi-table")} sidebar-item-icon ${miniMode ? "" : "me-2"}`} />;
   const label = <span className={`sidebar-item-label ${miniMode ? "is-hidden" : ""}`}>{node.nombre}</span>;
 
   if (hasChildren) {
@@ -271,6 +297,8 @@ function NavItem({
             type="button"
             onClick={() => toggleNode(node.id)}
             title={node.nombre}
+            aria-label={node.nombre}
+            aria-expanded={expanded}
           >
             <span className="d-flex align-items-center sidebar-item-main">
               {icon}
@@ -349,53 +377,26 @@ function NavItem({
 }
 
 function SidebarUser({ miniMode = false }: { miniMode?: boolean }) {
-  const [open, setOpen] = useState(false);
+  const signoutForm = useRef<HTMLFormElement | null>(null);
 
   return (
-    <div className={`border-top p-3 position-relative sidebar-user ${miniMode ? "is-mini" : ""}`}>
-      <button
-        type="button"
-        className={`btn w-100 d-flex align-items-center justify-content-between sidebar-user-btn ${miniMode ? "is-mini" : ""}`}
-        onClick={() => setOpen((value) => !value)}
-        title="Mi cuenta"
-      >
-        <div className="d-flex align-items-center gap-2">
-          <i className="bi bi-person-circle fs-5" />
-          <span className={`small sidebar-item-label ${miniMode ? "is-hidden" : ""}`}>Mi cuenta</span>
-        </div>
-      </button>
-
-      {open ? (
-        <div
-          className="position-absolute bg-white border rounded shadow-sm"
-          style={{
-            bottom: "100%",
-            left: miniMode ? 8 : 16,
-            right: 16,
-            marginBottom: 8,
-            zIndex: 1000,
-          }}
-        >
-          <ul className="list-unstyled mb-0">
-            <li>
-              <button type="button" disabled className="dropdown-item d-flex align-items-center gap-2" title="Perfil no disponible">
-                <i className="bi bi-person" />
-                <span className={`${miniMode ? "visually-hidden" : ""}`}>Mi perfil</span>
-                {miniMode ? <span className="small">Perfil</span> : null}
-              </button>
-            </li>
-            <li>
-              <form action="/api/auth/signout" method="post" className="m-0">
-                <button className="dropdown-item d-flex align-items-center gap-2 text-danger" type="submit" title="Salir">
-                  <i className="bi bi-box-arrow-right" />
-                  <span className={`${miniMode ? "visually-hidden" : ""}`}>Salir</span>
-                  {miniMode ? <span className="small">Salir</span> : null}
-                </button>
-              </form>
-            </li>
-          </ul>
-        </div>
-      ) : null}
+    <div className={`border-top p-3 sidebar-user ${miniMode ? "is-mini" : ""}`}>
+      <form ref={signoutForm} action="/api/auth/signout" method="post" hidden />
+      <ActionMenu
+        align="start"
+        ariaLabel="Mi cuenta"
+        triggerTitle="Mi cuenta"
+        triggerClassName={`btn w-100 d-flex align-items-center gap-2 sidebar-user-btn ${miniMode ? "is-mini" : ""}`}
+        trigger={<>
+          <i className="bi bi-person-circle fs-5" aria-hidden="true" />
+          {!miniMode && <span className="small sidebar-item-label">Mi cuenta</span>}
+        </>}
+        items={[
+          { label: "Mi perfil", disabled: true, title: "Perfil no disponible", icon: <i className="bi bi-person" aria-hidden="true" /> },
+          { label: "Salir", variant: "danger", title: "Salir", icon: <i className="bi bi-box-arrow-right" aria-hidden="true" />,
+            onClick: () => signoutForm.current?.requestSubmit() },
+        ]}
+      />
     </div>
   );
 }

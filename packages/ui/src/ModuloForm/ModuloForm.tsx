@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect, useRef, useCallback} from "react";
 import styles from "./modulo-detalle.module.css";
-import { applyModuleUiPatch, WORKFLOW_CATALOG } from "@repo/types";
+import { applyModuleUiPatch, WORKFLOW_CATALOG, updateRecordNameField } from "@repo/types";
 import  Selector from "../components/fields/Selector";
 import {IconPicker} from "@repo/ui";
 import type { CalendarSpecialViewConfig, CalendarViewMode, ConfigurableAuditEvent, Field as FieldSchema, ModuleCapabilityKey, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
@@ -10,6 +10,7 @@ import { applyModuleAuditConfigToProps, applyModuleCapabilitiesToProps, getEffec
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
 import { FieldRow, VisibilityConfigEditor } from "./FieldRow"
 import ModuleDefaultFiltersBuilder from "./ModuleDefaultFiltersBuilder";
+import { invalidateModuleSchemaCache } from "../providers/DataProvider";
 import UiFormActionsEditor, { type UiFormAction } from "./UiFormActionsEditor";
 import { useSearchParams, useRouter } from "next/dist/client/components/navigation";
 
@@ -1150,8 +1151,7 @@ const setSpecialViews = (specialViews: SpecialViewConfig[]) => {
   // Fields helpers (globales del módulo)
   // =========================
   const updateField = (idx: number, patch: Field) => {
-    const nextFields = [...propsObj.fields];
-    nextFields[idx] = patch;
+    const nextFields = updateRecordNameField(propsObj.fields, idx, patch);
     const nextObj = { ...propsObj, fields: nextFields };
     setPropsObj(nextObj);
     setRawText(JSON.stringify(nextObj, null, 2));
@@ -1212,7 +1212,12 @@ const setSpecialViews = (specialViews: SpecialViewConfig[]) => {
       }
     }
 
-    const normalizedToSave = tipo === "carpeta" ? toSave : normalizeModuleSchema(toSave);
+    let normalizedToSave;
+    try {
+      normalizedToSave = tipo === "carpeta" ? toSave : normalizeModuleSchema(toSave);
+    } catch (error) {
+      return setMsg({ ok: false, text: error instanceof Error ? error.message : "Schema inválido" });
+    }
 
     if (tipo !== "carpeta") {
       const err = validatePropsClient(normalizedToSave);
@@ -1237,6 +1242,7 @@ const setSpecialViews = (specialViews: SpecialViewConfig[]) => {
       const res = await onSave(fd);
       setMsg({ ok: res.ok, text: res.detail });
       if (res.ok) {
+        invalidateModuleSchemaCache();
         const sp = new URLSearchParams(searchParams.toString());
         sp.set("edit", "false");
 

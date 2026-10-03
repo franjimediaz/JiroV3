@@ -31,7 +31,6 @@ export default async function NewEntityPage({
   const { modulesBySlug } = await fetchAllModulesIndex();
 
   return (
-    <main className="container py-4 bg-secondary bg-opacity-10 rounded">
       <FormClient
         schema={mod.schema}
         initialData={{}}
@@ -41,6 +40,5 @@ export default async function NewEntityPage({
         modulesBySlug={modulesBySlug}
         schemasBySlug={{ [slug]: mod.schema }}
       />
-    </main>
   );
 }

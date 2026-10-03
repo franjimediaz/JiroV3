@@ -19,6 +19,14 @@ export type CreateResult = {
 
 let schemaCache: Record<string, ModuleSchema> | null = null;
 let schemaCacheAt = 0;
+let schemaCacheVersion = 0;
+
+export function invalidateModuleSchemaCache() {
+  schemaCache = null;
+  schemaCacheAt = 0;
+  schemaCacheVersion++;
+  schemasLoading = null;
+}
 
 function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {
   return path
@@ -31,8 +39,18 @@ function getByPath<T = unknown>(obj: unknown, path: string): T | undefined {
     }, obj) as T | undefined;
 }
 
-async function loadSchemas(): Promise<Record<string, ModuleSchema>> {
+let schemasLoading: Promise<Record<string, ModuleSchema>> | null = null;
+function loadSchemas(): Promise<Record<string, ModuleSchema>> {
+  if (!schemasLoading) {
+    const pending = loadSchemasOnce().finally(() => { if (schemasLoading === pending) schemasLoading = null; });
+    schemasLoading = pending;
+  }
+  return schemasLoading;
+}
+
+async function loadSchemasOnce(): Promise<Record<string, ModuleSchema>> {
   const now = Date.now();
+  const version = schemaCacheVersion;
   if (schemaCache && now - schemaCacheAt < 60_000) return schemaCache;
 
   const res = await fetch("/api/modulos?flat=1", { method: "GET" });
@@ -52,8 +70,10 @@ async function loadSchemas(): Promise<Record<string, ModuleSchema>> {
     }
   }
 
-  schemaCache = map;
-  schemaCacheAt = now;
+  if (version === schemaCacheVersion) {
+    schemaCache = map;
+    schemaCacheAt = now;
+  }
   return map;
 }
 

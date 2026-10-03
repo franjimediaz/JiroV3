@@ -2,7 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import type { CalendarSpecialViewConfig, CalendarViewMode, ModuleSchema } from "@repo/types";
-import { normalizeCalendarConfig } from "@repo/types";
+import { normalizeCalendarConfig, getRecordName } from "@repo/types";
+import { getRecordNameSchema } from "../../utils/recordNameSchema";
 import type { DataProvider } from "../../engines/computeEngine";
 import { dataProvider as defaultDataProvider } from "../../providers/DataProvider";
 
@@ -207,14 +208,14 @@ function orderMonthEvents(events: CalendarEvent[]) {
   return [...events].sort((a, b) => a.start.getTime() - b.start.getTime());
 }
 
-function buildEventFromRecord(record: any, config: CalendarSpecialViewConfig): CalendarEvent | null {
+function buildEventFromRecord(record: any, config: CalendarSpecialViewConfig, schema?: ModuleSchema | null): CalendarEvent | null {
   const rawStart = record?.[config.startField];
   const start = parseDateValue(rawStart);
   if (!start) return null;
 
   const allDay = config.allDayField ? !!record?.[config.allDayField] : looksDateOnly(rawStart);
   const end = getEventEnd(config.endField ? record?.[config.endField] : null, start, allDay);
-  const title = String(record?.[config.titleField] ?? "").trim() || "(Sin título)";
+  const title = getRecordName(record, schema, { legacyField: config.titleField, fallback: "(Sin título)" });
 
   return {
     id: String(record?.id ?? `${title}-${start.toISOString()}`),
@@ -465,6 +466,7 @@ export default function ModuleCalendarView({
           shouldFilterByParent && filterField && parentRecordId
             ? [{ field: filterField, op: "=", value: parentRecordId }]
             : [];
+        const recordSchema = sourceSchema || await getRecordNameSchema(dataProvider, sourceModuleSlug);
         const result = await (dataProvider as any).list({
           moduleSlug: sourceModuleSlug,
           filters,
@@ -476,7 +478,7 @@ export default function ModuleCalendarView({
         let invalidCount = 0;
 
         for (const row of rows) {
-          const event = buildEventFromRecord(row, normalizedConfig);
+          const event = buildEventFromRecord(row, normalizedConfig, recordSchema);
           if (!event) {
             invalidCount += 1;
             continue;

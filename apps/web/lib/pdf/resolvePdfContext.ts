@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { ModuleSchema } from "@repo/types";
+import { getRecordName, getRecordNameField, getRecordNameFieldName } from "@repo/types";
 import { resolvePdfDatasets } from "./resolvePdfDatasets";
 
 type RelatedSpec = {
@@ -30,6 +31,7 @@ type ResolveArgs = {
 type AnyObj = Record<string, any>;
 
 type ResolveRunCache = {
+  recordNames: WeakMap<object, string>;
   schemaBySlug: Map<string, Promise<ModuleSchema>>;
   rowByTableAndId: Map<string, Promise<any | null>>;
   childrenByTableFkAndParent: Map<string, Promise<any[]>>;
@@ -45,6 +47,7 @@ type InverseRef = {
 
 function createResolveRunCache(): ResolveRunCache {
   return {
+    recordNames: new WeakMap(),
     schemaBySlug: new Map(),
     rowByTableAndId: new Map(),
     childrenByTableFkAndParent: new Map(),
@@ -358,10 +361,11 @@ export function normalizeBranding(raw: any) {
   };
 }
 
-function normalizeClient(raw: any) {
+function normalizeClient(raw: any, recordName?: string) {
   const client = raw && typeof raw === "object" ? { ...raw } : {};
 
   const nombre = firstNonEmptyString(
+    recordName,
     client.nombre,
     client.nombreCompleto,
     client.razonSocial,
@@ -459,10 +463,12 @@ function findClientSource(record: AnyObj, py: AnyObj) {
   return null;
 }
 
-function applyClientCardFields(record: AnyObj, py: AnyObj) {
+function applyClientCardFields(record: AnyObj, py: AnyObj, recordNames: WeakMap<object, string>) {
   const clientSource = findClientSource(record, py);
-  const client = normalizeClient(clientSource);
+  const recordName = clientSource ? recordNames.get(clientSource) : undefined;
+  const client = normalizeClient(clientSource, recordName);
   const visibleName = firstNonEmptyString(
+    recordName,
     record?.cliente_nombre,
     record?.clienteNombre,
     record?.cliente_label,
@@ -481,8 +487,8 @@ function applyClientCardFields(record: AnyObj, py: AnyObj) {
   return {
     ...record,
     cliente_nombre: visibleName,
-    clienteNombre: firstNonEmptyString(record?.clienteNombre, visibleName),
-    cliente_label: firstNonEmptyString(record?.cliente_label, visibleName),
+    clienteNombre: recordName ?? firstNonEmptyString(record?.clienteNombre, visibleName),
+    cliente_label: recordName ?? firstNonEmptyString(record?.cliente_label, visibleName),
     cliente_dni: firstNonEmptyString(record?.cliente_dni, client.dni),
     cliente_direccion: firstNonEmptyString(
       record?.cliente_direccion,
@@ -493,10 +499,10 @@ function applyClientCardFields(record: AnyObj, py: AnyObj) {
       record?.cliente_telefono,
       client.telefono,
     ),
-    customer_name: firstNonEmptyString(record?.customer_name, visibleName),
-    customerName: firstNonEmptyString(record?.customerName, visibleName),
-    client_name: firstNonEmptyString(record?.client_name, visibleName),
-    clientName: firstNonEmptyString(record?.clientName, visibleName),
+    customer_name: recordName ?? firstNonEmptyString(record?.customer_name, visibleName),
+    customerName: recordName ?? firstNonEmptyString(record?.customerName, visibleName),
+    client_name: recordName ?? firstNonEmptyString(record?.client_name, visibleName),
+    clientName: recordName ?? firstNonEmptyString(record?.clientName, visibleName),
     cliente: client,
     customer: client,
     client,
@@ -641,6 +647,8 @@ async function ensureLabelValues(args: {
   ids: string[];
 }) {
   const { supabase, cache, table, refIdField, refLabelField } = args;
+  const schema = await getSchemaCached({ supabase, cache, moduleSlug: table }).catch(() => undefined);
+  const displayField = getRecordNameFieldName(schema, refLabelField);
   const uniqueIds = Array.from(
     new Set(
       (args.ids || []).filter(
@@ -669,7 +677,7 @@ async function ensureLabelValues(args: {
   const loadPromise = (async () => {
     const { data, error } = await supabase
       .from(table)
-      .select(`${refIdField},${refLabelField}`)
+      .select(`${refIdField},${displayField}`)
       .in(refIdField, missingIds);
 
     if (error) {
@@ -682,7 +690,7 @@ async function ensureLabelValues(args: {
 
     for (const row of data || []) {
       const key = String((row as any)?.[refIdField] ?? "");
-      const value = String((row as any)?.[refLabelField] ?? "");
+      const value = getRecordName(row, schema, { legacyField: refLabelField, valueField: refIdField });
       if (key) store!.set(key, value);
     }
   })();
@@ -825,12 +833,16 @@ async function hydrateBelongsToTree(opts: {
       const hydratedChild = child
         ? await hydrateOne(ref.moduleSlug, child, d - 1)
         : null;
+      const childSchema = child ? await getSchemaCached({ supabase, cache, moduleSlug: ref.moduleSlug }).catch(() => undefined) : undefined;
+      if (hydratedChild && getRecordNameField(childSchema)) {
+        cache.recordNames.set(hydratedChild, getRecordName(child, childSchema));
+      }
 
       return {
         alias,
         child: hydratedChild,
         label:
-          ref.displayField && child ? (child as AnyObj)?.[ref.displayField] ?? "" : undefined,
+          child && (ref.displayField || getRecordNameField(childSchema)) ? getRecordName(child, childSchema, { legacyField: ref.displayField }) : undefined,
       };
     });
 
@@ -1041,7 +1053,7 @@ export async function resolvePdfContext(args: ResolveArgs) {
   });
 
   const normalizedBranding = normalizeBranding(brandingResult.data);
-  const recordWithClientFields = applyClientCardFields(record, py);
+  const recordWithClientFields = applyClientCardFields(record, py, cache.recordNames);
   const allSchemas = await loadAllSchemasFromDb({ supabase });
   const rootSchema = allSchemas[args.sourceTable] || await getSchemaCached({ supabase, cache, moduleSlug: args.sourceTable });
   const relatedPlanFields: Record<string, string[]> = {};
