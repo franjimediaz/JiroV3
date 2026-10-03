@@ -374,8 +374,10 @@ describe("workflow actions and editor behavior", () => {
   });
   it("new workflow actions start with a neutral input instead of inheriting another workflow contract", () => {
     const h = hooks();
+    const session = () => {};
     const editor = load("packages/ui/src/ModuloForm/UiFormActionsEditor.tsx", {
       react: h.react, "@repo/types": metadata,
+      "./ConfigEditor": { ConfigSession: session },
       "../components/fields/Selector": {}, "./FieldRow": {}, "./CopyRelatedWorkflowEditor": {},
     });
     let saved;
@@ -384,6 +386,9 @@ describe("workflow actions and editor behavior", () => {
     findAll(tree, (node) => node.type === "select")[0].props.onChange({ target: { value: "workflow" } });
     tree = h.render(editor.default, props);
     findAll(tree, (node) => node.type === "button")[0].props.onClick();
+    assert.equal(saved, undefined);
+    tree = h.render(editor.default, props);
+    findAll(tree, (node) => node.type === session)[0].props.onApply();
     assert.equal(saved[0].type, "workflow");
     assert.equal(saved[0].workflowKey, "");
     assert.deepEqual(saved[0].input, {});
@@ -470,6 +475,7 @@ describe("workflow actions and editor behavior", () => {
     const h = hooks(); const raw = () => {};
     const editor = load("packages/ui/src/ModuloForm/UiFormActionsEditor.tsx", {
       react: h.react, "@repo/types": metadata,
+      "./ConfigEditor": { ConfigSession: () => {} },
       "../components/fields/Selector": {}, "./FieldRow": {},
       "./CopyRelatedWorkflowEditor": { WorkflowJsonEditor: raw },
     }, "\nexport { UiFormActionItem };\n");

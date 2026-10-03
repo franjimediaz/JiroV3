@@ -53,6 +53,29 @@
   font-family: var(--font);
 }
 
+.configRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+.configRow > button { min-width: 0; color: inherit; }
+.configRow > button:first-child { border: 0; }
+.configTrigger {
+  min-width: 0;
+  border: 1px solid var(--border);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.configTrigger:hover, .configTrigger:focus-visible {
+  background: var(--muted);
+  color: var(--text);
+  border-color: var(--ring);
+}
+
 .label {
   font-size: 12px;
   letter-spacing: 0.02em;

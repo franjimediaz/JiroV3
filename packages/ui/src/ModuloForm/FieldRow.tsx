@@ -1,3 +1,5 @@
+import { ConfigEditor } from "./ConfigEditor";
+import { ActionMenu } from "../ActionMenu";
 import { useState, useEffect, useMemo } from "react";
 import styles from "./modulo-detalle.module.css";
 import  Selector from "../components/fields/Selector";
@@ -205,7 +207,7 @@ function ArrayChips({
   );
 }
 
-export function VisibilityConfigEditor({
+function VisibilityConfigEditorBody({
   field,
   value,
   targetLabel = "campo",
@@ -306,21 +308,19 @@ export function VisibilityConfigEditor({
             />
           ))}
 
-          <button
-            type="button"
-            className={styles.btnAdd}
-            onClick={() => updateVisibility({ ...visibility, rules: [...visibility.rules, { ...emptyVisibilityRule }] })}
-            disabled={readOnly}
-          >
-            Añadir regla
-          </button>
+          <ConfigEditor title="Añadir regla" value={{...emptyVisibilityRule}} readOnly={readOnly}
+            onChange={next => updateVisibility({...visibility, rules: [...visibility.rules, next]})}>
+            {(draft, update) => <VisibilityRuleEditorBody rule={draft} onChange={update} onRemove={() => {}}
+              allFields={allFields} relationFields={relationFields} fieldsByTable={fieldsByTable}
+              loadingByTable={loadingByTable} ensureFieldsLoaded={ensureFieldsLoaded} readOnly={readOnly} />}
+          </ConfigEditor>
         </div>
       )}
     </div>
   );
 }
 
-function VisibilityRuleEditor({
+function VisibilityRuleEditorBody({
   rule,
   allFields,
   relationFields,
@@ -506,11 +506,7 @@ function VisibilityRuleEditor({
           />
         </div>
 
-        <div className={styles.switchRow}>
-          <button type="button" className={styles.btnDel} onClick={onRemove} disabled={readOnly}>
-            Eliminar regla
-          </button>
-        </div>
+
       </div>
     </div>
   );
@@ -602,7 +598,7 @@ function normalizeAggregateWhere(where: any): AggregateWhereCondition[] {
     }));
 }
 
-function FormulaComputeEditor({
+function FormulaComputeEditorBody({
   field,
   allFields,
   readOnly,
@@ -809,7 +805,7 @@ function FormulaComputeEditor({
   );
 }
 
-function AggregateComputeEditor({
+function AggregateComputeEditorBody({
   field,
   fieldsByTable,
   loadingByTable,
@@ -962,7 +958,7 @@ function AggregateComputeEditor({
   );
 }
 
-function AggregateWhereBuilder({
+function AggregateWhereBuilderBody({
   value,
   sourceTable,
   sourceFields,
@@ -1031,9 +1027,6 @@ function AggregateWhereBuilder({
     onChange(next);
   };
 
-  const setDynamicValue = (index: number, fieldName: string) => {
-    updateCondition(index, { value: fieldName ? `{{${fieldName}}}` : "" });
-  };
 
   return (
     <div className={styles.card} style={{ marginTop: 12, marginBottom: 12 }}>
@@ -1074,106 +1067,23 @@ function AggregateWhereBuilder({
           <div className="d-flex flex-column gap-2">
             {conditions.length === 0 ? <div className={styles.hint}>Sin condiciones.</div> : null}
             {conditions.map((condition, index) => (
-              <div key={index} className={styles.card}>
-                <div className={styles.grid} style={{ alignItems: "end" }}>
-                  <div>
-                    <label className={styles.label}>Campo origen</label>
-                    <select
-                      className={styles.input}
-                      value={condition.field}
-                      disabled={readOnly || !sourceTable}
-                      onChange={(event) => updateCondition(index, { field: event.target.value })}
-                    >
-                      <option value="">Seleccionar campo</option>
-                      {buildFieldOptions(sourceFields, condition.field).map((candidate) => (
-                        <option key={candidate.name} value={candidate.name}>
-                          {candidate.label || candidate.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className={styles.label}>Operador</label>
-                    <select
-                      className={styles.input}
-                      value={condition.op}
-                      disabled={readOnly}
-                      onChange={(event) =>
-                        updateCondition(index, {
-                          op: event.target.value as AggregateWhereCondition["op"],
-                          value: parseAggregateWhereValue(formatAggregateWhereValue(condition.value), event.target.value as AggregateWhereCondition["op"]),
-                        })
-                      }
-                    >
-                      {aggregateWhereOperators.map((operator) => (
-                        <option key={operator} value={operator}>
-                          {operator}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className={styles.label}>Valor literal</label>
-                    <input
-                      className={styles.input}
-                      value={formatAggregateWhereValue(condition.value)}
-                      disabled={readOnly}
-                      placeholder={condition.op === "in" ? "a, b, c" : "valor"}
-                      onChange={(event) =>
-                        updateCondition(index, {
-                          value: parseAggregateWhereValue(event.target.value, condition.op),
-                        })
-                      }
-                    />
-                  </div>
-
-                  <div>
-                    <label className={styles.label}>Valor dinámico</label>
-                    <select
-                      className={styles.input}
-                      value={
-                        (typeof condition.value === "string" &&
-                          condition.value.match(/^\{\{\s*([\w.]+)\s*\}\}$/)?.[1]) ||
-                        ""
-                      }
-                      disabled={readOnly}
-                      onChange={(event) => setDynamicValue(index, event.target.value)}
-                    >
-                      <option value="">Sin valor dinámico</option>
-                      {currentFields.map((candidate) => (
-                        <option key={candidate.name} value={candidate.name}>
-                          {candidate.label || candidate.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className={styles.switchRow}>
-                    <button
-                      type="button"
-                      className={styles.btnDel}
-                      onClick={() => onChange(conditions.filter((_, conditionIndex) => conditionIndex !== index))}
-                      disabled={readOnly}
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-                </div>
+              <div key={index} className="d-flex align-items-center gap-2">
+                <ConfigEditor title={condition.field || "Condición"} summary={condition.op + " " + formatAggregateWhereValue(condition.value)}
+                  value={condition} readOnly={readOnly} onChange={next => updateCondition(index, next)}>
+                  {(draft, update) => <AggregateConditionEditor condition={draft} onChange={update} sourceTable={sourceTable}
+                    sourceFields={sourceFields} currentFields={currentFields} readOnly={readOnly} />}
+                </ConfigEditor>
+                <button type="button" className={styles.btnDel} disabled={readOnly}
+                  onClick={() => onChange(conditions.filter((_, i) => i !== index))}>Eliminar</button>
               </div>
             ))}
           </div>
 
-          <button
-            type="button"
-            className={styles.btnAdd}
-            style={{ marginTop: 12 }}
-            disabled={readOnly}
-            onClick={() => onChange([...conditions, { field: "", op: "=", value: "" }])}
-          >
-            Añadir condición
-          </button>
+          <ConfigEditor<AggregateWhereCondition> title="Añadir condición" value={{field: "", op: "=", value: ""}} readOnly={readOnly}
+            onChange={next => onChange([...conditions, next])}>
+            {(draft, update) => <AggregateConditionEditor condition={draft} onChange={update} sourceTable={sourceTable}
+              sourceFields={sourceFields} currentFields={currentFields} readOnly={readOnly} />}
+          </ConfigEditor>
         </div>
       ) : (
         <div style={{ marginTop: 12 }}>
@@ -1205,14 +1115,9 @@ function AggregateWhereBuilder({
 
 
 
-export function FieldRow({
+export function FieldConfigEditor({
   field,
   onChange,
-  onRemove,
-  onMoveUp,
-  onMoveDown,
-  canUp,
-  canDown,
   readOnly,
   fieldsByTable,
   loadingByTable,
@@ -1221,11 +1126,6 @@ export function FieldRow({
 }: {
   field: FieldSchema;
   onChange: (f: FieldSchema) => void;
-  onRemove: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  canUp: boolean;
-  canDown: boolean;
   readOnly?: boolean;
   fieldsByTable: Record<string, { name: string; label?: string }[]>;
   loadingByTable: Record<string, boolean>;
@@ -1233,120 +1133,18 @@ export function FieldRow({
   currentFields: FieldSchema[];
 }) {
   
-  const [open, setOpen] = useState(false);
-
-  const summaryLabel = field.label?.trim() || "Sin label";
-  const summaryName = field.name?.trim() || "sin_name";
-  const summaryType = field.type || "text";
-  const summaryCompute = getComputeKind(field);
   const [refPickCtx, setRefPickCtx] = useState<RefPickCtx>(null);
   const selectorModuleSlug = field.type === "selectorTabla" ? field.ref?.moduleSlug || "" : "";
   
   
 
-  const duplicate = () => {
-    const baseName = (field.name || "campo").replace(/\s+/g, "_");
-    const copy: FieldSchema = {
-      ...field,
-      name: `${baseName}_copy_${Math.floor(Math.random() * 1000)}`,
-      label: `${field.label || "Campo"} (copia)`,
-    };
-    onChange(copy);
-  };
-
   useEffect(() => {
-    if (!open) return;
     if (!selectorModuleSlug) return;
     ensureFieldsLoaded(selectorModuleSlug);
-  }, [open, selectorModuleSlug, ensureFieldsLoaded]);
+  }, [selectorModuleSlug, ensureFieldsLoaded]);
 
   return (
-    <div className={styles.fieldformcard} style={{ marginBottom: 12 }}>
-      {/* ========= HEADER COMPACTO ========= */}
-      <div className={styles.card} style={{ padding: 12 }}>
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <button
-            type="button"
-            className={styles.btn}
-            onClick={() => setOpen((v) => !v)}
-            style={{
-              flex: 1,
-              textAlign: "left",
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-            }}
-            title={open ? "Ocultar detalle" : "Mostrar detalle"}
-          >
-            <div style={{ fontWeight: 700 }}>
-              {summaryLabel}
-              <span style={{ opacity: 0.8, fontWeight: 500 }}> · {summaryName}</span>
-            </div>
-
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, opacity: 0.9 }}>
-              <span className={styles.hint}>type: {summaryType}</span>
-              <span className={styles.hint}>compute: {summaryCompute}</span>
-              {field.required ? <span className={styles.hint}>required</span> : null}
-              {field.readOnly ? <span className={styles.hint}>readOnly</span> : null}
-              {(field.visible ?? true) === false ? <span className={styles.hint}>hidden</span> : null}
-              {field.allowOverride ? <span className={styles.hint}>override</span> : null}
-            </div>
-          </button>
-
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={onMoveUp}
-              disabled={!canUp || readOnly}
-              title="Subir"
-            >
-              ↑
-            </button>
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={onMoveDown}
-              disabled={!canDown || readOnly}
-              title="Bajar"
-            >
-              ↓
-            </button>
-
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={duplicate}
-              disabled={readOnly}
-              title="Duplicar (rápido)"
-            >
-              ⎘
-            </button>
-
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={onRemove}
-              disabled={readOnly}
-              style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}
-              title="Eliminar campo"
-            >
-              Eliminar
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ========= DETALLE PLEGABLE ========= */}
-      {open && (
-        <>
+    <>
           {/* BLOQUE PRINCIPAL (grid 1 + grid 2) */}
           <div className={styles.card} style={{ marginTop: 12 }}>
             {/* ========= OPCIONES GENERALES ========= */}
@@ -2046,29 +1844,148 @@ export function FieldRow({
             />
           )}
 
-          {/* ========= FOOTER DE ACCIONES ========= */}
-          <div className={styles.actionsRow} style={{ justifyContent: "space-between", marginTop: 12 }}>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" className={styles.btn} onClick={onMoveUp} disabled={!canUp || readOnly}>
-                ↑
-              </button>
-              <button type="button" className={styles.btn} onClick={onMoveDown} disabled={!canDown || readOnly}>
-                ↓
-              </button>
-            </div>
-
-            <button
-              type="button"
-              className={styles.btn}
-              onClick={onRemove}
-              disabled={readOnly}
-              style={{ background: "#fc0505ff", borderColor: "#ffb3b3" }}
-            >
-              Eliminar campo
-            </button>
-          </div>
-        </>
-      )}
-    </div>
+    </>
   );
+}
+
+export function FieldRow(props: React.ComponentProps<typeof FieldConfigEditor> & {
+  onRemove: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  canUp: boolean;
+  canDown: boolean;
+}) {
+  const { field, readOnly } = props;
+  const summary = [field.type, field.recordName && "Record name", field.required && "Obligatorio",
+    field.compute && "Computed", field.type === "selectorTabla" && field.ref?.moduleSlug].filter(Boolean).join(" \u00b7 ");
+  return <div className={styles.configRow}>
+    <ConfigEditor title={field.label || field.name || "Nuevo campo"} summary={summary}
+      value={field} onChange={props.onChange} readOnly={readOnly}>
+      {(draft, update) => <FieldConfigEditor {...props} field={draft} onChange={update} />}
+    </ConfigEditor>
+    <ActionMenu ariaLabel={`Acciones de ${field.label || field.name}`} disabled={readOnly} items={[
+      { label: "Subir", icon: "bi bi-arrow-up", disabled: !props.canUp, onClick: props.onMoveUp },
+      { label: "Bajar", icon: "bi bi-arrow-down", disabled: !props.canDown, onClick: props.onMoveDown },
+      { label: "Duplicar", icon: "bi bi-copy", onClick: () => props.onChange({ ...field,
+        name: (field.name || "campo").replace(/\s+/g, "_") + "_copy_" + Math.floor(Math.random() * 1000), label: (field.label || "Campo") + " (copia)" }) },
+      { label: "Eliminar", icon: "bi bi-trash", onClick: props.onRemove },
+    ]} />
+  </div>;
+}
+
+function FormulaComputeEditor(props: React.ComponentProps<typeof FormulaComputeEditorBody>) {
+ return <ConfigEditor title="Fórmula" summary={ensureFormula(props.field).expr || "Sin expresi\u00f3n"} value={props.field} onChange={props.onChange} readOnly={props.readOnly}>
+ {(draft, update) => <FormulaComputeEditorBody {...props} field={draft} onChange={update} />}
+ </ConfigEditor>;
+}
+
+function AggregateComputeEditor(props: React.ComponentProps<typeof AggregateComputeEditorBody>) {
+ return <ConfigEditor title="Cálculo agregado" summary={props.field.compute?.type} value={props.field} onChange={props.onChange} readOnly={props.readOnly}>
+ {(draft, update) => <AggregateComputeEditorBody {...props} field={draft} onChange={update} />}
+ </ConfigEditor>;
+}
+
+function AggregateWhereBuilder(props: React.ComponentProps<typeof AggregateWhereBuilderBody>) {
+ return <ConfigEditor title="Condiciones del cálculo" summary={`${props.value?.length || 0} condiciones`} value={props.value} onChange={props.onChange} readOnly={props.readOnly}>
+ {(draft, update) => <AggregateWhereBuilderBody {...props} value={draft} onChange={update} />}
+ </ConfigEditor>;
+}
+
+function VisibilityRuleEditor(props: React.ComponentProps<typeof VisibilityRuleEditorBody>) {
+ return <div className="d-flex align-items-center gap-2"><ConfigEditor title="Condición" summary={`${props.rule.field || props.rule.relatedField || "Campo"} ${props.rule.op || ""} ${formatRuleValue(props.rule.value)}`} value={props.rule} onChange={props.onChange} readOnly={props.readOnly}>
+ {(draft, update) => <VisibilityRuleEditorBody {...props} rule={draft} onChange={update} />}
+ </ConfigEditor><button type="button" className={styles.btnDel} disabled={props.readOnly} onClick={props.onRemove}>Eliminar</button></div>;
+}
+
+export function VisibilityConfigEditor(props: React.ComponentProps<typeof VisibilityConfigEditorBody>) {
+ const current = props.field ? ensureVisibilityConfig(props.field) : ensureVisibilityConfigFromValue(props.value);
+ return <ConfigEditor title="Visibilidad condicional" summary={current.enabled ? current.rules.length + " reglas - " + current.logic : "Desactivada"}
+ value={current} onChange={next => props.onChange(props.field ? {...props.field, visibility: next} : next)} readOnly={props.readOnly}>
+ {(draft, update) => <VisibilityConfigEditorBody {...props} field={undefined} value={draft} onChange={update} />}
+ </ConfigEditor>;
+}
+
+function AggregateConditionEditor({condition, onChange, sourceTable, sourceFields, currentFields, readOnly}: {
+ condition: AggregateWhereCondition; onChange: (next: AggregateWhereCondition) => void;
+ sourceTable: string; sourceFields: FieldOption[]; currentFields: FieldSchema[]; readOnly?: boolean;
+}) {
+ const index = 0;
+ const updateCondition = (_index: number, patch: Partial<AggregateWhereCondition>) => onChange({...condition, ...patch});
+ const setDynamicValue = (_index: number, fieldName: string) => onChange({...condition, value: fieldName ? '{{' + fieldName + '}}' : ''});
+ return (                <div className={styles.grid} style={{ alignItems: "end" }}>
+                  <div>
+                    <label className={styles.label}>Campo origen</label>
+                    <select
+                      className={styles.input}
+                      value={condition.field}
+                      disabled={readOnly || !sourceTable}
+                      onChange={(event) => updateCondition(index, { field: event.target.value })}
+                    >
+                      <option value="">Seleccionar campo</option>
+                      {buildFieldOptions(sourceFields, condition.field).map((candidate) => (
+                        <option key={candidate.name} value={candidate.name}>
+                          {candidate.label || candidate.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={styles.label}>Operador</label>
+                    <select
+                      className={styles.input}
+                      value={condition.op}
+                      disabled={readOnly}
+                      onChange={(event) =>
+                        updateCondition(index, {
+                          op: event.target.value as AggregateWhereCondition["op"],
+                          value: parseAggregateWhereValue(formatAggregateWhereValue(condition.value), event.target.value as AggregateWhereCondition["op"]),
+                        })
+                      }
+                    >
+                      {aggregateWhereOperators.map((operator) => (
+                        <option key={operator} value={operator}>
+                          {operator}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className={styles.label}>Valor literal</label>
+                    <input
+                      className={styles.input}
+                      value={formatAggregateWhereValue(condition.value)}
+                      disabled={readOnly}
+                      placeholder={condition.op === "in" ? "a, b, c" : "valor"}
+                      onChange={(event) =>
+                        updateCondition(index, {
+                          value: parseAggregateWhereValue(event.target.value, condition.op),
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label className={styles.label}>Valor dinámico</label>
+                    <select
+                      className={styles.input}
+                      value={
+                        (typeof condition.value === "string" &&
+                          condition.value.match(/^\{\{\s*([\w.]+)\s*\}\}$/)?.[1]) ||
+                        ""
+                      }
+                      disabled={readOnly}
+                      onChange={(event) => setDynamicValue(index, event.target.value)}
+                    >
+                      <option value="">Sin valor dinámico</option>
+                      {currentFields.map((candidate) => (
+                        <option key={candidate.name} value={candidate.name}>
+                          {candidate.label || candidate.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                </div>);
 }

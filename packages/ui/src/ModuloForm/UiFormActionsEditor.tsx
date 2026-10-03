@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfigEditor, ConfigSession } from "./ConfigEditor";
 import React, { useMemo, useState, useEffect } from "react";
 import Selector from "../components/fields/Selector";
 import type { Field as FieldSchema, VisibilityConfig } from "@repo/types";
@@ -328,7 +329,8 @@ export default function UiFormActionsEditor({
   loadingTableFields,
   workflowCatalog,
 }: Props) {
-  const actions = Array.isArray(value) ? value : [];
+  const [actionDraft, setActionDraft] = useState<UiFormAction[] | null>(null);
+  const actions = actionDraft ?? (Array.isArray(value) ? value : []);
 
   const [openGroup, setOpenGroup] = useState<UiActionType | null>(null);
   const [openAction, setOpenAction] = useState<number | null>(null);
@@ -358,7 +360,7 @@ export default function UiFormActionsEditor({
         : base;
 
     const nextActions = [...actions, next];
-    onChange(nextActions);
+    setActionDraft(structuredClone(nextActions));
 
     setOpenGroup(type);
     setOpenAction(actions.length);
@@ -367,7 +369,8 @@ export default function UiFormActionsEditor({
   const updateFormAction = (idx: number, patch: Partial<UiFormAction>) => {
     const next = [...actions];
     next[idx] = { ...next[idx], ...patch };
-    onChange(next);
+    if (actionDraft) setActionDraft(next);
+    else onChange(next);
   };
 
   const removeFormAction = (idx: number) => {
@@ -449,20 +452,22 @@ export default function UiFormActionsEditor({
                   const showIn = (a as any).showIn || (["view", "edit", "create"] as UiMode[]);
 
                   return (
-                    <div key={a.id || idx} className={styles.card} style={{ marginTop: 10 }}>
+                    <div key={idx} className={styles.card} style={{ marginTop: 10 }}>
                       <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        <button type="button" className={styles.btn}
+                          onClick={() => { setActionDraft(structuredClone(actions)); setOpenAction(idx); }}
+                          style={{ display: "flex", flexDirection: "column", gap: 2, textAlign: "left", flex: 1 }}>
                           <div style={{ fontWeight: 700 }}>
                             {a.label || "Sin label"}{" "}
                             <span className={styles.hint} style={{ marginLeft: 8 }}>
                               ({a.id || "sin_id"})
                             </span>
                           </div>
-                        </div>
+                        </button>
 
                         <div style={{ display: "flex", gap: 10 }}>
-                          <button type="button" className={styles.btn} onClick={() => setOpenAction(isActionOpen ? null : idx)}>
-                            {isActionOpen ? "Ocultar" : "Configurar"}
+                          <button type="button" className={styles.btn} onClick={() => { setActionDraft(structuredClone(actions)); setOpenAction(idx); }}>
+                            Configurar
                           </button>
 
                           <button
@@ -496,6 +501,9 @@ export default function UiFormActionsEditor({
                       </div>
 
                       {isActionOpen && (
+                        <ConfigSession title={a.label || "Configurar acción"} readOnly={readOnly}
+                          onClose={() => { setOpenAction(null); setActionDraft(null); }}
+                          onApply={() => { onChange(actions); setOpenAction(null); setActionDraft(null); }}>
                         <div className={styles.grid} style={{ marginTop: 10 }}>
                           <div>
                             <label className={styles.label}>id</label>
@@ -702,7 +710,7 @@ export default function UiFormActionsEditor({
                           )}
 
                           {/* ---- external ---- */}
-                        
+
 
                           {a.type === "external" && (
                           <>
@@ -795,6 +803,7 @@ export default function UiFormActionsEditor({
                             />
                           )}
                         </div>
+                        </ConfigSession>
                       )}
                     </div>
                   );
@@ -1130,7 +1139,6 @@ function ConditionsEditor({
     onChange(rules.length ? { match: nextMatch, conditions: rules } : undefined);
   };
 
-  const addRow = () => commit([...(rows || []), { field: "", op: "=", val: "" }]);
   const updateRow = (i: number, patch: Partial<(typeof rows)[number]>) => commit(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const removeRow = (i: number) => commit(rows.filter((_, idx) => idx !== i));
 
@@ -1153,9 +1161,10 @@ function ConditionsEditor({
             <option value="any">O (cualquiera)</option>
           </select>
 
-          <button type="button" className={styles.btnAdd} onClick={addRow} disabled={readOnly}>
-            + Añadir condición
-          </button>
+          <ConfigEditor<{field: string; op: DeriveFilterCondition["op"]; val: string}> title="Añadir condición" value={{field: "", op: "=", val: ""}}
+            readOnly={readOnly} onChange={next => commit([...rows, next])}>
+            {(draft, update) => <WorkflowConditionEditor r={draft} onChange={update} fields={fields} label={label} styles={styles} readOnly={readOnly} />}
+          </ConfigEditor>
         </div>
       </div>
 
@@ -1165,67 +1174,12 @@ function ConditionsEditor({
         </div>
       )}
 
-      {rows.map((r, i) => {
-        const needsValue = r.op !== "is_null" && r.op !== "not_null";
-        return (
-          <div
-            key={`${i}-${r.field}-${r.op}`}
-            className={styles.grid}
-            style={{
-              gridTemplateColumns: needsValue ? "1fr 180px 1fr auto" : "1fr 180px auto",
-              alignItems: "end",
-              gap: 10,
-              marginTop: 10,
-            }}
-          >
-            <div>
-              <label className={styles.label}>{label}</label>
-              <select className={styles.input} value={r.field} disabled={readOnly} onChange={(e) => updateRow(i, { field: e.target.value })}>
-                <option value="">— Selecciona campo —</option>
-                {fields.map((f) => (
-                  <option key={f.name} value={f.name}>
-                    {f.label ? `${f.label} (${f.name})` : f.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className={styles.label}>Operador</label>
-              <select className={styles.input} value={r.op} disabled={readOnly} onChange={(e) => updateRow(i, { op: e.target.value as DeriveFilterCondition["op"] })}>
-                <option value="=">=</option>
-                <option value="!=">!=</option>
-                <option value=">">{">"}</option>
-                <option value=">=">{">="}</option>
-                <option value="<">{"<"}</option>
-                <option value="<=">{"<="}</option>
-                <option value="contains">contains</option>
-                <option value="in">in</option>
-                <option value="not_in">not_in</option>
-                <option value="is_null">is_null</option>
-                <option value="not_null">not_null</option>
-              </select>
-            </div>
-
-            {needsValue && (
-              <div>
-                <label className={styles.label}>Valor</label>
-                <input
-                  className={styles.input}
-                  value={r.val}
-                  disabled={readOnly}
-                  onChange={(e) => updateRow(i, { val: e.target.value })}
-                  placeholder={r.op === "in" || r.op === "not_in" ? "Ej: si, pendiente, true" : "Ej: si | no | true | 10"}
-                />
-              </div>
-            )}
-
-            <button type="button" className={styles.btnDel} onClick={() => removeRow(i)} disabled={readOnly}>
-              Eliminar
-            </button>
-          </div>
-        );
-      })}
+      {rows.map((r, i) => <div key={i} className="d-flex align-items-center gap-2">
+        <ConfigEditor title={r.field || "Condición"} summary={r.op + ' ' + r.val} value={r} readOnly={readOnly} onChange={next => updateRow(i, next)}>
+          {(draft, update) => <WorkflowConditionEditor r={draft} onChange={update} fields={fields} label={label} styles={styles} readOnly={readOnly} />}
+        </ConfigEditor>
+        <button type="button" className={styles.btnDel} onClick={() => removeRow(i)} disabled={readOnly}>Eliminar</button>
+      </div>)}
     </div>
   );
 }
@@ -2103,4 +2057,66 @@ function WorkflowInputEditor({
       ))}
     </div>
   );
+}
+
+function WorkflowConditionEditor({r, onChange, fields, label, styles, readOnly}: {
+ r: {field: string; op: DeriveFilterCondition['op']; val: string};
+ onChange: (next: {field: string; op: DeriveFilterCondition['op']; val: string}) => void;
+ fields: {name: string; label?: string}[]; label: string; styles: Record<string, string>; readOnly?: boolean;
+}) {
+ const needsValue = r.op !== 'is_null' && r.op !== 'not_null';
+ const i = 0;
+ const updateRow = (_index: number, patch: Partial<typeof r>) => onChange({...r, ...patch});
+ return (          <div
+            className={styles.grid}
+            style={{
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(180px, 100%), 1fr))",
+              alignItems: "end",
+              gap: 10,
+              marginTop: 10,
+            }}
+          >
+            <div>
+              <label className={styles.label}>{label}</label>
+              <select className={styles.input} value={r.field} disabled={readOnly} onChange={(e) => updateRow(i, { field: e.target.value })}>
+                <option value="">— Selecciona campo —</option>
+                {fields.map((f) => (
+                  <option key={f.name} value={f.name}>
+                    {f.label ? `${f.label} (${f.name})` : f.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className={styles.label}>Operador</label>
+              <select className={styles.input} value={r.op} disabled={readOnly} onChange={(e) => updateRow(i, { op: e.target.value as DeriveFilterCondition["op"] })}>
+                <option value="=">=</option>
+                <option value="!=">!=</option>
+                <option value=">">{">"}</option>
+                <option value=">=">{">="}</option>
+                <option value="<">{"<"}</option>
+                <option value="<=">{"<="}</option>
+                <option value="contains">contains</option>
+                <option value="in">in</option>
+                <option value="not_in">not_in</option>
+                <option value="is_null">is_null</option>
+                <option value="not_null">not_null</option>
+              </select>
+            </div>
+
+            {needsValue && (
+              <div>
+                <label className={styles.label}>Valor</label>
+                <input
+                  className={styles.input}
+                  value={r.val}
+                  disabled={readOnly}
+                  onChange={(e) => updateRow(i, { val: e.target.value })}
+                  placeholder={r.op === "in" || r.op === "not_in" ? "Ej: si, pendiente, true" : "Ej: si | no | true | 10"}
+                />
+              </div>
+            )}
+
+          </div>);
 }

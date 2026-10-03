@@ -79,7 +79,7 @@ export default function MainShell({
           <a className="navbar-brand ms-lg-2 d-flex align-items-center" href="/">
             <img
               src="/mylogo2.png"
-              alt="JiRo v2"
+              alt="JiRo v3"
               height="90"
               style={{ objectFit: "contain", width: "auto" }}
               className="d-inline-block align-text-top"
@@ -114,7 +114,7 @@ export default function MainShell({
           <main className="main-shell-content flex-grow-1">
             {children}
             <footer className="text-center mt-auto pt-3 text-muted small">
-              © {new Date().getFullYear()} JiRo v2 · Next.js + Supabase
+              © {new Date().getFullYear()} JiRo v3
             </footer>
           </main>
         </div>

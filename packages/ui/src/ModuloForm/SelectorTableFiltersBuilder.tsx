@@ -1,3 +1,4 @@
+import { ConfigEditor } from "./ConfigEditor";
 import React, { useEffect, useMemo, useState } from "react";
 import styles from "./modulo-detalle.module.css";
 import {
@@ -51,7 +52,7 @@ const LITERAL_TYPES: Array<{ value: SelectorTableFilterLiteralType; label: strin
 
 type GroupPath = number[];
 
-export default function SelectorTableFiltersBuilder({
+function SelectorTableFiltersBuilderBody({
   value,
   onChange,
   readOnly,
@@ -239,19 +240,12 @@ function renderGroupEditor(args: {
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className={styles.btn}
-            disabled={readOnly}
-            onClick={() =>
-              onUpdateGroup(path, (current) => ({
-                ...current,
-                items: [...current.items, createEmptySelectorTableFilterCondition()],
-              }))
-            }
-          >
-            Añadir condicion
-          </button>
+          <ConfigEditor title="Añadir condición" value={createEmptySelectorTableFilterCondition()} readOnly={readOnly}
+            onChange={next => onUpdateGroup(path, current => ({...current, items: [...current.items, next]}))}>
+            {(draft, update) => <ConditionEditorBody condition={draft} path={[]} targetFields={targetFields} currentFields={currentFields} readOnly={readOnly}
+              onUpdateCondition={(_, change) => update(change(draft))} canMoveUp={false} canMoveDown={false}
+              onMoveUp={() => {}} onMoveDown={() => {}} onRemove={() => {}} />}
+          </ConfigEditor>
 
           <button
             type="button"
@@ -340,7 +334,7 @@ function renderGroupEditor(args: {
   );
 }
 
-function ConditionEditor(props: {
+function ConditionEditorBody(props: {
   condition: SelectorTableFilterCondition;
   path: number[];
   readOnly?: boolean;
@@ -498,14 +492,7 @@ function ConditionEditor(props: {
         {hideValue ? <div className={styles.hint} style={{ marginTop: 10 }}>Este operador no necesita valor.</div> : null}
       </div>
 
-      <ItemActionButtons
-        readOnly={readOnly}
-        canMoveUp={canMoveUp}
-        canMoveDown={canMoveDown}
-        onMoveUp={onMoveUp}
-        onMoveDown={onMoveDown}
-        onRemove={onRemove}
-      />
+
     </div>
   );
 }
@@ -700,4 +687,20 @@ function parseListValue(raw: string, literalType: SelectorTableFilterLiteralType
   }
 
   return items;
+}
+
+export default function SelectorTableFiltersBuilder(props: Props) {
+ return <ConfigEditor title="Filtros del selector" summary="Configurar condiciones y grupos" value={normalizeSelectorTableFilters(props.value)} onChange={props.onChange} readOnly={props.readOnly}>
+ {(draft, update) => <SelectorTableFiltersBuilderBody {...props} value={draft} onChange={update} />}
+ </ConfigEditor>;
+}
+
+function ConditionEditor(props: React.ComponentProps<typeof ConditionEditorBody>) {
+ return <div className="d-flex align-items-center gap-2">
+ <ConfigEditor title={props.condition.field || "Condición"} summary={props.condition.op + " " + JSON.stringify(props.condition.value ?? "")}
+ value={props.condition} readOnly={props.readOnly} onChange={next => props.onUpdateCondition(props.path, () => next)}>
+ {(draft, update) => <ConditionEditorBody {...props} condition={draft} onUpdateCondition={(_, change) => update(change(draft))} />}
+ </ConfigEditor>
+ <ItemActionButtons {...props} />
+ </div>;
 }

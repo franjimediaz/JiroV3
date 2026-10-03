@@ -21,33 +21,56 @@ export function filterSidebarTree(items: SidebarItem[], canView?: (slug: string)
 }
 
 export function getSelectableModules(items: SidebarItem[]) {
-  const modules: Array<SidebarItem & { moduleLabel: string }> = [];
-  const visit = (nodes: SidebarItem[], parents: string[]) => {
-    for (const node of nodes) {
-      const names = node.tipo === "carpeta" ? [...parents, node.nombre] : parents;
-      if (node.tipo === "carpeta" && node.hijos?.some(navigable)) modules.push({ ...node, moduleLabel: names.join(" / ") });
-      visit(node.hijos || [], names);
-    }
-  };
-  visit(items, []);
-  return modules;
+  return items
+    .filter(
+      (node) =>
+        node.tipo === "carpeta" &&
+        node.hijos?.some(navigable)
+    )
+    .map((node) => ({
+      ...node,
+      moduleLabel: node.nombre,
+    }));
 }
 
 /** Longest route wins; a nested folder owns its own descendants. */
-export function findModuleForPath(items: SidebarItem[], pathname: string): SidebarItem | undefined {
+export function findModuleForPath(
+  items: SidebarItem[],
+  pathname: string
+): SidebarItem | undefined {
   let match: SidebarItem | undefined;
   let length = -1;
-  const visit = (nodes: SidebarItem[], owner?: SidebarItem) => {
+
+  const visit = (
+    nodes: SidebarItem[],
+    rootModule?: SidebarItem
+  ) => {
     for (const node of nodes) {
-      const owningModule = node.tipo === "carpeta" ? node : owner;
-      if (!isSidebarFolder(node) && node.route && node.route !== "#" && isActive(pathname, node.route)) {
+      const owningModule =
+        !rootModule && node.tipo === "carpeta"
+          ? node
+          : rootModule;
+
+      if (
+        !isSidebarFolder(node) &&
+        node.route &&
+        node.route !== "#" &&
+        isActive(pathname, node.route)
+      ) {
         const score = node.route.replace(/\/+$/, "").length;
-        if (score > length) { length = score; match = owningModule; }
+
+        if (score > length) {
+          length = score;
+          match = owningModule;
+        }
       }
+
       visit(node.hijos || [], owningModule);
     }
   };
+
   visit(items);
+
   return match;
 }
 

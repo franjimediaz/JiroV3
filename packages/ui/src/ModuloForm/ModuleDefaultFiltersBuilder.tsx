@@ -1,3 +1,4 @@
+import { ConfigEditor } from "./ConfigEditor";
 import React, { useEffect, useMemo, useState } from "react";
 import styles from "./modulo-detalle.module.css";
 import {
@@ -56,7 +57,7 @@ const FUNCTIONS: Array<{ value: ModuleDefaultFilterFunction; label: string }> = 
 
 type GroupPath = number[];
 
-export default function ModuleDefaultFiltersBuilder({ value, fields, readOnly, onChange }: Props) {
+function ModuleDefaultFiltersBuilderBody({ value, fields, readOnly, onChange }: Props) {
   const normalizedValue = useMemo(() => normalizeModuleDefaultFilters(value), [value]);
   const [mode, setMode] = useState<"visual" | "advanced">("visual");
   const [rawText, setRawText] = useState(() => JSON.stringify(normalizedValue, null, 2));
@@ -200,19 +201,12 @@ function renderGroupEditor(args: {
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className={styles.btn}
-            disabled={readOnly}
-            onClick={() =>
-              onUpdateGroup(path, (current) => ({
-                ...current,
-                items: [...current.items, createEmptyModuleDefaultFilterCondition()],
-              }))
-            }
-          >
-            Añadir condicion
-          </button>
+          <ConfigEditor title="Añadir condición" value={createEmptyModuleDefaultFilterCondition()} readOnly={readOnly}
+            onChange={next => onUpdateGroup(path, current => ({...current, items: [...current.items, next]}))}>
+            {(draft, update) => <ConditionEditorBody condition={draft} path={[]} fields={fields} readOnly={readOnly}
+              onUpdateCondition={(_, change) => update(change(draft))} canMoveUp={false} canMoveDown={false}
+              onMoveUp={() => {}} onMoveDown={() => {}} onRemove={() => {}} />}
+          </ConfigEditor>
           <button
             type="button"
             className={styles.btn}
@@ -290,7 +284,7 @@ function renderGroupEditor(args: {
   );
 }
 
-function ConditionEditor(props: {
+function ConditionEditorBody(props: {
   condition: ModuleDefaultFilterCondition;
   path: number[];
   fields: FieldOption[];
@@ -441,14 +435,7 @@ function ConditionEditor(props: {
         {hideValue ? <div className={styles.hint} style={{ marginTop: 10 }}>Este operador no requiere valor.</div> : null}
       </div>
 
-      <ActionButtons
-        readOnly={readOnly}
-        canMoveUp={canMoveUp}
-        canMoveDown={canMoveDown}
-        onMoveUp={onMoveUp}
-        onMoveDown={onMoveDown}
-        onRemove={onRemove}
-      />
+
     </div>
   );
 }
@@ -642,4 +629,20 @@ function parseListValue(raw: string, literalType: ModuleDefaultFilterLiteralType
   }
 
   return items;
+}
+
+export default function ModuleDefaultFiltersBuilder(props: Props) {
+ return <ConfigEditor title="Filtros del módulo" summary="Configurar condiciones y grupos" value={normalizeModuleDefaultFilters(props.value)} onChange={props.onChange} readOnly={props.readOnly}>
+ {(draft, update) => <ModuleDefaultFiltersBuilderBody {...props} value={draft} onChange={update} />}
+ </ConfigEditor>;
+}
+
+function ConditionEditor(props: React.ComponentProps<typeof ConditionEditorBody>) {
+ return <div className="d-flex align-items-center gap-2">
+ <ConfigEditor title={props.condition.field || "Condición"} summary={props.condition.op + " " + JSON.stringify(props.condition.value ?? "")}
+ value={props.condition} readOnly={props.readOnly} onChange={next => props.onUpdateCondition(props.path, () => next)}>
+ {(draft, update) => <ConditionEditorBody {...props} condition={draft} onUpdateCondition={(_, change) => update(change(draft))} />}
+ </ConfigEditor>
+ <ActionButtons {...props} />
+ </div>;
 }

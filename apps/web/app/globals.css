@@ -921,26 +921,18 @@ a {
 .jiro-list-view .jiro-list-action[aria-pressed="true"] { box-shadow: inset 0 -3px currentColor; }
 .jiro-list-menu { background: #ffffff; }
 .jiro-list-menu .am-danger { color: #a11212; }
-.jiro-record-form .jiro-form-primary,
-.jiro-record-form .jiro-form-tab.is-active {
+.jiro-record-form .jiro-form-primary {
   background: var(--module-color);
   color: var(--module-contrast);
   border: 1px solid var(--module-color);
 }
-.jiro-record-form .jiro-form-tab {
-  background: var(--module-color-soft);
-  color: var(--module-soft-contrast);
-  border: 1px solid var(--module-border);
-  white-space: nowrap;
-}
-.jiro-record-form .jiro-form-tab.is-active { box-shadow: inset 0 -3px currentColor; font-weight: 600; }
-.jiro-record-form :is(.jiro-form-primary, .jiro-form-tab):hover:not(:disabled) {
+.jiro-record-form .jiro-form-primary:hover:not(:disabled) {
   background: var(--module-color-light);
   color: var(--module-light-contrast);
 }
 .jiro-list-view :is(button, input, select):focus-visible,
 .jiro-list-menu .am-item:focus-visible,
-.jiro-record-form :is(.jiro-form-primary, .jiro-form-tab):focus-visible {
+.jiro-record-form .jiro-form-primary:focus-visible {
   outline: 2px solid #111827;
   outline-offset: 2px;
   box-shadow: 0 0 0 4px #ffffff;
@@ -1041,9 +1033,32 @@ a {
   border-color: var(--jiro-field-border);
 }
 
-.jiro-record-form .jiro-reverse-links > .card > .card-header {
+.jiro-record-form .jiro-module-tabs {
   background: var(--jiro-section-bg);
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
+
+.jiro-module-tabs > .nav-tabs {
+  flex-wrap: nowrap;
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
+}
+.jiro-module-tabs .nav-link { white-space: nowrap; }
+
+.jiro-tree-view-table {
+  --bs-table-bg: #ffffff;
+  --bs-table-color: #111827;
+}
+.jiro-tree-view-table > thead > tr > th {
+  background: var(--module-color);
+  color: var(--module-contrast);
+  border-inline-end: 1px solid var(--module-border);
+}
+.jiro-tree-view-table > thead :is(i, svg, button, a) { color: inherit; }
+.jiro-tree-view-table > thead svg { fill: currentColor; }
 
 .jiro-relation-menu .am-item,
 .jiro-record-form .jiro-relation-button {

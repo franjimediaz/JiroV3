@@ -331,6 +331,19 @@ export default function ReverseLinkTable({ field, parentRecord, mode, moduleColo
                     >
                   <thead>
                     <tr>
+                      <th
+                        style={{
+                          width: 180,
+                          background: "var(--jiro-section-bg, #112c66)",
+                          color: "var(--jiro-section-text, white)",
+                          fontWeight: 600,
+                          padding: "12px 16px",
+                          borderBottom: "2px solid var(--jiro-section-bg, #1e40af)",
+                          
+                        }}
+                      >
+                        
+                      </th>
                       {columnsFull.map((column) => (
                         <th
                           key={column.name}
@@ -347,19 +360,7 @@ export default function ReverseLinkTable({ field, parentRecord, mode, moduleColo
                           {column.label || column.name}
                         </th>
                       ))}
-                      <th
-                        style={{
-                          width: 180,
-                          background: "var(--jiro-section-bg, #112c66)",
-                          color: "var(--jiro-section-text, white)",
-                          fontWeight: 600,
-                          padding: "12px 16px",
-                          borderBottom: "2px solid var(--jiro-section-bg, #1e40af)",
-                          
-                        }}
-                      >
-                        
-                      </th>
+                      
                     </tr>
                   </thead>
 
@@ -370,16 +371,7 @@ export default function ReverseLinkTable({ field, parentRecord, mode, moduleColo
                           style={{
                           backgroundColor: index % 2 === 0 ? "#000000" : "#000000",
                         }}>
-                        {columnsFull.map((column) => (
-                          <td key={column.name}
-                          style={{
-                          
-                          borderBottom: "1px solid #e5e7eb",
-                          borderRight: "1px solid #000000",
-                        }}
-                          >{renderCellValue(row, column)}</td>
-                        ))}
-                        <td>
+                           <td>
                           <ActionMenu
                             triggerClassName="jiro-relation-button"
                             menuClassName={moduleColor ? "jiro-relation-menu" : undefined}
@@ -403,6 +395,16 @@ export default function ReverseLinkTable({ field, parentRecord, mode, moduleColo
                             ]}
                           />
                         </td>
+                        {columnsFull.map((column) => (
+                          <td key={column.name}
+                          style={{
+                          
+                          borderBottom: "1px solid #e5e7eb",
+                          borderRight: "1px solid #000000",
+                        }}
+                          >{renderCellValue(row, column)}</td>
+                        ))}
+                       
                       </tr>
                     ))}
                   </tbody>

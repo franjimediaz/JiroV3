@@ -16,6 +16,7 @@ import { applyCompute } from "./engines/computeEngine";
 import type { DataProvider } from "./engines/computeEngine";
 import { evaluateFieldVisibility, evaluateTabVisibility } from "./engines/visibilityEngine";
 import { dataProvider as defaultDataProvider } from "./providers/DataProvider";
+import { ModuleTabs } from "./ModuleTabs";
 import ReverseLinkTable from "./components/fields/ReverseLinkTable";
 import TreeView from "./components/specialViews/TreeView";
 import FormActionsBar from "./ModuloForm/FormActionsBar";
@@ -1183,6 +1184,7 @@ export default function Form({
         ) : (
           <TreeView
             config={treeViewConfig}
+            moduleColor={normalizedSchema.ui?.color}
             dataProvider={treeViewProvider}
             parentRecord={treeViewParentRecord ?? values}
             schemaFields={treeSchemaFields}
@@ -1272,26 +1274,13 @@ export default function Form({
         "--jiro-relation-button-hover-text": getContrastingTextColor(relationButtonHover),
       } as React.CSSProperties}>
       {showMainTabs && (
-        <div className="d-flex gap-4 mb-3 border-bottom" style={{ 
-        overflowX: "auto",
-        overflowY: "hidden",
-        WebkitOverflowScrolling: "touch",
-        borderBottom: "1px solid #e5e7eb",}}>
-          {visibleRuntimeTabs.map((tab) => {
-            const isActive = activeTab?.id === tab.id;
-
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTabId(tab.id)}
-                className={`btn jiro-form-tab ${isActive ? "is-active" : ""}`}
-                aria-pressed={isActive}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
+        <div className="card">
+          <ModuleTabs
+            items={visibleRuntimeTabs.map(tab => ({ id: tab.id, label: tab.label }))}
+            activeId={activeTab?.id}
+            onChange={setActiveTabId}
+            label="Vistas del formulario"
+          />
         </div>
       )}
 
@@ -1312,25 +1301,12 @@ export default function Form({
       {showReverseLinks && reverseLinkFields.length > 0 && (
         <div className="jiro-reverse-links d-flex flex-column gap-3">
           <div className="card">
-            <div className="card-header pb-0">
-              <ul className="nav nav-tabs card-header-tabs">
-                {reverseLinkFields.map((field) => {
-                  const isActive = activeReverseLink === field.name;
-
-                  return (
-                    <li className="nav-item" key={field.name}>
-                      <button
-                        type="button"
-                        className={`nav-link jiro-relation-button ${isActive ? "active" : ""}`}
-                        onClick={() => setActiveReverseLink(field.name)}
-                      >
-                        {(field.label as string) || field.name}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            <ModuleTabs
+              items={reverseLinkFields.map(field => ({ id: field.name, label: (field.label as string) || field.name }))}
+              activeId={activeReverseLink}
+              onChange={setActiveReverseLink}
+              label="Relaciones inversas"
+            />
 
             <div className="card-body">
               {reverseLinkFields.map((field) => {

@@ -121,6 +121,17 @@
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
 }
 
+.configuration .dialog { width: min(900px, 100%); }
+.configuration .content { display: flex; flex-direction: column; max-height: 90dvh; }
+.configuration .body { overflow: auto; min-height: 0; background: var(--card, #fff); color: var(--text, #111827); }
+.configuration .header, .configuration .footer { flex-shrink: 0; }
+.configuration .body input, .configuration .body select, .configuration .body textarea { max-width: 100%; }
+@media (max-width: 600px) {
+  .configuration { padding: 6px; }
+  .configuration .content { max-height: calc(100dvh - 12px); }
+  .configuration .body { padding: 12px; }
+}
+
 /* =========================
    ANIMATIONS
    ========================= */

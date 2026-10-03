@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+
+import { ConfigEditor } from "./ConfigEditor";
 
 import { useState, useTransition, useEffect, useRef, useCallback} from "react";
 import styles from "./modulo-detalle.module.css";
@@ -8,7 +10,7 @@ import {IconPicker} from "@repo/ui";
 import type { CalendarSpecialViewConfig, CalendarViewMode, ConfigurableAuditEvent, Field as FieldSchema, ModuleCapabilityKey, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
 import { applyModuleAuditConfigToProps, applyModuleCapabilitiesToProps, getEffectiveModuleAuditConfig, getEffectiveModuleCapabilities, MODULE_AUDIT_EVENT_OPTIONS, MODULE_CAPABILITY_OPTIONS, normalizeModuleDefaultFilters, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
-import { FieldRow, VisibilityConfigEditor } from "./FieldRow"
+import { FieldRow, FieldConfigEditor, VisibilityConfigEditor } from "./FieldRow"
 import ModuleDefaultFiltersBuilder from "./ModuleDefaultFiltersBuilder";
 import { invalidateModuleSchemaCache } from "../providers/DataProvider";
 import UiFormActionsEditor, { type UiFormAction } from "./UiFormActionsEditor";
@@ -1174,14 +1176,9 @@ const setSpecialViews = (specialViews: SpecialViewConfig[]) => {
     setRawText(JSON.stringify(nextObj, null, 2));
   };
 
-  const addField = () => {
-    const base: Field = {
-      name: `campo_${propsObj.fields.length + 1}`,
-      label: "Nuevo campo",
-      type: "text",
-    } as Field;
-
-    const next = [...propsObj.fields, base];
+  const addField = (base: Field) => {
+    const appended = [...propsObj.fields, base];
+    const next = updateRecordNameField(appended, appended.length - 1, base);
     const nextObj = { ...propsObj, fields: next };
     setPropsObj(nextObj);
     setRawText(JSON.stringify(nextObj, null, 2));
@@ -1686,14 +1683,12 @@ const editorTabs = [
   {editorTab === "fields" && (
     <Section title="Campos">
       <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
-        <button
-          type="button"
-          className={styles.btnAdd}
-          onClick={addField}
-          disabled={readOnly}
-        >
-          + Añadir campo
-        </button>
+        <ConfigEditor title="Añadir campo" value={{name: `campo_${propsObj.fields.length + 1}`, label: "Nuevo campo", type: "text"} as Field}
+          readOnly={readOnly} onChange={addField}>
+          {(draft, update) => <FieldConfigEditor field={draft} onChange={update} readOnly={readOnly}
+            fieldsByTable={fieldsByTable} loadingByTable={loadingByTable}
+            ensureFieldsLoaded={ensureFieldsLoaded} currentFields={propsObj.fields} />}
+        </ConfigEditor>
       </div>
 
       {propsObj.fields.length === 0 && (
@@ -1702,27 +1697,9 @@ const editorTabs = [
 
       <div className="d-flex flex-column gap-2" style={{ marginTop: 12 }}>
         {propsObj.fields.map((field, idx) => {
-          const summaryLabel = field.label?.trim() || "Sin label";
-          const summaryName = field.name?.trim() || "sin_name";
 
           return (
-            <details key={idx} className={styles.card} style={{ marginBottom: 0 }}>
-              <summary style={{ cursor: "pointer", padding: 10 }}>
-                <div className="d-flex justify-content-between align-items-center gap-2">
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>
-                      {summaryLabel} <span className={styles.badgeSoft}>{summaryName}</span>
-                    </div>
-                    <div className={styles.hint} style={{ marginTop: 2 }}>
-                      type: {field.type}
-                    </div>
-                  </div>
-                  <span className={styles.badgeSoft}>Abrir</span>
-                </div>
-              </summary>
-
-              <div style={{ padding: 10 }}>
-                <FieldRow
+            <FieldRow key={idx}
                   field={field}
                   onChange={(patch: Field) => updateField(idx, patch)}
                   onRemove={() => removeField(idx)}
@@ -1736,8 +1713,6 @@ const editorTabs = [
                   ensureFieldsLoaded={ensureFieldsLoaded}
                   currentFields={propsObj.fields}
                 />
-              </div>
-            </details>
           );
         })}
       </div>
@@ -2038,34 +2013,8 @@ const editorTabs = [
                                 const fieldIdx = propsObj.fields.findIndex((x) => x.name === f.name);
                                 if (fieldIdx === -1) return null;
 
-                                const summaryLabel =
-                                  propsObj.fields[fieldIdx].label?.trim() || "Sin label";
-                                const summaryName =
-                                  propsObj.fields[fieldIdx].name?.trim() || "sin_name";
-
                                 return (
-                                  <details
-                                    key={fieldIdx}
-                                    className={styles.card}
-                                    style={{ marginBottom: 0 }}
-                                  >
-                                    <summary style={{ cursor: "pointer", padding: 10 }}>
-                                      <div className="d-flex justify-content-between align-items-center gap-2">
-                                        <div>
-                                          <div style={{ fontWeight: 600, fontSize: 13 }}>
-                                            {summaryLabel}{" "}
-                                            <span className={styles.badgeSoft}>{summaryName}</span>
-                                          </div>
-                                          <div className={styles.hint} style={{ marginTop: 2 }}>
-                                            type: {propsObj.fields[fieldIdx].type}
-                                          </div>
-                                        </div>
-                                        <span className={styles.badgeSoft}>Abrir</span>
-                                      </div>
-                                    </summary>
-
-                                    <div style={{ padding: 10 }}>
-                                      <FieldRow
+                                  <FieldRow
                                         key={fieldIdx}
                                         field={propsObj.fields[fieldIdx]}
                                         onChange={(patch: Field) => updateField(fieldIdx, patch)}
@@ -2080,8 +2029,6 @@ const editorTabs = [
                                         ensureFieldsLoaded={ensureFieldsLoaded}
                                         currentFields={propsObj.fields}
                                       />
-                                    </div>
-                                  </details>
                                 );
                               })}
                             </div>
@@ -2121,28 +2068,9 @@ const editorTabs = [
                     <div className={styles.sectionBody}>
                       <div className="d-flex flex-column gap-2">
                         {unassigned.map(({ idx2 }) => {
-                          const summaryLabel = propsObj.fields[idx2].label?.trim() || "Sin label";
-                          const summaryName = propsObj.fields[idx2].name?.trim() || "sin_name";
 
                           return (
-                            <details key={idx2} className={styles.card} style={{ marginBottom: 0 }}>
-                              <summary style={{ cursor: "pointer", padding: 10 }}>
-                                <div className="d-flex justify-content-between align-items-center gap-2">
-                                  <div>
-                                    <div style={{ fontWeight: 600, fontSize: 13 }}>
-                                      {summaryLabel}{" "}
-                                      <span className={styles.badgeSoft}>{summaryName}</span>
-                                    </div>
-                                    <div className={styles.hint} style={{ marginTop: 2 }}>
-                                      type: {propsObj.fields[idx2].type}
-                                    </div>
-                                  </div>
-                                  <span className={styles.badgeSoft}>Abrir</span>
-                                </div>
-                              </summary>
-
-                              <div style={{ padding: 10 }}>
-                                <FieldRow
+                            <FieldRow key={idx2}
                                   field={propsObj.fields[idx2]}
                                   onChange={(patch: Field) => updateField(idx2, patch)}
                                   onRemove={() => removeField(idx2)}
@@ -2156,8 +2084,6 @@ const editorTabs = [
                                   ensureFieldsLoaded={ensureFieldsLoaded}
                                   currentFields={propsObj.fields}
                                 />
-                              </div>
-                            </details>
                           );
                         })}
                       </div>
@@ -2348,6 +2274,11 @@ const editorTabs = [
             setSpecialViews(next);
             setActiveViewEditorId(next[0] ? `special:${next[0].id}` : "");
           };
+          return (<>
+            <ConfigEditor key={view.id} title={view.label || view.id} summary={view.type} value={view}
+              onChange={next => updateView(() => next)} readOnly={readOnly}>
+              {(view, setDraft) => {
+                const updateView = (updater: (prev: SpecialViewConfig) => SpecialViewConfig) => setDraft(updater(view));
           const calendarConfig = view.type === "calendar" ? normalizeCalendarConfig(view.config) : null;
           const planEditorConfig = view.type === "planEditor" ? normalizePlanEditorConfig(view.config ?? view) : null;
           const calendarFields = calendarConfig ? getTableFields(calendarConfig.sourceModuleSlug) : [];
@@ -2393,8 +2324,8 @@ const editorTabs = [
             });
           };
 
-          return (
-            <div key={view.id} className={styles.card} style={{ marginTop: 12 }}>
+
+                return (            <div key={view.id} className={styles.card} style={{ marginTop: 12 }}>
               <div className={styles.grid}>
                 <div>
                   <label className={styles.label}>ID</label>
@@ -2740,6 +2671,10 @@ const editorTabs = [
                 />
               )}
 
+
+            </div>);
+              }}
+            </ConfigEditor>
               <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
                 <button
                   type="button"
@@ -2751,8 +2686,7 @@ const editorTabs = [
                   Eliminar vista
                 </button>
               </div>
-            </div>
-          );
+          </>);
         }
 
         const tabs = getTabs().filter((tab) => tab.type !== "form");
@@ -2783,8 +2717,12 @@ const editorTabs = [
           setActiveViewEditorId(nextViewTab ? `tab:${nextViewTab.id}` : "");
         };
 
-        return (
-          <div key={t.id} className={styles.card} style={{ marginTop: 12 }}>
+        return (<>
+          <ConfigEditor<UiTab> key={t.id} title={t.label || t.id} summary={t.type} value={t}
+            onChange={next => updateTab(() => next)} readOnly={readOnly}>
+            {(t, setDraft) => {
+              const updateTab = (updater: (prev: UiTab) => UiTab) => setDraft(updater(t));
+              return (          <div key={t.id} className={styles.card} style={{ marginTop: 12 }}>
             <div className={styles.grid}>
               <div>
                 <label className={styles.label}>ID</label>
@@ -3337,6 +3275,10 @@ const editorTabs = [
               })()
             )}
 
+
+          </div>);
+            }}
+          </ConfigEditor>
             <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
               <button
                 type="button"
@@ -3348,8 +3290,7 @@ const editorTabs = [
                 Eliminar vista
               </button>
             </div>
-          </div>
-        );
+        </>);
       })()}
     </Section>
   )}

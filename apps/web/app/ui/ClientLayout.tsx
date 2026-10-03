@@ -31,7 +31,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         <div className="bg-white rounded shadow-sm p-3 p-lg-4">{children}</div>
         {!hideSidebar && (
           <footer className="text-center mt-4 mb-2 text-muted small">
-            © {new Date().getFullYear()} JiRo v2 · Next.js + Supabase
+            © {new Date().getFullYear()} JiRo v3
           </footer>
         )}
       </main>

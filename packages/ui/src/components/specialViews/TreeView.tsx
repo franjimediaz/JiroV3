@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {ActionMenu} from "../../ActionMenu";
 import { normalizeTreeViewConfig } from "@repo/types";
+import { getModuleColorVariables } from "../../utils/colorContrast";
 import { dataProvider as schemaProvider } from "../../providers/DataProvider";
 import {
   collectRelationPendingKeys,
@@ -71,6 +72,7 @@ type NormalizedColumn = {
 };
 
 type Props = {
+  moduleColor?: string;
   config?: any;
   dataProvider?: any;
   parentRecord?: any;
@@ -744,28 +746,16 @@ const pendingLookupKeys = useMemo(
 
   const renderTable = (items: any[]) => (
     <div className="table-responsive">
-      <table className="table table-hover align-middle mb-0">
+      <table className="table table-hover align-middle mb-0 jiro-tree-view-table" style={getModuleColorVariables(p.moduleColor) as React.CSSProperties}>
         <thead>
           <tr className="text-muted small">
             {(effectiveColumns || []).map((c, idx) => (
-              <th key={`${c.field}__${idx}`} style={{
-                          ...(c.width ? { width: c.width } : {}),
-                          background: "linear-gradient(90deg, #13367c, #13367c, #13367c)",
-                          color:"white",
-                          borderRight: "1px solid rgb(0, 0, 0)"
-
-                        }}>
+              <th key={`${c.field}__${idx}`} style={{ width: c.width || undefined }}>
                 {c.label}
               </th>
             ))}
             {showActions && (
-              <th className="text-end" style={{
-                 width: "1%",
-                  background: "linear-gradient(90deg, #13367c, #13367c, #13367c)",
-                  color:"white",
-                  borderRight: "1px solid rgb(0, 0, 0)"}}>
-                
-              </th>
+              <th className="text-end" style={{ width: "1%" }} />
             )}
           </tr>
         </thead>
