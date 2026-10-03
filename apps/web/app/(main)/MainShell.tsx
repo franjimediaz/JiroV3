@@ -108,7 +108,7 @@ export default function MainShell({
             onModuleChange={selectModule}
             isOpen={sidebarOpen}
             onClose={() => setSidebarOpen(false)}
-            title="Navegacion"
+            title=""
           />
 
           <main className="main-shell-content flex-grow-1">

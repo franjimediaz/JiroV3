@@ -11,7 +11,7 @@ export type SidebarVariant = "fixed" | "drawer";
 
 export function Sidebar({
   items,
-  title = "Navegacion",
+  title = "",
   variant = "fixed",
   isOpen = false,
   onClose,
@@ -155,7 +155,7 @@ export function Sidebar({
 
           <div className="sidebarDrawerBody">{tree}</div>
           <div className="sidebarDrawerFooter">
-            <SidebarUser />
+            <SidebarUser onNavigate={onClose} />
           </div>
         </aside>
       </>
@@ -165,7 +165,11 @@ export function Sidebar({
   return (
     <aside className={`sidebar-desktop border-end h-100 ${miniMode ? "is-mini" : ""}`}>
       <div className={`p-4 sidebar-sticky ${miniMode ? "is-mini" : ""}`}>
-        <div className="sidebar-topbar">
+        
+        {tree}
+      </div>
+      <SidebarUser miniMode={miniMode} />
+      <div className="sidebar-topbar">
           <h6 className={`sidebar-title ${miniMode ? "is-mini" : ""}`}>{title}</h6>
           {onToggleMini ? (
             <button
@@ -179,9 +183,6 @@ export function Sidebar({
             </button>
           ) : null}
         </div>
-        {tree}
-      </div>
-      <SidebarUser miniMode={miniMode} />
     </aside>
   );
 }
@@ -376,11 +377,16 @@ function NavItem({
   );
 }
 
-function SidebarUser({ miniMode = false }: { miniMode?: boolean }) {
+function SidebarUser({ miniMode = false, onNavigate }: { miniMode?: boolean; onNavigate?: () => void }) {
   const signoutForm = useRef<HTMLFormElement | null>(null);
 
   return (
     <div className={`border-top p-3 sidebar-user ${miniMode ? "is-mini" : ""}`}>
+      <a href="/informes" title="Informes" onClick={onNavigate}
+        className={`btn w-100 d-flex align-items-center gap-2 sidebar-user-btn mb-2 ${miniMode ? "is-mini" : ""}`}>
+        <i className="bi bi-table fs-5" aria-hidden="true" />
+        {!miniMode && <span className="small sidebar-item-label">Informes</span>}
+      </a>
       <form ref={signoutForm} action="/api/auth/signout" method="post" hidden />
       <ActionMenu
         align="start"

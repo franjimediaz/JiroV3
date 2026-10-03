@@ -40,6 +40,7 @@ export default function ListView({
   onImport,
   onSearch,
   toolbar = {},
+  title,
   pagination,
   sorting,
 }: ListViewProps) {
@@ -215,7 +216,7 @@ export default function ListView({
           {icon && <i className={icon} style={{ fontSize: 40 }} />}
           <div>
             <div className="fw-semibold " style={{ fontSize: 14 }}>
-              {capitalize(tableName)}
+              {title || capitalize(tableName)}
             </div>
             
           </div>

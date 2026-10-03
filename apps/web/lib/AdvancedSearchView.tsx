@@ -133,7 +133,7 @@ export function AdvancedSearchView({ schema, moduleSlug, modulesBySlug, onExport
           setPage(1); setApplied(structuredClone(draft)); persist(draft);
         }}>{loading ? "Buscando…" : "Buscar"}</button>
       </div>
-      <p className="small text-muted mt-2 mb-0">Las condiciones se conservan en la URL. Pulsa Buscar para ejecutarlas.</p>
+      
       {error && <div role="alert" className="alert alert-danger mt-3 mb-0">{error}</div>}
     </section>
     <section className="bg-white text-dark" aria-label="Resultados">

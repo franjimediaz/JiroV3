@@ -435,6 +435,7 @@ export type OpenCreateModuleFn = (opts: {
 
 export type ListViewProps = {
   schema: ModuleSchema;
+  title?: string;
   data: any[];
   loading?: boolean;
   exportLoading?: boolean;
