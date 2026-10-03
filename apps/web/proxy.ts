@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 // Rutas públicas (no requieren sesión)
-const PUBLIC_PATHS = ["/login", "/register", "/reset-password", "/403"];
+const PUBLIC_PATHS = ["/login", "/register", "/reset-password", "/403", "/auth/profile-callback"];
 
 function isPublicPath(pathname: string) {
   if (PUBLIC_PATHS.includes(pathname)) return true;

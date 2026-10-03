@@ -398,7 +398,8 @@ function SidebarUser({ miniMode = false, onNavigate }: { miniMode?: boolean; onN
           {!miniMode && <span className="small sidebar-item-label">Mi cuenta</span>}
         </>}
         items={[
-          { label: "Mi perfil", disabled: true, title: "Perfil no disponible", icon: <i className="bi bi-person" aria-hidden="true" /> },
+          { label: "Mi perfil", title: "Mi perfil", icon: <i className="bi bi-person" aria-hidden="true" />,
+            onClick: () => { onNavigate?.(); window.location.assign("/mi-perfil"); } },
           { label: "Salir", variant: "danger", title: "Salir", icon: <i className="bi bi-box-arrow-right" aria-hidden="true" />,
             onClick: () => signoutForm.current?.requestSubmit() },
         ]}
