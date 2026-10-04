@@ -95,6 +95,18 @@ export function normalizeFieldConfig(field: unknown): NormalizedField {
     normalized.appareance = appearance;
   }
 
+  if (normalized.type === "address") {
+    const address = isRecord(raw.address) ? raw.address : {};
+    const countries = Array.isArray(address.countries)
+      ? address.countries.map((country: unknown) => String(country).trim().toUpperCase()).filter((country: string) => /^[A-Z]{2}$/.test(country))
+      : [];
+    normalized.address = {
+      countries: countries.length ? Array.from(new Set(countries)) : ["ES"],
+      saveCoordinates: address.saveCoordinates !== false,
+      allowManual: address.allowManual !== false,
+    };
+  }
+
   return normalized as NormalizedField;
 }
 

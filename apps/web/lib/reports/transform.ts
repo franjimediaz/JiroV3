@@ -44,7 +44,7 @@ export function transformReport(report: ReportDefinition, data: Row[], preview: 
       }
       return 0;
     });
-    const limit = preview ? 100 : 1000;
+    const limit = preview ? Math.min(100, report.config.limit ?? 100) : report.config.limit ?? 1000;
     return {type: "list", columns: report.config.columns.map(({id, label}) => ({id, label})), rows: rows.slice(0, limit), total: rows.length, truncated: rows.length > limit, scanned: data.length};
   }
   const rowKeys = new Map<string, ReportScalar[]>(), columnKeys = new Map<string, ReportScalar[]>();

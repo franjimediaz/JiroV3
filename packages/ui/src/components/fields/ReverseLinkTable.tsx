@@ -241,6 +241,9 @@ export default function ReverseLinkTable({ field, parentRecord, mode, moduleColo
       case "multiselect":
         return Array.isArray(raw) ? raw.join(", ") : String(raw);
 
+      case "address":
+        return typeof raw === "string" ? raw : String(raw?.formatted || "—");
+
       case "color":
         return (
           <div className="d-flex align-items-center gap-2">

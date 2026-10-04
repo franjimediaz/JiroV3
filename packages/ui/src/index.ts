@@ -14,6 +14,8 @@ export { default as Form } from "./Form";
 export { default as PdfTemplatePreview } from "./PdfTemplatePreview";
 export { default as ModuleCalendarView } from "./components/specialViews/ModuleCalendarView";
 export { default as FieldInput } from "./components/fields/FieldInput";
+export { default as AddressInput } from "./components/fields/AddressInput";
+export type { AddressProvider, AddressSuggestion, AddressSearchOptions } from "./components/fields/addressProvider";
 export * from "./pdf";
 export * from "./engines/safeEval";
 export * from "./engines/computeEngine";

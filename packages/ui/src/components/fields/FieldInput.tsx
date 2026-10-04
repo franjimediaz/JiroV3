@@ -5,6 +5,7 @@ import Selector from "./Selector";
 import type { Field, ModuleSchema, FieldType } from "@repo/types";
 import RichTextEditor from "./RichTextEditor";
 import React, { useEffect, useState } from "react";
+import AddressInput from "./AddressInput";
 import {
   MAX_FILE_SIZE_MB,
   MAX_FILE_SIZE_BYTES,
@@ -674,6 +675,10 @@ if (type === "number" || type === "money" || type === "percent") {
       maxFiles={(field as any).maxFiles}
     />
     );
+  }
+
+  if (type === "address") {
+    return <AddressInput field={field} value={value} onChange={onChange} readOnly={readOnly} />;
   }
 
   if (type === "selectorTabla") {

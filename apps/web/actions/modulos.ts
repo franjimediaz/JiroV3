@@ -43,6 +43,14 @@ function validateModuleProps(props: any): { ok: boolean; detail?: string } {
         return { ok: false, detail: `fields[${index}].ref.filters invalido para selectorTabla` };
       }
     }
+    if (field.type === "address" && field.address !== undefined) {
+      if (!field.address || typeof field.address !== "object") return { ok: false, detail: `fields[${index}].address invalido` };
+      if (field.address.countries !== undefined && (!Array.isArray(field.address.countries) || field.address.countries.some((country: unknown) => typeof country !== "string" || !/^[A-Za-z]{2}$/.test(country)))) {
+        return { ok: false, detail: `fields[${index}].address.countries invalido` };
+      }
+      if (field.address.saveCoordinates !== undefined && typeof field.address.saveCoordinates !== "boolean") return { ok: false, detail: `fields[${index}].address.saveCoordinates invalido` };
+      if (field.address.allowManual !== undefined && typeof field.address.allowManual !== "boolean") return { ok: false, detail: `fields[${index}].address.allowManual invalido` };
+    }
   }
 
   try {

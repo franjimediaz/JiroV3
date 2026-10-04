@@ -19,17 +19,36 @@ export type Compute = {
     }>;
     persist: "none" | "onSave" | "always";
 };
-export type FieldType = "text" | "textarea" | "number" | "money" | "percent" | "date" | "datetime" | "boolean" | "select" | "multiselect" | "color" | "file" | "image" | "plan" | "selectorTabla" | "formula";
+export type FieldType = "text" | "textarea" | "number" | "money" | "percent" | "date" | "datetime" | "boolean" | "select" | "multiselect" | "color" | "iconpicker" | "file" | "image" | "plan" | "address" | "selectorTabla" | "ReverseLink" | "formula";
 export type Appareance = "List" | "Always" | "Zoom";
 export type SelectorRef = {
     moduleSlug: string;
     displayField: string;
 };
+export type AddressValue = {
+    formatted: string;
+    street?: string;
+    number?: string;
+    postalCode?: string;
+    city?: string;
+    province?: string;
+    country?: string;
+    countryCode?: string;
+    lat?: number;
+    lng?: number;
+    provider?: "google" | "geoapify" | "manual";
+    providerId?: string;
+};
+export type AddressFieldOptions = {
+    countries?: string[];
+    saveCoordinates?: boolean;
+    allowManual?: boolean;
+};
 
 export type Field = {
     name: string;
     label: string;
-    type: "text" | "number" | "selectorTabla" | "formula" | "boolean" | "date" | "color" | "select" | "multiselect" | "textarea" | "money" | "percent" | "datetime" | "image" | "FieldType" | "file";
+    type: FieldType;
     required?: boolean;
     compute?: Compute;
     allowOverride?: boolean;
@@ -54,6 +73,7 @@ export type Field = {
     defaultValue?: any;
     visible?: boolean;
     readOnly?: boolean;
+    address?: AddressFieldOptions;
     appareance?: Appareance;
     ui?: {
         icon?: string;

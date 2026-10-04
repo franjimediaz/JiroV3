@@ -2,12 +2,22 @@ import type { AdvancedFilterGroup } from "./advancedFilters";
 import type { Field, ModuleSchema } from "./fields";
 
 export type ReportAggregation = "none" | "count" | "countDistinct" | "sum" | "avg" | "min" | "max";
-export type ReportFieldRef = { field: string; relation?: string };
+export type ReportFieldRef = {
+  /** Must match ReportDefinition.sourceModule; retained on the ref for portable definitions. */
+  module?: string;
+  field: string;
+  /** Legacy one-hop representation. */
+  relation?: string;
+  /** Configured selectorTabla field names, never table or FK names. */
+  relations?: string[];
+  alias?: string;
+  label?: string;
+};
 export type ReportSource = { slug: string; name: string; schema: ModuleSchema };
 export type ReportFilter = AdvancedFilterGroup;
 export type ReportSort = { columnId: string; direction: "asc" | "desc" };
 export type ReportColumn = { id: string; ref: ReportFieldRef; label: string; aggregation: ReportAggregation };
-export type ListReportConfig = { columns: ReportColumn[] };
+export type ListReportConfig = { columns: ReportColumn[]; groupBy?: string[]; limit?: number };
 export type MatrixReportConfig = { rows: ReportColumn[]; columns: ReportColumn[]; values: ReportColumn[] };
 type ReportBase = {
   id?: string; name: string; description: string; sourceModule: string;
@@ -16,6 +26,50 @@ type ReportBase = {
 export type ReportDefinition = ReportBase & (
   { type: "list"; config: ListReportConfig } | { type: "matrix"; config: MatrixReportConfig }
 );
+export type ResolvedReportRelation = {
+  field: string;
+  module: string;
+  table: string;
+  sourceField: Field;
+  schema: ModuleSchema;
+};
+export type ResolvedReportField = {
+  id: string;
+  ref: ReportFieldRef;
+  module: string;
+  table: string;
+  field: Field;
+  relations: ResolvedReportRelation[];
+  aggregations: ReportAggregation[];
+};
+export type ReportMetadata = {
+  source: { module: string; table: string; primaryKey: string; schema: ModuleSchema };
+  fields: ResolvedReportField[];
+};
+export type ReportQueryField = {
+  id: string;
+  label: string;
+  module: string;
+  table: string;
+  field: string;
+  fieldType: Field["type"];
+  relationPath: ResolvedReportRelation[];
+  aggregation: ReportAggregation;
+};
+export type ReportQuery = {
+  source: ReportMetadata["source"];
+  fields: ReportQueryField[];
+  filters: ReportFilter;
+  sort: ReportSort[];
+  groupBy: string[];
+  limit: number;
+};
+export type ReportQueryResult = {
+  rows: Record<string, ReportScalar>[];
+  total: number;
+  scanned: number;
+  truncated: boolean;
+};
 export type ReportFieldOption = { ref: ReportFieldRef; label: string; field: Field };
 export type ReportScalar = string | number | boolean | null;
 export type ReportResult = {
@@ -27,7 +81,8 @@ export type ReportResult = {
   totals: ReportScalar[]; scanned: number;
 };
 
-export const reportFieldKey = (ref: ReportFieldRef) => JSON.stringify([ref.relation || "", ref.field]);
+export const reportRelationPath = (ref: ReportFieldRef) => ref.relations || (ref.relation ? [ref.relation] : []);
+export const reportFieldKey = (ref: ReportFieldRef) => JSON.stringify([ref.module || "", reportRelationPath(ref), ref.field]);
 export function reportFields(schema: ModuleSchema): Field[] {
   return schema.fields.filter(field => !field.virtual && field.visible !== false &&
     ["text", "textarea", "number", "money", "percent", "date", "datetime", "boolean", "select", "selectorTabla", "color"].includes(field.type) &&

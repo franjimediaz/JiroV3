@@ -142,6 +142,7 @@ function defaultForType(type: FieldType): any {
     case "multiselect":
       return [];
     case "selectorTabla":
+    case "address":
       return null;
     case "file":
     case "image":
@@ -1327,6 +1328,7 @@ export default function Form({
           schema={normalizedSchema as ModuleSchema}
           mode={effectiveMode}
           values={values}
+          parentRecordId={effectiveRecordId}
           setValues={commitValues}
           actions={formActions}
           resolveRoute={resolveRoute}

@@ -7,6 +7,7 @@ import { applyCompute } from "../engines/computeEngine"; // ajusta ruta real si 
 import { dataProvider } from "../providers/DataProvider"; // ajusta ruta real si difiere
 import { downloadPdf, openPdfInNewTab, openPdfInSameTab } from "../pdf";
 import { evaluateActionVisibility } from "../engines/visibilityEngine";
+import { buildCreateRelatedPayload } from "../utils/createRelatedPayload";
 import type { FormAction, ActionDisabledWhen as DisabledWhen } from "@repo/types";
 export type {
   FormAction, WorkflowAction, CreateRelatedAction, NavigateAction,
@@ -50,6 +51,7 @@ export default function FormActionsBar(props: {
   mode: Mode;
   /** valores actuales del formulario (lo que estás editando/viendo) */
   values: any;
+  parentRecordId?: string;
   /** callback para actualizar valores si una acción recalcula o cambia algo */
   setValues?: (next: any) => void;
   /** helper para navegar (si no pasas, usa window.location) */
@@ -68,6 +70,7 @@ export default function FormActionsBar(props: {
     schema,
     mode,
     values,
+    parentRecordId,
     setValues,
     navigate,
     resolveRoute,
@@ -188,16 +191,7 @@ export default function FormActionsBar(props: {
       }
 
       if (a.type === "createRelated") {
-        const payload: Record<string, any> = {
-          ...(a.defaults || {}),
-        };
-
-        if (a.fieldMap) {
-          for (const [destField, srcFieldPath] of Object.entries(a.fieldMap)) {
-            const srcVal = getByPath(values, srcFieldPath);
-            if (srcVal !== undefined) payload[destField] = srcVal;
-          }
-        }
+        const payload = buildCreateRelatedPayload(a, schema, values, parentRecordId);
 
         const created = await (dataProvider as any).create?.({
           table: a.target.table,

@@ -14,8 +14,12 @@ function columns(value: unknown, min: number, max: number): ReportColumn[] {
     const column = object(input), ref = object(column.ref);
     const aggregation = text(column.aggregation, 20) as ReportColumn["aggregation"];
     if (!["none", "count", "countDistinct", "sum", "avg", "min", "max"].includes(aggregation)) throw Error("Agregación no válida");
+    const relations = ref.relations === undefined ? undefined : Array.isArray(ref.relations) && ref.relations.length <= 2
+      ? ref.relations.map(item => text(item, 100)) : (() => { throw Error("Ruta de relación no válida"); })();
     return {id: text(column.id, 60), label: text(column.label, 120), aggregation,
-      ref: {field: text(ref.field, 100), ...(ref.relation !== undefined ? {relation: text(ref.relation, 100)} : {})}};
+      ref: {field: text(ref.field, 100), ...(ref.module !== undefined ? {module: text(ref.module, 100)} : {}),
+        ...(ref.relation !== undefined ? {relation: text(ref.relation, 100)} : {}), ...(relations !== undefined ? {relations} : {}),
+        ...(ref.alias !== undefined ? {alias: text(ref.alias, 100)} : {}), ...(ref.label !== undefined ? {label: text(ref.label, 120)} : {})}};
   });
 }
 export function parseReport(input: unknown): ReportDefinition {
@@ -26,7 +30,15 @@ export function parseReport(input: unknown): ReportDefinition {
   const base = {name: text(value.name, 120), description: text(value.description ?? "", 2000, false), sourceModule: text(value.sourceModule, 100),
     filters: object(value.filters) as ReportFilter, sort: [] as ReportSort[]};
   let report: ReportDefinition;
-  if (value.type === "list") report = {...base, type: "list", config: {columns: columns(config.columns, 1, 20)}};
+  if (value.type === "list") {
+    const parsedColumns = columns(config.columns, 1, 20);
+    const groupBy = config.groupBy === undefined ? undefined : Array.isArray(config.groupBy) && config.groupBy.length <= 20
+      ? config.groupBy.map(item => text(item, 60)) : (() => { throw Error("Agrupación no válida"); })();
+    const limit = config.limit === undefined ? undefined : Number(config.limit);
+    if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 1000)) throw Error("Límite no válido");
+    if (groupBy?.some(id => !parsedColumns.some(column => column.id === id))) throw Error("Campo de agrupación no válido");
+    report = {...base, type: "list", config: {columns: parsedColumns, ...(groupBy ? {groupBy} : {}), ...(limit ? {limit} : {})}};
+  }
   else if (value.type === "matrix") report = {...base, type: "matrix", config: {
     rows: columns(config.rows, 1, 2), columns: columns(config.columns, 1, 2), values: columns(config.values, 1, 5),
   }};

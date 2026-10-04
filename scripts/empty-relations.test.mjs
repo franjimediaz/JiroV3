@@ -33,6 +33,25 @@ const { normalizeEmptyRelations } = loader()('packages/types/recordValues.ts');
 const parent = '12345678-1234-4234-8234-123456789abc';
 const input = { parent_id: parent, optional_id: '', external: '', description: '', text_id: '', many: [] };
 const expected = { ...input, optional_id: null, external: null };
+const { buildCreateRelatedPayload } = loader()('packages/ui/src/utils/createRelatedPayload.ts');
+test('related create always binds the stable parent after defaults and empty editable values', () => {
+  const action = { type: 'createRelated', target: { table: 'children' }, defaults: { parent_id: null },
+    fieldMap: { parent_id: 'id', optional_id: 'optional_id', description: 'description' } };
+  for (const id of [null, '', undefined, 'editable-other-id']) {
+    const payload = buildCreateRelatedPayload(action, { db: { primaryKey: 'id' }, fields: [] }, { id, optional_id: null, description: '' }, parent);
+    assert.deepEqual(payload, { parent_id: parent, optional_id: null, description: '' });
+    assert.equal(normalizeEmptyRelations(fields, payload).parent_id, parent);
+  }
+  assert.throws(() => buildCreateRelatedPayload(action, { fields: [] }, { id: null }, ''), /Guarda el registro padre/);
+});
+test('related create uses configured FK and custom primary key in create/edit contexts', () => {
+  const action = { type: 'createRelated', target: { table: 'children' }, defaults: { custom_fk: null } };
+  const schema = { db: { primaryKey: 'uid' }, fields: [{ type: 'ReverseLink', name: 'children', ref: { moduleSlug: 'children', foreignKey: 'custom_fk' } }] };
+  assert.equal(buildCreateRelatedPayload(action, schema, { uid: null }, parent).custom_fk, parent);
+  assert.equal(buildCreateRelatedPayload({ ...action, fieldMap: { custom_fk: 'uid' } }, schema, {}, parent).custom_fk, parent);
+  assert.throws(() => buildCreateRelatedPayload(action, schema, {}, ''), /Guarda el registro padre/);
+  assert.throws(() => buildCreateRelatedPayload(action, { ...schema, fields: [...schema.fields, ...schema.fields] }, {}, parent), /varias relaciones/);
+});
 test('normalizes declared scalar relations/UUIDs without altering text, arrays, IDs or the input', () => {
   assert.deepEqual(normalizeEmptyRelations(fields, input), expected);
   assert.equal(input.optional_id, '');

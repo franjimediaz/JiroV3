@@ -13,6 +13,7 @@ function loader(overrides = {}) {
     const code = ts.transpileModule(readFileSync(path, "utf8"), {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true}}).outputText;
     new Function("require", "module", "exports", code)(id => {
       if (id in overrides) return overrides[id];
+      if (id === "server-only") return {};
       if (id === "@repo/types") return load("packages/types/index.ts");
       if (id.endsWith(".css")) return {};
       if (id.startsWith(".") || id.startsWith("@/")) {
@@ -50,6 +51,34 @@ test("metadata enumerates only direct declared scalar fields; aggregate compatib
   assert.equal(types.reportFieldOptions(root, [root]).length, 1);
   assert.ok(types.reportAggregations({type: "money"}).includes("avg"));
   assert.ok(!types.reportAggregations({type: "text"}).includes("sum"));
+});
+test("metadata resolver follows only configured selector paths up to two levels and feeds the pure query builder", async () => {
+  const schemas = {
+    orders: {db: {table: "orders", primaryKey: "id"}, fields: [{name: "customer", type: "selectorTabla", ref: {moduleSlug: "customers"}}]},
+    customers: {db: {table: "customers", primaryKey: "id"}, fields: [{name: "country", type: "selectorTabla", ref: {moduleSlug: "countries"}}]},
+    countries: {db: {table: "countries", primaryKey: "id"}, fields: [{name: "name", label: "País", type: "text"}]},
+  };
+  const permissions = [];
+  const dependencies = {
+    resolveModuleConfig: async slug => ({slug, schema: schemas[slug], table: schemas[slug].db.table, primaryKey: "id", permissionsKey: slug}),
+    requireModulePermission: async (slug, action) => permissions.push([slug, action]),
+  };
+  const {resolveReportMetadata} = loader({"../auth/requireModulePermission": dependencies, "./auth/requireModulePermission": dependencies,
+    "../modules/resolveModuleConfig": dependencies, "./modules/resolveModuleConfig": dependencies})("apps/web/lib/reports/metadata.ts");
+  const {buildReportQuery} = load("apps/web/lib/reports/queryBuilder.ts");
+  const report = list([{id: "country", label: "País", aggregation: "none", ref: {module: "orders", relations: ["customer", "country"], field: "name", alias: "country_name"}}]);
+  const metadata = await resolveReportMetadata(report, dependencies);
+  const query = buildReportQuery(report, metadata);
+  assert.equal(query.source.table, "orders"); assert.equal(query.fields[0].table, "countries");
+  assert.deepEqual(query.fields[0].relationPath.map(item => item.field), ["customer", "country"]);
+  assert.deepEqual(permissions, [["orders", "ver"], ["customers", "ver"], ["countries", "ver"]]);
+  await assert.rejects(resolveReportMetadata({...report, config: {columns: [{...report.config.columns[0], ref: {...report.config.columns[0].ref, relations: ["customer", "country", "continent"]}}]}}, dependencies), /máximo de 2/);
+  assert.throws(() => buildReportQuery({...list(), config: {columns: [column("country"), column("amount", "amount", "sum")], groupBy: []}}, {
+    source: {module: "orders", table: "orders", primaryKey: "id", schema: schemas.orders}, fields: [
+      {id: "country", ref: {field: "country"}, module: "orders", table: "orders", field: {name: "country", type: "text"}, relations: [], aggregations: ["none", "count"]},
+      {id: "amount", ref: {field: "amount"}, module: "orders", table: "orders", field: {name: "amount", type: "money"}, relations: [], aggregations: ["none", "sum"]},
+    ],
+  }), /groupBy/);
 });
 test("list grouping, multiple aggregates, sorting, nulls and preview truncation", () => {
   const report = {...list(), sort: [{columnId: "amount", direction: "desc"}]};
@@ -130,6 +159,26 @@ test("related output fields and advanced mixed filters share schema validation a
   assert.match(url.searchParams.get("or"), /or\(country.eq."ES",jiro_search_0.not.is.null\)/);
   assert.match(url.searchParams.get("jiro_report_0.or"), /name.neq."Hidden"/);
   assert.ok(f.permissions.some(([slug, action]) => slug === "customers" && action === "ver"));
+});
+test("manual LIST definitions cover direct fields, relation, filter, sort, SUM/groupBy and COUNT", async () => {
+  const direct = await fixture().executeReport(list([column("country"), column("amount")]), false);
+  assert.equal(direct.rows.length, 4); assert.deepEqual(Object.keys(direct.rows[0]), ["country", "amount"]);
+
+  const related = await fixture().executeReport(list([column("client", "name", "none", "customer")]), false);
+  assert.equal(related.rows[0].client, "ACME");
+
+  const filteredReport = {...list([column("country")]), filters: {kind: "group", logic: "AND", items: [{kind: "condition", field: "country", op: "=", value: "ES"}]}};
+  const filtered = fixture(); await filtered.executeReport(filteredReport, false);
+  assert.match(filtered.requests[0].url.searchParams.get("or"), /country.eq."ES"/);
+
+  const sorted = await fixture().executeReport({...list([column("country"), column("amount")]), sort: [{columnId: "amount", direction: "desc"}]}, false);
+  assert.equal(sorted.rows[0].amount, 10);
+
+  const grouped = await fixture().executeReport({...list(), config: {columns: list().config.columns, groupBy: ["country"], limit: 50}}, false);
+  assert.deepEqual(grouped.rows, [{country: "ES", amount: 40}]);
+
+  const counted = await fixture().executeReport(list([column("count", "country", "count")]), false);
+  assert.deepEqual(counted.rows, [{count: 4}]);
 });
 test("server rejects forbidden fields/relations/aggregates and denied modules before reading business rows", async () => {
   for (const report of [list([column("x", "hidden")]), list([column("x", "country", "sum")]), list([column("x", "country),secret")]), list([column("x", "name", "none", "arbitrary")])]) {

@@ -56,7 +56,15 @@ export function validateSelectedFile(
 export function buildPublicSupabaseUrl(bucket: string, path: string) {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!base || !bucket || !path) return null;
-  return `${base}/storage/v1/object/public/${bucket}/${path}`;
+  try {
+    const origin = new URL(base);
+    if (origin.protocol !== "https:" && origin.protocol !== "http:") return null;
+    const encodedBucket = encodeURIComponent(bucket);
+    const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+    return new URL(`/storage/v1/object/public/${encodedBucket}/${encodedPath}`, origin).toString();
+  } catch {
+    return null;
+  }
 }
 
 export function extractApiErrorMessage(data: unknown, rawText: string, fallback: string) {
@@ -144,6 +152,8 @@ export async function uploadSingleFile(
   endpoint = "/api/upload",
   context: UploadContext = {}
 ): Promise<UploadedFileValue> {
+  void _folder;
+  void _allowedMimeTypes;
   const formData = new FormData();
   formData.append("file", file);
   formData.append("kind", kind);
@@ -180,10 +190,17 @@ export async function uploadSingleFile(
     throw new Error(message);
   }
 
+  const bucket = String(data?.bucket || "");
+  const path = String(data?.path || "");
+  const responseUrl = typeof data?.url === "string" && data.url.trim() ? data.url : null;
+  const url = responseUrl || (kind === "image" && data?.isPublic === true
+    ? buildPublicSupabaseUrl(bucket, path)
+    : null);
+
   return {
-    bucket: String(data?.bucket || ""),
-    path: String(data?.path || ""),
-    url: typeof data?.url === "string" ? data.url : null,
+    bucket,
+    path,
+    url,
     name: String(data?.name || file.name),
     size: typeof data?.size === "number" ? data.size : file.size,
     mimeType: typeof data?.mimeType === "string" ? data.mimeType : file.type,

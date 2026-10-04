@@ -11,6 +11,7 @@ export type FieldType =
   | "color"
   | "file"
   | "image"
+  | "address"
   | "selectorTabla";
 
 export interface FieldConfig {
@@ -28,6 +29,11 @@ export interface FieldConfig {
   options?: { value: string; label: string }[];
   min?: number;
   max?: number;
+  address?: {
+    countries?: string[];
+    saveCoordinates?: boolean;
+    allowManual?: boolean;
+  };
 }
 
 export interface ModuleProps {

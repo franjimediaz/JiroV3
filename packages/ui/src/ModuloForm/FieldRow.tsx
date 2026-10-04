@@ -149,7 +149,11 @@ function normalizeFieldType(field: Field, nextType: FieldType): Field {
   }
 
   const { ref, ...rest } = base;
-  return rest as Field;
+  if (nextType === "address") {
+    return { ...rest, address: { countries: (field as any).address?.countries || ["ES"], saveCoordinates: (field as any).address?.saveCoordinates !== false, allowManual: (field as any).address?.allowManual !== false } } as Field;
+  }
+  const { address, ...withoutAddress } = rest;
+  return withoutAddress as Field;
 }
 
 // —— Subcomponentes UI simples ————————————————————————————————
@@ -1418,6 +1422,23 @@ export function FieldConfigEditor({
                 onChange={(opts) => onChange({ ...field, options: opts })}
               />
             </Labeled>
+          )}
+
+          {field.type === "address" && (
+            <div className={styles.card} style={{ marginTop: 12 }}>
+              <h4 style={{ marginTop: 0 }}>Dirección</h4>
+              <Labeled label="Países (ISO 3166-1 alpha-2)">
+                <ArrayChips value={field.address?.countries || ["ES"]} onChange={(countries) => onChange({ ...field, address: { ...field.address, countries: countries.map(country => country.trim().toUpperCase()).filter(Boolean) } })} placeholder="Ej: ES, PT" />
+              </Labeled>
+              <div className={styles.switchRow}>
+                <label className={styles.label}>Guardar coordenadas</label>
+                <input type="checkbox" checked={field.address?.saveCoordinates !== false} onChange={(event) => onChange({ ...field, address: { ...field.address, countries: field.address?.countries || ["ES"], saveCoordinates: event.target.checked } })} />
+              </div>
+              <div className={styles.switchRow}>
+                <label className={styles.label}>Permitir entrada manual</label>
+                <input type="checkbox" checked={field.address?.allowManual !== false} onChange={(event) => onChange({ ...field, address: { ...field.address, countries: field.address?.countries || ["ES"], allowManual: event.target.checked } })} />
+              </div>
+            </div>
           )}
 
           {field.type === "selectorTabla" && (

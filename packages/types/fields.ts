@@ -41,6 +41,7 @@ export type FieldType =
   | "file"
   | "image"
   | "plan"
+  | "address"
   | "selectorTabla"
   | "ReverseLink"
   | "formula";
@@ -290,6 +291,7 @@ export type BaseField = {
   readOnly?: boolean;
   allowedMimeTypes?: string[];
   allowedExtensions?: string[];
+  address?: AddressFieldOptions;
 
   list?: boolean;
   filter?: boolean;
@@ -303,6 +305,27 @@ export type BaseField = {
     placeholder?: string;
     help?: string;
   };
+};
+
+export type AddressValue = {
+  formatted: string;
+  street?: string;
+  number?: string;
+  postalCode?: string;
+  city?: string;
+  province?: string;
+  country?: string;
+  countryCode?: string;
+  lat?: number;
+  lng?: number;
+  provider?: "google" | "geoapify" | "manual";
+  providerId?: string;
+};
+
+export type AddressFieldOptions = {
+  countries?: string[];
+  saveCoordinates?: boolean;
+  allowManual?: boolean;
 };
 
 export type SelectorTablaField = BaseField & {
@@ -343,6 +366,7 @@ export const VALID_FIELD_TYPES: FieldType[] = [
   "file",
   "image",
   "plan",
+  "address",
   "selectorTabla",
   "formula",
   "ReverseLink",

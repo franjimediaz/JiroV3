@@ -537,6 +537,9 @@ function renderCell(
       if (Array.isArray(value)) return value.join(", ");
       return String(value);
 
+    case "address":
+      return typeof value === "string" ? value : String(value?.formatted || "—");
+
     case "color":
       return (
         <div className="d-flex align-items-center gap-1">

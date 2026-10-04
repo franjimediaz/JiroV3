@@ -5,6 +5,8 @@ export type {
     Field,
     Compute,
     FieldType,
+    AddressValue,
+    AddressFieldOptions,
     VisibilityConfig,
     VisibilityOperator,
     VisibilityRule,

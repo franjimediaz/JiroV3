@@ -78,6 +78,10 @@ export async function POST(req: Request) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const mimeType = validateFileAgainstPolicy(file, buffer, kind);
     const bucket = bucketForKind(kind);
+    if (kind === "image") {
+      const { data: bucketConfig, error: bucketError } = await supabaseAdmin.storage.getBucket(bucket);
+      if (bucketError || !bucketConfig?.public) throw new Error("Image bucket is not public");
+    }
     const path = buildServerStoragePath({
       userId: ctx.user.id,
       kind,
@@ -92,6 +96,11 @@ export async function POST(req: Request) {
     });
 
     if (uploadError) throw new Error("Storage upload failed");
+
+    const publicUrl = kind === "image"
+      ? supabaseAdmin.storage.from(bucket).getPublicUrl(path).data.publicUrl
+      : null;
+    if (kind === "image" && !publicUrl) throw new Error("Storage public URL generation failed");
 
     if (shouldAuditUpload) await writeAuditEvent({
       actorUserId: ctx.user.id,
@@ -113,6 +122,7 @@ export async function POST(req: Request) {
       mimeType,
       kind,
       isPublic: kind === "image",
+      ...(kind === "image" ? { url: publicUrl } : {}),
       requestId,
     });
   } catch (error) {
