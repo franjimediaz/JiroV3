@@ -693,7 +693,7 @@ if (type === "number" || type === "money" || type === "percent") {
         moduleSlug={moduleSlug}
         displayField={displayField}
         valueField={valueField}
-        value={value ?? ""}
+        value={isMultiple ? (value ?? []) : (value === "" ? null : value ?? null)}
         onChange={onChange}
         readOnly={readOnly}
         filters={filters}

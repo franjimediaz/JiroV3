@@ -5,7 +5,7 @@ import { handleApiError } from "@/lib/auth/handleApiError";
 import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 import { shouldAuditEvent } from "@/lib/audit/shouldAuditEvent";
 import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
-import { moduleCapabilityEnabled } from "@repo/types";
+import { moduleCapabilityEnabled, normalizeEmptyRelations } from "@repo/types";
 
 type Body = {
   moduleSlug?: string;
@@ -93,7 +93,7 @@ export async function POST(req: Request) {
 
     const { error } = await ctx.supabase
       .from(resolved.table)
-      .update(payload)
+      .update(normalizeEmptyRelations(resolved.schema.fields || [], payload))
       .eq(resolved.primaryKey, recordId);
 
     if (error) {

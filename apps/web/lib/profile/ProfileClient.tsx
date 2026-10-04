@@ -61,17 +61,19 @@ export default function ProfileClient() {
     {error && <div className="alert alert-danger" role="alert">{error}</div>}
     {message && <div className={`alert ${notice ? "alert-info" : "alert-success"}`} role="status">{message}</div>}
     <form className="card p-4 mb-3" onSubmit={event => void submit(event, "details")}>
-      <h2 className="h6 mb-3">Datos personales</h2>
-      <fieldset disabled={busy}>
-        <label className="form-label" htmlFor="profile-name">Nombre</label>
-        <input id="profile-name" className="form-control mb-3" name="name" value={name} onChange={e => setName(e.target.value)} required maxLength={100} autoComplete="given-name" />
-        <label className="form-label" htmlFor="profile-surname">Apellidos</label>
-        <input id="profile-surname" className="form-control mb-3" name="surname" value={surname} onChange={e => setSurname(e.target.value)} required maxLength={150} autoComplete="family-name" />
-        <button className="btn btn-primary" type="submit">Guardar datos personales</button>
-      </fieldset>
+      <h2 className="h6 mb-3 text-white">Datos personales</h2>
+      
+        <fieldset disabled={busy}>
+          <label className="form-label text-white" htmlFor="profile-name">Nombre</label>
+          <input id="profile-name" className="form-control mb-3" name="name" value={name} onChange={e => setName(e.target.value)} required maxLength={100} autoComplete="given-name" />
+          <label className="form-label text-white" htmlFor="profile-surname">Apellidos</label>
+          <input id="profile-surname" className="form-control mb-3" name="surname" value={surname} onChange={e => setSurname(e.target.value)} required maxLength={150} autoComplete="family-name" />
+          <button className="btn btn-primary" type="submit">Guardar datos personales</button>
+        </fieldset>
+      
     </form>
     <section className="card p-4 mb-3" aria-labelledby="profile-email-heading">
-      <h2 className="h6 mb-3" id="profile-email-heading">Email</h2>
+      <h2 className="h6 mb-3 text-white" id="profile-email-heading">Email</h2>
       {pending ? <>
         <p role="status">Pendiente de confirmación: <strong>{profile.pendingEmail}</strong>. Confirma los correos recibidos y termina el cambio aquí.</p>
         <form onSubmit={event => void submit(event, "finishEmail")}><button type="submit" disabled={busy} className="btn btn-primary">Comprobar confirmación</button></form>
@@ -79,12 +81,12 @@ export default function ProfileClient() {
         <form onSubmit={event => void submit(event, "email")}><fieldset disabled={busy}>
           <label className="form-label" htmlFor="profile-email">Email de acceso</label>
           <input className="form-control mb-3" id="profile-email" type="email" name="email" value={email} onChange={e => setEmail(e.target.value)} required maxLength={254} autoComplete="email" />
-          <p className="small text-body-secondary">Supabase puede pedir confirmación en tu email actual y en el nuevo.</p>
+          <p className="small text-white">Supabase puede pedir confirmación en tu email actual y en el nuevo.</p>
           <button type="submit" className="btn btn-primary">Cambiar email</button>
         </fieldset></form>}
     </section>
     <form className="card p-4" onSubmit={event => void submit(event, "password")}>
-      <h2 className="h6 mb-3">Contraseña</h2>
+      <h2 className="h6 mb-3 text-white">Contraseña</h2>
       <fieldset disabled={busy || blocked}>
         <input type="hidden" autoComplete="username" value={profile.email} readOnly />
         <label className="form-label" htmlFor="profile-current-password">Contraseña actual</label>

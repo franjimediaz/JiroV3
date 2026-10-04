@@ -1,5 +1,6 @@
 import type { DataProvider, AggregateInput } from "../engines/computeEngine";
 import type { ModuleSchema } from "@repo/types";
+import { normalizeEmptyRelations } from "@repo/types";
 
 type ModuloRow = {
   id: string;
@@ -166,12 +167,14 @@ export const dataProvider: DataProvider & {
   },
 
   async create(input: CreateInput): Promise<CreateResult> {
+    const schemas = await loadSchemas();
+    const schema = schemas[input.table] || Object.values(schemas).find(item => item.db?.table === input.table);
     const res = await fetch("/api/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         table: input.table,
-        data: input.data,
+        data: normalizeEmptyRelations(schema?.fields || [], input.data),
       }),
     });
 

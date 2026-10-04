@@ -5,7 +5,7 @@ import { handleApiError } from "@/lib/auth/handleApiError";
 import { ApiError, badRequest, forbidden } from "@/lib/auth/apiError";
 import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
 import { shouldAuditEvent } from "@/lib/audit/shouldAuditEvent";
-import { moduleCapabilityEnabled } from "@repo/types";
+import { moduleCapabilityEnabled, normalizeEmptyRelations } from "@repo/types";
 
 type Body = {
   moduleSlug?: string;
@@ -85,7 +85,7 @@ export async function POST(req: Request) {
 
     const { data: created, error } = await supabase
       .from(resolved.table)
-      .insert(payload)
+      .insert(normalizeEmptyRelations(resolved.schema.fields || [], payload))
       .select("*")
       .single();
 

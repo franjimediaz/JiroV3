@@ -69,7 +69,7 @@ export default function SelectorTabla({
   valueField = "id",
   filters = [],
   sort = [],
-  value,
+  value = null,
   onChange,
   readOnly,
   multiple = false,
@@ -328,7 +328,7 @@ export default function SelectorTabla({
           },
         }));
       }
-      onChange(id);
+      onChange(id === "" ? null : id);
     }
 
     setPopupOpen(false);

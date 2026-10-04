@@ -11,7 +11,7 @@ import type {
   TreeViewDataProvider,
   UiTab,
 } from "@repo/types";
-import { normalizeCalendarConfig, normalizeModuleSchema, normalizePlanEditorConfig } from "@repo/types";
+import { normalizeCalendarConfig, normalizeModuleSchema, normalizePlanEditorConfig, normalizeEmptyRelations } from "@repo/types";
 import { applyCompute } from "./engines/computeEngine";
 import type { DataProvider } from "./engines/computeEngine";
 import { evaluateFieldVisibility, evaluateTabVisibility } from "./engines/visibilityEngine";
@@ -119,14 +119,16 @@ function withDefaultValues(fields: Field[], base: FormValues) {
   for (const field of fields) {
     if (out[field.name] !== undefined) continue;
 
-    if ((field.type === "file" || field.type === "image") && (field as any).multiple) {
+    if (field.type === "selectorTabla" && field.ref.multiple) {
+      out[field.name] = field.defaultValue ?? [];
+    } else if ((field.type === "file" || field.type === "image") && (field as any).multiple) {
       out[field.name] = [];
     } else {
       out[field.name] = field.defaultValue ?? defaultForType(field.type as FieldType);
     }
   }
 
-  return out;
+  return normalizeEmptyRelations(fields, out);
 }
 
 function defaultForType(type: FieldType): any {
@@ -139,6 +141,8 @@ function defaultForType(type: FieldType): any {
       return false;
     case "multiselect":
       return [];
+    case "selectorTabla":
+      return null;
     case "file":
     case "image":
       return "";
@@ -812,7 +816,7 @@ export default function Form({
     if (effectiveMode === "view") return;
 
     try {
-      const payload = { ...(values || {}) };
+      const payload = normalizeEmptyRelations(normalizedSchema.fields, values || {});
       delete payload.meta;
 
       for (const field of normalizedSchema.fields || []) {

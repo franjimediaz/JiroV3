@@ -167,3 +167,4 @@ export { COPY_RELATED_MAX_DEPTH } from "./workflows";
 
 export * from "./advancedFilters";
 export * from "./reports";
+export { normalizeEmptyRelations } from "./recordValues";
