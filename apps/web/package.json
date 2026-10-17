@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint --max-warnings 0",
     "check-types": "next typegen && tsc --noEmit",
-    "pw:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium"
+    "pw:install": "node ../../scripts/playwright-install.mjs"
   },
   "dependencies": {
     "@repo/ui": "workspace:*",

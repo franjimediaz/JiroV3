@@ -4,7 +4,10 @@
   "scripts": {
     "predev": "node scripts/kill-dev-ports.mjs",
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:check": "node scripts/dev.mjs --check",
+    "dev:stop": "node scripts/kill-dev-ports.mjs",
+    "clean:install": "node scripts/clean-install.mjs",
     "test": "node --test apps/web/lib/pdf/*.test.mjs scripts/*.test.mjs",
     "lint": "turbo run lint",
     "gen:types": "supabase gen types typescript --linked --schema public > packages/types/supabase.ts",
@@ -23,7 +26,7 @@
   },
   "packageManager": "pnpm@10.0.0",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "dependencies": {
     "@tiptap/extension-color": "^3.17.1",

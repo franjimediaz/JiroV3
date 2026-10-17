@@ -1,5 +1,9 @@
 # Turborepo starter
 
+Para instalar, arrancar o reparar Jiro en Windows, consulta
+[Desarrollo en Windows](docs/windows-development.md). Usa Node 22 LTS, pnpm 10.0.0
+y `pnpm run dev`. La limpieza de dependencias es explícita: `pnpm run clean:install`.
+
 This Turborepo starter is maintained by the Turborepo core team.
 
 ## Using this example
