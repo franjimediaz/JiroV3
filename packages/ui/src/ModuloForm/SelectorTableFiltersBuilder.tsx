@@ -1,8 +1,10 @@
 import { ConfigEditor } from "./ConfigEditor";
 import React, { useEffect, useMemo, useState } from "react";
 import styles from "./modulo-detalle.module.css";
+import RelatedFieldSelector from "../components/fields/RelatedFieldSelector";
 import {
   createEmptySelectorTableFilterCondition,
+  formatFieldRefPath,
   createEmptySelectorTableFilterGroup,
   normalizeSelectorTableFilters,
   serializeSelectorTableFilters,
@@ -25,6 +27,7 @@ type Props = {
   onChange: (next: SelectorTableFilterGroup) => void;
   readOnly?: boolean;
   targetModuleSlug?: string;
+  currentModuleSlug?: string;
   targetFields: FieldOption[];
   currentFields: FieldOption[];
   targetLoading?: boolean;
@@ -57,6 +60,7 @@ function SelectorTableFiltersBuilderBody({
   onChange,
   readOnly,
   targetModuleSlug,
+  currentModuleSlug,
   targetFields,
   currentFields,
   targetLoading,
@@ -165,6 +169,8 @@ function SelectorTableFiltersBuilderBody({
             readOnly,
             targetFields,
             currentFields,
+            targetModuleSlug,
+            currentModuleSlug,
             onUpdateGroup: updateGroup,
             onUpdateCondition: updateCondition,
           })}
@@ -203,13 +209,15 @@ function renderGroupEditor(args: {
   readOnly?: boolean;
   targetFields: FieldOption[];
   currentFields: FieldOption[];
+  targetModuleSlug?: string;
+  currentModuleSlug?: string;
   onUpdateGroup: (path: GroupPath, updater: (group: SelectorTableFilterGroup) => SelectorTableFilterGroup) => void;
   onUpdateCondition: (
     path: number[],
     updater: (condition: SelectorTableFilterCondition) => SelectorTableFilterCondition
   ) => void;
 }): React.ReactNode {
-  const { group, path, depth, readOnly, targetFields, currentFields, onUpdateGroup, onUpdateCondition } = args;
+  const { group, path, depth, readOnly, targetFields, currentFields, targetModuleSlug, currentModuleSlug, onUpdateGroup, onUpdateCondition } = args;
 
   return (
     <div
@@ -242,7 +250,7 @@ function renderGroupEditor(args: {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <ConfigEditor title="Añadir condición" value={createEmptySelectorTableFilterCondition()} readOnly={readOnly}
             onChange={next => onUpdateGroup(path, current => ({...current, items: [...current.items, next]}))}>
-            {(draft, update) => <ConditionEditorBody condition={draft} path={[]} targetFields={targetFields} currentFields={currentFields} readOnly={readOnly}
+            {(draft, update) => <ConditionEditorBody condition={draft} path={[]} targetFields={targetFields} currentFields={currentFields} targetModuleSlug={targetModuleSlug} currentModuleSlug={currentModuleSlug} readOnly={readOnly}
               onUpdateCondition={(_, change) => update(change(draft))} canMoveUp={false} canMoveDown={false}
               onMoveUp={() => {}} onMoveDown={() => {}} onRemove={() => {}} />}
           </ConfigEditor>
@@ -307,6 +315,8 @@ function renderGroupEditor(args: {
                     readOnly,
                     targetFields,
                     currentFields,
+                    targetModuleSlug,
+                    currentModuleSlug,
                     onUpdateGroup,
                     onUpdateCondition,
                   })}
@@ -324,6 +334,8 @@ function renderGroupEditor(args: {
               readOnly={readOnly}
               targetFields={targetFields}
               currentFields={currentFields}
+              targetModuleSlug={targetModuleSlug}
+              currentModuleSlug={currentModuleSlug}
               onUpdateCondition={onUpdateCondition}
               {...commonActions}
             />
@@ -340,6 +352,8 @@ function ConditionEditorBody(props: {
   readOnly?: boolean;
   targetFields: FieldOption[];
   currentFields: FieldOption[];
+  targetModuleSlug?: string;
+  currentModuleSlug?: string;
   onUpdateCondition: (
     path: number[],
     updater: (condition: SelectorTableFilterCondition) => SelectorTableFilterCondition
@@ -356,6 +370,7 @@ function ConditionEditorBody(props: {
     readOnly,
     targetFields,
     currentFields,
+    targetModuleSlug,
     onUpdateCondition,
     canMoveUp,
     canMoveDown,
@@ -387,9 +402,12 @@ function ConditionEditorBody(props: {
         <div className={styles.grid}>
           <div>
             <label className={styles.label}>Campo destino</label>
+            {targetModuleSlug ? <RelatedFieldSelector sourceModuleSlug={targetModuleSlug} value={condition.field}
+              disabled={readOnly} onChange={(field) => update({ field })} /> : null}
             <select
               className={styles.input}
-              value={condition.field}
+              style={targetModuleSlug ? { display: "none" } : undefined}
+              value={typeof condition.field === "string" ? condition.field : condition.field.field}
               disabled={readOnly}
               onChange={(event) => {
                 const nextField = targetFields.find((field) => field.name === event.target.value);
@@ -400,7 +418,7 @@ function ConditionEditorBody(props: {
               }}
             >
               <option value="">Selecciona un campo de la tabla relacionada</option>
-              {buildFieldOptions(targetFields, condition.field).map((field) => (
+              {buildFieldOptions(targetFields, typeof condition.field === "string" ? condition.field : condition.field.field).map((field) => (
                 <option key={field.name} value={field.name}>
                   {field.label || field.name}
                 </option>
@@ -472,14 +490,17 @@ function ConditionEditorBody(props: {
         {!hideValue && condition.valueSource === "recordField" ? (
           <div style={{ marginTop: 10 }}>
             <label className={styles.label}>Campo del registro actual</label>
+            {props.currentModuleSlug ? <RelatedFieldSelector sourceModuleSlug={props.currentModuleSlug} value={condition.valueField}
+              disabled={readOnly} onChange={(valueField) => update({ valueField })} /> : null}
             <select
               className={styles.input}
-              value={condition.valueField || ""}
+              style={props.currentModuleSlug ? { display: "none" } : undefined}
+              value={typeof condition.valueField === "string" ? condition.valueField : condition.valueField?.field || ""}
               disabled={readOnly}
               onChange={(event) => update({ valueField: event.target.value })}
             >
               <option value="">Selecciona un campo del registro actual</option>
-              {buildFieldOptions(currentFields, condition.valueField || "").map((field) => (
+              {buildFieldOptions(currentFields, typeof condition.valueField === "string" ? condition.valueField : condition.valueField?.field || "").map((field) => (
                 <option key={field.name} value={field.name}>
                   {field.label || field.name}
                 </option>
@@ -697,7 +718,7 @@ export default function SelectorTableFiltersBuilder(props: Props) {
 
 function ConditionEditor(props: React.ComponentProps<typeof ConditionEditorBody>) {
  return <div className="d-flex align-items-center gap-2">
- <ConfigEditor title={props.condition.field || "Condición"} summary={props.condition.op + " " + JSON.stringify(props.condition.value ?? "")}
+ <ConfigEditor title={formatFieldRefPath(props.condition.field) || "Condición"} summary={props.condition.op + " " + JSON.stringify(props.condition.value ?? "")}
  value={props.condition} readOnly={props.readOnly} onChange={next => props.onUpdateCondition(props.path, () => next)}>
  {(draft, update) => <ConditionEditorBody {...props} condition={draft} onUpdateCondition={(_, change) => update(change(draft))} />}
  </ConfigEditor>

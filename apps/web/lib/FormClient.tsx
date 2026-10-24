@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseTreeViewProvider } from "@/lib/utils/treeViewProvider";
 import { Form } from "@repo/ui";
 import { getEffectiveModuleCapabilities, isModuleActionAvailable, getRecordName } from "@repo/types";
-import type { ModuleSchema } from "@repo/types";
+import { pickPersistablePayload, type ModuleSchema } from "@repo/types";
 import { RequirePerms, usePerms } from "@/lib/perms";
 
 import { RegisterRecordBreadcrumb } from "./RecordBreadcrumb";
@@ -39,24 +39,6 @@ function sanitize(values: any, schema: ModuleSchema) {
 
     if (v === "") out[f.name] = null;
   }
-
-  return out;
-}
-
-function pickPersistablePayload(values: any, schema: ModuleSchema) {
-  const allowed = new Set(
-    (schema.fields || [])
-      .filter((f) => f.virtual !== true)
-      .filter((f) => !(f.compute && (f.compute as any).persist === "none"))
-      .map((f) => f.name)
-  );
-
-  const out: Record<string, any> = {};
-  for (const k of allowed) out[k] = values?.[k];
-
-  delete out.meta;
-  delete out.created_at;
-  delete out.updated_at;
 
   return out;
 }
@@ -213,7 +195,7 @@ export default function FormClient({
         }
 
         const sanitized = sanitize(values, schema);
-        const payload = pickPersistablePayload(sanitized, schema);
+        const payload = pickPersistablePayload(sanitized, schema, { operation: effectiveMode === "edit" ? "update" : "create", primaryKey: resolved.primaryKey });
 
         // 2) update / insert
         if (effectiveMode === "edit") {

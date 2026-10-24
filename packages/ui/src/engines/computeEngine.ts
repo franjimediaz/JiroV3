@@ -1,15 +1,16 @@
-import type { AdvancedFilterGroup, Field, ModuleSchema, QueryFilter, QuerySort } from "@repo/types";
+import { fieldRefKey, getFieldRefValue, normalizeFieldRef, type AdvancedFilterGroup, type Field, type FieldRefInput, type FieldRefLike, type ModuleSchema, type QueryFilter, type QuerySort } from "@repo/types";
 import { safeEval } from "./safeEval";
 
 export type AggregateInput = {
-  sourceTable: string;
-  field: string;
+  sourceTable?: string;
+  sourceModuleSlug?: string;
+  field: FieldRefLike;
   op: "sum" | "avg" | "min" | "max" | "count";
   where: Array<{
-    field: string;
+    field: FieldRefLike;
     op: "=" | "!=" | ">" | "<" | ">=" | "<=" | "in";
     valueFrom?: "this" | "context";
-    path?: string;
+    path?: FieldRefLike;
     value?: any;
   }>;
 };
@@ -22,9 +23,10 @@ export type ListInput = {
   purpose?: "export";
   filters?: QueryFilter[];
   sort?: Array<QuerySort | { field: string; dir: "asc" | "desc" }>;
+  fieldRefs?: FieldRefInput[];
   hasStyle?: boolean;
-  styleIconField?: string;
-  styleColorField?: string;
+  styleIconField?: FieldRefLike;
+  styleColorField?: FieldRefLike;
 };
 export type ListResult = { data: any[]; count?: number; error?: any };
 
@@ -42,6 +44,56 @@ export type DataProvider = {
   getOne?: (moduleSlug: string, id: string) => Promise<any | null>;
 };
 
+function collectComputeReadRefs(fields: Field[]): FieldRefLike[] {
+  const refs: FieldRefLike[] = [];
+  for (const field of fields) {
+    const compute = field.compute;
+    if (!compute || compute.type === "none") continue;
+    if (compute.type === "formula") refs.push(...(compute.dependencies || []).map(item => item.ref));
+    if (compute.type === "aggregate") {
+      refs.push(...(compute.where || []).filter(item => item.valueFrom === "this" && item.path).map(item => item.path!));
+    }
+  }
+  return [...new Map(refs.map(ref => [fieldRefKey(ref), ref])).values()];
+}
+
+export async function hydrateComputeFieldRefs(
+  fields: Field[],
+  record: Record<string, any>,
+  dataProvider: DataProvider,
+) {
+  if (!dataProvider.list) return record;
+  const groups = new Map<string, FieldRefLike[]>();
+  for (const input of collectComputeReadRefs(fields)) {
+    const ref = normalizeFieldRef(input);
+    if (!ref.relations.length) continue;
+    const [relation, ...relations] = ref.relations;
+    const tail = { field: ref.field, relations };
+    const list = groups.get(relation!) || [];
+    if (!list.some(item => fieldRefKey(item) === fieldRefKey(tail))) list.push(tail);
+    groups.set(relation!, list);
+  }
+  if (!groups.size) return record;
+
+  const hydrated = { ...record };
+  await Promise.all([...groups].map(async ([relationName, fieldRefs]) => {
+    const relation = fields.find(field => field.name === relationName);
+    if (!relation || relation.type !== "selectorTabla" || relation.ref.multiple) return;
+    const selected = record[relationName];
+    const selectedId = selected && typeof selected === "object" ? selected[relation.ref.valueField || "id"] : selected;
+    if (selectedId === null || selectedId === undefined || selectedId === "") return;
+    const result = await dataProvider.list!({
+      moduleSlug: relation.ref.moduleSlug,
+      filters: [{ field: relation.ref.valueField || "id", op: "=", value: selectedId }],
+      fieldRefs,
+      limit: 1,
+    });
+    const related = result?.data?.[0];
+    if (related) hydrated[relationName] = related;
+  }));
+  return hydrated;
+}
+
 /**
  * Aplica overrides y cálculos (formula / aggregate) sobre un registro.
  * No muta el original; devuelve una copia.
@@ -58,7 +110,7 @@ export async function applyCompute({
   context?: Record<string, any>;
 }) {
   const fields = ("fields" in schema ? schema.fields : []) as Field[];
-  const out = { ...record };
+  const out = { ...(await hydrateComputeFieldRefs(fields, record || {}, dataProvider)) };
 
   for (const f of fields) {
     const name = f.name;
@@ -75,6 +127,9 @@ export async function applyCompute({
       const { expr, deps } = f.compute;
       const scope = Object.create(null);
       for (const d of deps || []) scope[d] = out[d];
+      for (const dependency of f.compute.dependencies || []) {
+        scope[dependency.token] = getFieldRefValue(out, dependency.ref);
+      }
       out[name] = safeEval(expr, scope);
       continue;
     }
@@ -83,6 +138,7 @@ export async function applyCompute({
       out[name] = await dataProvider.aggregate(
         {
           sourceTable: f.compute.sourceTable,
+          sourceModuleSlug: f.compute.sourceModuleSlug,
           field: f.compute.field,
           op: f.compute.op,
           where: f.compute.where || [],

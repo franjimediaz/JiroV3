@@ -3,6 +3,7 @@ import { ActionMenu } from "../ActionMenu";
 import { useState, useEffect, useMemo } from "react";
 import styles from "./modulo-detalle.module.css";
 import  Selector from "../components/fields/Selector";
+import RelatedFieldSelector from "../components/fields/RelatedFieldSelector";
 import type {
   Field as FieldSchema,
   FieldType,
@@ -12,17 +13,20 @@ import type {
   VisibilityConfig,
   VisibilityOperator,
   VisibilityRule,
+  FieldRefLike,
 } from "@repo/types";
-import {VALID_FIELD_TYPES,Appareance_Valid_Types} from "@repo/types";
+import {VALID_FIELD_TYPES,Appareance_Valid_Types, formatFieldRefPath} from "@repo/types";
 import { FieldPickerModal} from "../modals/FieldPickerModal";
 import SelectorTableFiltersBuilder from "./SelectorTableFiltersBuilder";
 
 type RefPickCtx = null | { kind: "refDisplayField" };
 type FieldOption = { name: string; label?: string; type?: string };
 type AggregateWhereCondition = {
-  field: string;
+  field: FieldRefLike;
   op: "=" | "!=" | ">" | "<" | ">=" | "<=" | "in";
   value?: any;
+  valueFrom?: "this" | "context";
+  path?: FieldRefLike;
 };
 
 const visibilityOperators: VisibilityOperator[] = [
@@ -50,7 +54,12 @@ export function ensureVisibilityConfigFromValue(current: any): VisibilityConfig 
     enabled: !!current?.enabled,
     mode: current?.mode === "hide" ? "hide" : "show",
     logic: current?.logic === "OR" ? "OR" : "AND",
-    rules: Array.isArray(current?.rules) ? current.rules : [],
+    rules: Array.isArray(current?.rules)
+      ? current.rules.map((rule: VisibilityRule) => ({
+          ...rule,
+          source: rule?.source === "relatedRecord" ? "relatedRecord" : "currentRecord",
+        }))
+      : [],
   };
 }
 
@@ -137,6 +146,7 @@ function normalizeFieldType(field: Field, nextType: FieldType): Field {
     return {
       ...base,
       type: "ReverseLink",
+      virtual: true,
       ref: {
         moduleSlug: (field as any).ref?.moduleSlug ?? "",
         foreignKey: (field as any).ref?.foreignKey ?? "",
@@ -219,6 +229,7 @@ function VisibilityConfigEditorBody({
   fieldsByTable,
   loadingByTable,
   ensureFieldsLoaded,
+  sourceModuleSlug,
   readOnly,
   onChange,
 }: {
@@ -229,6 +240,7 @@ function VisibilityConfigEditorBody({
   fieldsByTable: Record<string, { name: string; label?: string }[]>;
   loadingByTable: Record<string, boolean>;
   ensureFieldsLoaded: (tableSlug: string) => void;
+  sourceModuleSlug?: string;
   readOnly?: boolean;
   onChange: (next: any) => void;
 }) {
@@ -306,6 +318,7 @@ function VisibilityConfigEditorBody({
               fieldsByTable={fieldsByTable}
               loadingByTable={loadingByTable}
               ensureFieldsLoaded={ensureFieldsLoaded}
+              sourceModuleSlug={sourceModuleSlug}
               readOnly={readOnly}
               onChange={(nextRule) => updateRule(index, nextRule)}
               onRemove={() => removeRule(index)}
@@ -316,7 +329,7 @@ function VisibilityConfigEditorBody({
             onChange={next => updateVisibility({...visibility, rules: [...visibility.rules, next]})}>
             {(draft, update) => <VisibilityRuleEditorBody rule={draft} onChange={update} onRemove={() => {}}
               allFields={allFields} relationFields={relationFields} fieldsByTable={fieldsByTable}
-              loadingByTable={loadingByTable} ensureFieldsLoaded={ensureFieldsLoaded} readOnly={readOnly} />}
+              loadingByTable={loadingByTable} ensureFieldsLoaded={ensureFieldsLoaded} sourceModuleSlug={sourceModuleSlug} readOnly={readOnly} />}
           </ConfigEditor>
         </div>
       )}
@@ -331,6 +344,7 @@ function VisibilityRuleEditorBody({
   fieldsByTable,
   loadingByTable,
   ensureFieldsLoaded,
+  sourceModuleSlug,
   readOnly,
   onChange,
   onRemove,
@@ -341,6 +355,7 @@ function VisibilityRuleEditorBody({
   fieldsByTable: Record<string, { name: string; label?: string }[]>;
   loadingByTable: Record<string, boolean>;
   ensureFieldsLoaded: (tableSlug: string) => void;
+  sourceModuleSlug?: string;
   readOnly?: boolean;
   onChange: (rule: VisibilityRule) => void;
   onRemove: () => void;
@@ -396,9 +411,12 @@ function VisibilityRuleEditorBody({
         {rule.source === "currentRecord" ? (
           <div>
             <label className={styles.label}>Campo</label>
+            {sourceModuleSlug ? <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value={rule.field}
+              disabled={readOnly} onChange={(field) => onChange({ ...rule, source: "currentRecord", field })} /> : null}
             <select
               className={styles.input}
-              value={rule.field || ""}
+              style={sourceModuleSlug ? { display: "none" } : undefined}
+              value={typeof rule.field === "string" ? rule.field : rule.field?.field || ""}
               onChange={(event) => onChange({ ...rule, field: event.target.value })}
               disabled={readOnly}
             >
@@ -596,20 +614,24 @@ function normalizeAggregateWhere(where: any): AggregateWhereCondition[] {
   return where
     .filter((condition) => condition && typeof condition === "object")
     .map((condition) => ({
-      field: typeof condition.field === "string" ? condition.field : "",
+      field: typeof condition.field === "string" ? condition.field : condition.field?.field ? condition.field : "",
       op: aggregateWhereOperators.includes(condition.op) ? condition.op : "=",
       value: "value" in condition ? condition.value : "",
+      valueFrom: condition.valueFrom,
+      path: condition.path,
     }));
 }
 
 function FormulaComputeEditorBody({
   field,
   allFields,
+  sourceModuleSlug,
   readOnly,
   onChange,
 }: {
   field: FieldSchema;
   allFields: FieldSchema[];
+  sourceModuleSlug?: string;
   readOnly?: boolean;
   onChange: (f: FieldSchema) => void;
 }) {
@@ -784,6 +806,27 @@ function FormulaComputeEditorBody({
         ))}
       </div>
 
+      {sourceModuleSlug ? <div style={{ marginTop: 12 }}>
+        <label className={styles.label}>Dependencia relacionada</label>
+        <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value="" disabled={readOnly}
+          allowedField={(candidate) => ["number", "money", "percent", "boolean", "date", "datetime"].includes(candidate.type)}
+          onChange={(ref) => {
+            const base = ref.field.replace(/[^A-Za-z0-9_]/g, "_") || "value";
+            const used = new Set((formula.dependencies || []).map(item => item.token));
+            let token = base; let index = 2;
+            while (used.has(token)) token = `${base}_${index++}`;
+            const separator = formula.expr && !formula.expr.endsWith(" ") ? " " : "";
+            updateFormula({ dependencies: [...(formula.dependencies || []), { token, ref }], expr: `${formula.expr}${separator}${token}` });
+          }} />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          {(formula.dependencies || []).map((dependency) => <span key={dependency.token} className={styles.badge}>
+            {dependency.token}
+            <button type="button" disabled={readOnly} aria-label={`Eliminar ${dependency.token}`}
+              onClick={() => updateFormula({ dependencies: (formula.dependencies || []).filter(item => item.token !== dependency.token) })}>×</button>
+          </span>)}
+        </div>
+      </div> : null}
+
       <div className={styles.card} style={{ marginTop: 12 }}>
         <label className={styles.label}>Resumen</label>
         <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" }}>
@@ -815,6 +858,7 @@ function AggregateComputeEditorBody({
   loadingByTable,
   ensureFieldsLoaded,
   currentFields,
+  sourceModuleSlug,
   readOnly,
   onChange,
 }: {
@@ -823,6 +867,7 @@ function AggregateComputeEditorBody({
   loadingByTable: Record<string, boolean>;
   ensureFieldsLoaded: (tableSlug: string) => void;
   currentFields: FieldSchema[];
+  sourceModuleSlug?: string;
   readOnly?: boolean;
   onChange: (f: FieldSchema) => void;
 }) {
@@ -838,7 +883,7 @@ function AggregateComputeEditorBody({
   }, [aggregate.sourceTable, ensureFieldsLoaded]);
 
   useEffect(() => {
-    if (!aggregate.sourceTable || !aggregate.field || sourceFields.length === 0) return;
+    if (!aggregate.sourceTable || !aggregate.field || sourceFields.length === 0 || typeof aggregate.field !== "string") return;
     if (aggregate.op === "count" && aggregate.field === "id") return;
     if (!sourceFields.some((candidate) => candidate.name === aggregate.field)) {
       onChange({ ...field, compute: { ...aggregate, field: "" } });
@@ -877,6 +922,7 @@ function AggregateComputeEditorBody({
                 compute: {
                   ...aggregate,
                   sourceTable,
+                  sourceModuleSlug: sourceTable,
                   field: aggregate.sourceTable === sourceTable ? aggregate.field : aggregate.op === "count" ? "id" : "",
                 },
               });
@@ -905,9 +951,19 @@ function AggregateComputeEditorBody({
 
         <div>
           <label className={styles.label}>field</label>
+          {aggregate.sourceModuleSlug || aggregate.sourceTable ? <RelatedFieldSelector
+            sourceModuleSlug={aggregate.sourceModuleSlug || aggregate.sourceTable || ""}
+            value={aggregate.field}
+            disabled={readOnly || !(aggregate.sourceModuleSlug || aggregate.sourceTable)}
+            allowedField={aggregate.op === "sum" || aggregate.op === "avg"
+              ? (candidate) => ["number", "money", "percent"].includes(candidate.type)
+              : undefined}
+            onChange={(nextField) => updateAggregate({ field: nextField })}
+          /> : null}
           <select
             className={styles.input}
-            value={aggregate.field}
+            style={aggregate.sourceModuleSlug || aggregate.sourceTable ? { display: "none" } : undefined}
+            value={typeof aggregate.field === "string" ? aggregate.field : aggregate.field.field}
             onChange={(e) => updateAggregate({ field: aggregate.op === "count" && !e.target.value ? "id" : e.target.value })}
             disabled={readOnly || !aggregate.sourceTable}
           >
@@ -917,7 +973,7 @@ function AggregateComputeEditorBody({
             {aggregate.op === "count" && !orderedSourceFields.some((candidate) => candidate.name === "id") ? (
               <option value="id">id</option>
             ) : null}
-            {buildFieldOptions(orderedSourceFields, aggregate.field).map((candidate) => (
+            {buildFieldOptions(orderedSourceFields, typeof aggregate.field === "string" ? aggregate.field : aggregate.field.field).map((candidate) => (
               <option key={candidate.name} value={candidate.name}>
                 {candidate.label || candidate.name}
                 {candidate.type ? ` (${candidate.type})` : ""}
@@ -938,7 +994,9 @@ function AggregateComputeEditorBody({
 
       <AggregateWhereBuilder
         value={aggregate.where || []}
-        sourceTable={aggregate.sourceTable}
+        sourceTable={aggregate.sourceTable || ""}
+        sourceModuleSlug={aggregate.sourceModuleSlug || aggregate.sourceTable || ""}
+        currentModuleSlug={sourceModuleSlug}
         sourceFields={sourceFields}
         currentFields={currentFields}
         loading={!!loadingByTable[aggregate.sourceTable || ""]}
@@ -965,6 +1023,8 @@ function AggregateComputeEditorBody({
 function AggregateWhereBuilderBody({
   value,
   sourceTable,
+  sourceModuleSlug,
+  currentModuleSlug,
   sourceFields,
   currentFields,
   loading,
@@ -974,6 +1034,8 @@ function AggregateWhereBuilderBody({
 }: {
   value: any[];
   sourceTable: string;
+  sourceModuleSlug?: string;
+  currentModuleSlug?: string;
   sourceFields: FieldOption[];
   currentFields: FieldSchema[];
   loading?: boolean;
@@ -1004,7 +1066,7 @@ function AggregateWhereBuilderBody({
           setWhereErr(`Condición [${i}] debe ser un objeto`);
           return;
         }
-        if (typeof condition.field !== "string" || !condition.field.trim()) {
+        if (!(typeof condition.field === "string" ? condition.field.trim() : condition.field?.field)) {
           setWhereErr(`Condición [${i}] => "field" (string) es requerido`);
           return;
         }
@@ -1012,7 +1074,7 @@ function AggregateWhereBuilderBody({
           setWhereErr(`Condición [${i}] => "op" (string) es requerido`);
           return;
         }
-        if (!("value" in condition)) {
+        if (!("value" in condition) && condition.valueFrom !== "this") {
           setWhereErr(`Condición [${i}] => falta "value"`);
           return;
         }
@@ -1072,9 +1134,9 @@ function AggregateWhereBuilderBody({
             {conditions.length === 0 ? <div className={styles.hint}>Sin condiciones.</div> : null}
             {conditions.map((condition, index) => (
               <div key={index} className="d-flex align-items-center gap-2">
-                <ConfigEditor title={condition.field || "Condición"} summary={condition.op + " " + formatAggregateWhereValue(condition.value)}
+                <ConfigEditor title={formatFieldRefPath(condition.field) || "Condición"} summary={condition.op + " " + formatAggregateWhereValue(condition.value)}
                   value={condition} readOnly={readOnly} onChange={next => updateCondition(index, next)}>
-                  {(draft, update) => <AggregateConditionEditor condition={draft} onChange={update} sourceTable={sourceTable}
+                  {(draft, update) => <AggregateConditionEditor condition={draft} onChange={update} sourceTable={sourceTable} sourceModuleSlug={sourceModuleSlug} currentModuleSlug={currentModuleSlug}
                     sourceFields={sourceFields} currentFields={currentFields} readOnly={readOnly} />}
                 </ConfigEditor>
                 <button type="button" className={styles.btnDel} disabled={readOnly}
@@ -1085,7 +1147,7 @@ function AggregateWhereBuilderBody({
 
           <ConfigEditor<AggregateWhereCondition> title="Añadir condición" value={{field: "", op: "=", value: ""}} readOnly={readOnly}
             onChange={next => onChange([...conditions, next])}>
-            {(draft, update) => <AggregateConditionEditor condition={draft} onChange={update} sourceTable={sourceTable}
+            {(draft, update) => <AggregateConditionEditor condition={draft} onChange={update} sourceTable={sourceTable} sourceModuleSlug={sourceModuleSlug} currentModuleSlug={currentModuleSlug}
               sourceFields={sourceFields} currentFields={currentFields} readOnly={readOnly} />}
           </ConfigEditor>
         </div>
@@ -1127,6 +1189,7 @@ export function FieldConfigEditor({
   loadingByTable,
   ensureFieldsLoaded,
   currentFields,
+  sourceModuleSlug,
 }: {
   field: FieldSchema;
   onChange: (f: FieldSchema) => void;
@@ -1135,6 +1198,7 @@ export function FieldConfigEditor({
   loadingByTable: Record<string, boolean>;
   ensureFieldsLoaded: (tableSlug: string) => void;
   currentFields: FieldSchema[];
+  sourceModuleSlug?: string;
 }) {
   
   const [refPickCtx, setRefPickCtx] = useState<RefPickCtx>(null);
@@ -1300,9 +1364,9 @@ export function FieldConfigEditor({
                 <label className={styles.label}>virtual</label>
                 <input
                   type="checkbox"
-                  checked={!!field.virtual}
-                  onChange={(e) => onChange({ ...field, virtual: e.target.checked })}
-                  disabled={readOnly}
+                  checked={field.type === "ReverseLink" || !!field.virtual}
+                  onChange={(e) => onChange({ ...field, virtual: field.type === "ReverseLink" || e.target.checked })}
+                  disabled={readOnly || field.type === "ReverseLink"}
                 />
               </div>
               <div className={styles.switchRow}>
@@ -1352,6 +1416,7 @@ export function FieldConfigEditor({
             fieldsByTable={fieldsByTable}
             loadingByTable={loadingByTable}
             ensureFieldsLoaded={ensureFieldsLoaded}
+            sourceModuleSlug={sourceModuleSlug}
             readOnly={readOnly}
             onChange={onChange}
           />
@@ -1452,7 +1517,7 @@ export function FieldConfigEditor({
                   const refFields = fieldsByTable[refModuleSlug] || [];
                   const refLoading = !!loadingByTable[refModuleSlug];
 
-                  const refDisplayFieldLabel = getLabelForFieldName(refFields, refDisplayFieldName);
+                  const refDisplayFieldLabel = getLabelForFieldName(refFields, typeof refDisplayFieldName === "string" ? refDisplayFieldName : refDisplayFieldName.field);
 
                   return (
                     <div className={styles.grid}>
@@ -1494,7 +1559,11 @@ export function FieldConfigEditor({
                       <div>
                         <label className={styles.label}>ref.displayField</label>
 
-                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <RelatedFieldSelector sourceModuleSlug={refModuleSlug} value={refDisplayFieldName}
+                          disabled={!!readOnly || !refModuleSlug}
+                          onChange={(displayField) => onChange({ ...field, ref: { ...(field.ref || {}), moduleSlug: refModuleSlug, displayField } })} />
+
+                        <div style={{ display: "none", gap: 8, alignItems: "center" }}>
                           <input
                             className={styles.input}
                             value={refDisplayFieldLabel || ""}
@@ -1597,12 +1666,29 @@ export function FieldConfigEditor({
                   </div>
                 </div>
 
+                {field.ref?.hasStyle ? <div className={styles.grid} style={{ marginTop: 12 }}>
+                  <div>
+                    <label className={styles.label}>ref.styleIconField</label>
+                    <RelatedFieldSelector sourceModuleSlug={selectorModuleSlug} value={field.ref.styleIconField}
+                      disabled={!!readOnly || !selectorModuleSlug}
+                      onChange={(styleIconField) => onChange({ ...field, ref: { ...(field.ref || {}), styleIconField } })} />
+                  </div>
+                  <div>
+                    <label className={styles.label}>ref.styleColorField</label>
+                    <RelatedFieldSelector sourceModuleSlug={selectorModuleSlug} value={field.ref.styleColorField}
+                      disabled={!!readOnly || !selectorModuleSlug}
+                      allowedField={(candidate) => candidate.type === "color" || candidate.type === "text"}
+                      onChange={(styleColorField) => onChange({ ...field, ref: { ...(field.ref || {}), styleColorField } })} />
+                  </div>
+                </div> : null}
+
                 <SelectorTableFiltersBuilder
                   value={field.ref?.filters}
                   readOnly={readOnly}
                   targetModuleSlug={field.ref?.moduleSlug || ""}
                   targetFields={fieldsByTable[field.ref?.moduleSlug || ""] || []}
                   currentFields={currentFields}
+                  currentModuleSlug={sourceModuleSlug}
                   targetLoading={!!loadingByTable[field.ref?.moduleSlug || ""]}
                   onRequestTargetFields={() => {
                     const slug = field.ref?.moduleSlug || "";
@@ -1848,6 +1934,7 @@ export function FieldConfigEditor({
             <FormulaComputeEditor
               field={field}
               allFields={currentFields}
+              sourceModuleSlug={sourceModuleSlug}
               readOnly={readOnly}
               onChange={onChange}
             />
@@ -1860,6 +1947,7 @@ export function FieldConfigEditor({
               loadingByTable={loadingByTable}
               ensureFieldsLoaded={ensureFieldsLoaded}
               currentFields={currentFields}
+              sourceModuleSlug={sourceModuleSlug}
               readOnly={readOnly}
               onChange={onChange}
             />
@@ -1871,24 +1959,20 @@ export function FieldConfigEditor({
 
 export function FieldRow(props: React.ComponentProps<typeof FieldConfigEditor> & {
   onRemove: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  canUp: boolean;
-  canDown: boolean;
+  onDuplicate: () => void;
+  dragHandle?: React.ReactNode;
 }) {
   const { field, readOnly } = props;
   const summary = [field.type, field.recordName && "Record name", field.required && "Obligatorio",
     field.compute && "Computed", field.type === "selectorTabla" && field.ref?.moduleSlug].filter(Boolean).join(" \u00b7 ");
   return <div className={styles.configRow}>
+    {props.dragHandle}
     <ConfigEditor title={field.label || field.name || "Nuevo campo"} summary={summary}
       value={field} onChange={props.onChange} readOnly={readOnly}>
       {(draft, update) => <FieldConfigEditor {...props} field={draft} onChange={update} />}
     </ConfigEditor>
     <ActionMenu ariaLabel={`Acciones de ${field.label || field.name}`} disabled={readOnly} items={[
-      { label: "Subir", icon: "bi bi-arrow-up", disabled: !props.canUp, onClick: props.onMoveUp },
-      { label: "Bajar", icon: "bi bi-arrow-down", disabled: !props.canDown, onClick: props.onMoveDown },
-      { label: "Duplicar", icon: "bi bi-copy", onClick: () => props.onChange({ ...field,
-        name: (field.name || "campo").replace(/\s+/g, "_") + "_copy_" + Math.floor(Math.random() * 1000), label: (field.label || "Campo") + " (copia)" }) },
+      { label: "Duplicar", icon: "bi bi-copy", onClick: props.onDuplicate },
       { label: "Eliminar", icon: "bi bi-trash", onClick: props.onRemove },
     ]} />
   </div>;
@@ -1926,9 +2010,9 @@ export function VisibilityConfigEditor(props: React.ComponentProps<typeof Visibi
  </ConfigEditor>;
 }
 
-function AggregateConditionEditor({condition, onChange, sourceTable, sourceFields, currentFields, readOnly}: {
+function AggregateConditionEditor({condition, onChange, sourceTable, sourceModuleSlug, currentModuleSlug, sourceFields, currentFields, readOnly}: {
  condition: AggregateWhereCondition; onChange: (next: AggregateWhereCondition) => void;
- sourceTable: string; sourceFields: FieldOption[]; currentFields: FieldSchema[]; readOnly?: boolean;
+ sourceTable: string; sourceModuleSlug?: string; currentModuleSlug?: string; sourceFields: FieldOption[]; currentFields: FieldSchema[]; readOnly?: boolean;
 }) {
  const index = 0;
  const updateCondition = (_index: number, patch: Partial<AggregateWhereCondition>) => onChange({...condition, ...patch});
@@ -1936,14 +2020,17 @@ function AggregateConditionEditor({condition, onChange, sourceTable, sourceField
  return (                <div className={styles.grid} style={{ alignItems: "end" }}>
                   <div>
                     <label className={styles.label}>Campo origen</label>
+                    {sourceModuleSlug ? <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value={condition.field}
+                      disabled={readOnly} onChange={(field) => updateCondition(index, { field })} /> : null}
                     <select
                       className={styles.input}
-                      value={condition.field}
+                      style={sourceModuleSlug ? { display: "none" } : undefined}
+                      value={typeof condition.field === "string" ? condition.field : condition.field.field}
                       disabled={readOnly || !sourceTable}
                       onChange={(event) => updateCondition(index, { field: event.target.value })}
                     >
                       <option value="">Seleccionar campo</option>
-                      {buildFieldOptions(sourceFields, condition.field).map((candidate) => (
+                      {buildFieldOptions(sourceFields, typeof condition.field === "string" ? condition.field : condition.field.field).map((candidate) => (
                         <option key={candidate.name} value={candidate.name}>
                           {candidate.label || candidate.name}
                         </option>
@@ -1989,8 +2076,11 @@ function AggregateConditionEditor({condition, onChange, sourceTable, sourceField
 
                   <div>
                     <label className={styles.label}>Valor dinámico</label>
+                    {currentModuleSlug ? <RelatedFieldSelector sourceModuleSlug={currentModuleSlug} value={condition.path}
+                      disabled={readOnly} onChange={(path) => onChange({ ...condition, valueFrom: "this", path, value: undefined })} /> : null}
                     <select
                       className={styles.input}
+                      style={currentModuleSlug ? { display: "none" } : undefined}
                       value={
                         (typeof condition.value === "string" &&
                           condition.value.match(/^\{\{\s*([\w.]+)\s*\}\}$/)?.[1]) ||

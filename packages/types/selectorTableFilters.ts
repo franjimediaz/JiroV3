@@ -1,3 +1,5 @@
+import { getFieldRefValue, serializeFieldRef, type FieldRefLike } from "./fieldRefs";
+
 type PlainObject = Record<string, any>;
 
 export type SelectorTableFilterOperator =
@@ -19,12 +21,12 @@ export type SelectorTableFilterLogic = "AND" | "OR";
 
 export type SelectorTableFilterCondition = {
   kind: "condition";
-  field: string;
+  field: FieldRefLike;
   op: SelectorTableFilterOperator;
   valueSource?: SelectorTableFilterValueSource;
   valueType?: SelectorTableFilterLiteralType;
   value?: any;
-  valueField?: string;
+  valueField?: FieldRefLike;
 };
 
 export type SelectorTableFilterGroup = {
@@ -36,7 +38,7 @@ export type SelectorTableFilterGroup = {
 export type SelectorTableFilterNode = SelectorTableFilterCondition | SelectorTableFilterGroup;
 
 export type SelectorTableResolvedFilterCondition = {
-  field: string;
+  field: FieldRefLike;
   op: SelectorTableFilterOperator;
   value?: any;
 };
@@ -47,7 +49,7 @@ export type SelectorTableResolvedFilterGroup = {
 };
 
 export type QueryFilterLike = {
-  field: string;
+  field: FieldRefLike;
   op: SelectorTableFilterOperator | string;
   value?: any;
 };
@@ -134,12 +136,12 @@ export function normalizeSelectorTableFilterCondition(input: any): SelectorTable
   const op = normalizeOperator(input?.op);
   const normalized: SelectorTableFilterCondition = {
     kind: "condition",
-    field: String(input?.field || "").trim(),
+    field: typeof input?.field === "string" ? input.field.trim() : serializeFieldRef(input?.field),
     op,
     valueSource: input?.valueSource === "recordField" ? "recordField" : "literal",
     valueType: normalizeLiteralType(input?.valueType, input?.value),
     value: input?.value,
-    valueField: String(input?.valueField || "").trim(),
+    valueField: typeof input?.valueField === "string" ? input.valueField.trim() : serializeFieldRef(input?.valueField),
   };
 
   if (op === "isNull" || op === "isNotNull") {
@@ -157,7 +159,20 @@ export function normalizeSelectorTableFilterCondition(input: any): SelectorTable
 export function serializeSelectorTableFilters(
   input: SelectorTableFiltersInput
 ): SelectorTableFilterGroup {
-  return normalizeSelectorTableFilters(input);
+  return canonicalizeSelectorFilterGroup(normalizeSelectorTableFilters(input));
+}
+
+function canonicalizeSelectorFilterGroup(group: SelectorTableFilterGroup): SelectorTableFilterGroup {
+  return {
+    ...group,
+    items: group.items.map(item => item.kind === "group"
+      ? canonicalizeSelectorFilterGroup(item)
+      : {
+          ...item,
+          field: serializeFieldRef(item.field),
+          ...(item.valueSource === "recordField" ? { valueField: serializeFieldRef(item.valueField) } : {}),
+        }),
+  };
 }
 
 export function resolveSelectorTableFilters(
@@ -223,12 +238,11 @@ export function matchesSelectorTableFilterGroup(
 
 export function getSelectorTableFilterRecordValue(
   context: SelectorTableFilterResolutionContext | undefined,
-  path: string
+  path: FieldRefLike
 ) {
-  if (!path) return undefined;
-  const values = getByPath(context?.values, path);
+  const values = getFieldRefValue(context?.values, path);
   if (values !== undefined) return values;
-  return getByPath(context?.record, path);
+  return getFieldRefValue(context?.record, path);
 }
 
 function resolveSelectorTableFilterGroup(
@@ -272,7 +286,7 @@ function matchesSelectorTableFilterNode(
 ): boolean {
   if (isResolvedFilterGroup(node)) return matchesSelectorTableFilterGroup(row, node);
 
-  const left = getByPath(row, node.field);
+  const left: any = getFieldRefValue(row, node.field);
   const right = node.value;
 
   switch (node.op) {
@@ -378,16 +392,6 @@ function matchesIlike(left: any, right: any) {
     .toLowerCase()
     .replace(/%/g, "");
   return source.includes(pattern);
-}
-
-function getByPath(obj: any, path: string) {
-  return String(path || "")
-    .split(".")
-    .filter(Boolean)
-    .reduce<any>((acc, key) => {
-      if (acc && typeof acc === "object" && key in acc) return acc[key];
-      return undefined;
-    }, obj);
 }
 
 function isPlainObject(value: unknown): value is PlainObject {

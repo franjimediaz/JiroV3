@@ -269,7 +269,7 @@ test("Mi cuenta reuses ActionMenu in expanded and mini mode and submits the exis
     const accountTree = account.type(account.props);
     const menu = visit(accountTree, (node) => node.type?.name === "ActionMenu")[0];
     assert.deepEqual(menu.props.items.map((item) => item.label), ["Mi perfil", "Salir"]);
-    assert.equal(menu.props.items[0].disabled, true);
+    assert.notEqual(menu.props.items[0].disabled, true);
     assert.equal(menu.props.triggerTitle, "Mi cuenta");
     assert.equal(visit(menu.props.trigger, (node) => node.props.className === "bi bi-person-circle fs-5").length, 1);
     assert.equal(visit(menu.props.trigger, (node) => node.type === "span").length, miniMode ? 0 : 1);

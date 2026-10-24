@@ -1,6 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
-import type { ModuleSchema } from "@repo/types";
-import { getRecordName, getRecordNameField, getRecordNameFieldName } from "@repo/types";
+import type { FieldRefLike, ModuleSchema } from "@repo/types";
+import {
+  getRecordName,
+  getRecordNameField,
+  getRecordNameFieldName,
+  isDirectFieldRef,
+  normalizeFieldRef,
+} from "@repo/types";
 import { resolvePdfDatasets } from "./resolvePdfDatasets";
 
 type RelatedSpec = {
@@ -104,7 +110,7 @@ function inferAliasFromFieldName(name: string) {
 
 function getRefFromField(
   field: any,
-): { moduleSlug?: string; displayField?: string } | null {
+): { moduleSlug?: string; displayField?: FieldRefLike } | null {
   const f = field ?? {};
   const ref = f.ref ?? f.selector?.ref ?? null;
   if (!ref) return null;
@@ -116,6 +122,36 @@ function getRefFromField(
 
   if (!moduleSlug) return null;
   return { moduleSlug, displayField };
+}
+
+async function getPdfFieldRefValue(opts: {
+  supabase: any;
+  cache: ResolveRunCache;
+  row: AnyObj;
+  schema: ModuleSchema;
+  ref: FieldRefLike;
+}) {
+  const normalized = normalizeFieldRef(opts.ref);
+  let row: AnyObj | null | undefined = opts.row;
+  let schema = opts.schema;
+
+  for (const relationName of normalized.relations) {
+    if (!row) return undefined;
+    const relationField = getSchemaFields(schema).find((field) => field?.name === relationName);
+    const relation = getRefFromField(relationField);
+    if (!relation?.moduleSlug) return undefined;
+    const alias = relationField?.alias ?? inferAliasFromFieldName(relationName);
+    const related: unknown = row[relationName];
+    row = related && typeof related === "object" ? related : row[alias];
+    if (!row || typeof row !== "object") return undefined;
+    schema = await getSchemaCached({
+      supabase: opts.supabase,
+      cache: opts.cache,
+      moduleSlug: relation.moduleSlug,
+    });
+  }
+
+  return row?.[normalized.field];
 }
 
 function firstNonEmptyString(...values: any[]) {
@@ -838,11 +874,28 @@ async function hydrateBelongsToTree(opts: {
         cache.recordNames.set(hydratedChild, getRecordName(child, childSchema));
       }
 
+      let label: string | undefined;
+      if (child && childSchema) {
+        if (ref.displayField && !isDirectFieldRef(ref.displayField)) {
+          label = firstNonEmptyString(await getPdfFieldRefValue({
+            supabase,
+            cache,
+            row: hydratedChild || child,
+            schema: childSchema,
+            ref: ref.displayField,
+          })) || undefined;
+        } else if (ref.displayField || getRecordNameField(childSchema)) {
+          const directField = ref.displayField
+            ? normalizeFieldRef(ref.displayField).field
+            : undefined;
+          label = getRecordName(child, childSchema, { legacyField: directField });
+        }
+      }
+
       return {
         alias,
         child: hydratedChild,
-        label:
-          child && (ref.displayField || getRecordNameField(childSchema)) ? getRecordName(child, childSchema, { legacyField: ref.displayField }) : undefined,
+        label,
       };
     });
 
@@ -1041,7 +1094,7 @@ export async function resolvePdfContext(args: ResolveArgs) {
     cache,
     rootModuleSlug: args.sourceTable,
     record,
-    depth: 2,
+    depth: 3,
   });
 
   await hydrateHasManyCollections({

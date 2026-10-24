@@ -1,3 +1,5 @@
+import { getFieldRefValue, serializeFieldRef, type FieldRefLike } from "./fieldRefs";
+
 type PlainObject = Record<string, any>;
 
 export type ModuleDefaultFilterOperator =
@@ -25,7 +27,7 @@ export type ModuleDefaultFilterFunction =
 
 export type ModuleDefaultFilterCondition = {
   kind: "condition";
-  field: string;
+  field: FieldRefLike;
   op: ModuleDefaultFilterOperator;
   valueSource?: ModuleDefaultFilterValueSource;
   valueType?: ModuleDefaultFilterLiteralType;
@@ -42,7 +44,7 @@ export type ModuleDefaultFilterGroup = {
 export type ModuleDefaultFilterNode = ModuleDefaultFilterCondition | ModuleDefaultFilterGroup;
 
 export type ModuleDefaultResolvedFilterCondition = {
-  field: string;
+  field: FieldRefLike;
   op: ModuleDefaultFilterOperator;
   value?: any;
 };
@@ -53,7 +55,7 @@ export type ModuleDefaultResolvedFilterGroup = {
 };
 
 export type ModuleDefaultQueryFilterLike = {
-  field: string;
+  field: FieldRefLike;
   op: ModuleDefaultFilterOperator | string;
   value?: any;
 };
@@ -142,7 +144,7 @@ export function normalizeModuleDefaultFilterCondition(input: any): ModuleDefault
 
   const condition: ModuleDefaultFilterCondition = {
     kind: "condition",
-    field: String(input?.field || "").trim(),
+    field: typeof input?.field === "string" ? input.field.trim() : serializeFieldRef(input?.field),
     op,
     valueSource,
     valueType: normalizeLiteralType(input?.valueType, input?.value),
@@ -165,7 +167,16 @@ export function normalizeModuleDefaultFilterCondition(input: any): ModuleDefault
 export function serializeModuleDefaultFilters(
   input: ModuleDefaultFiltersInput
 ): ModuleDefaultFilterGroup {
-  return normalizeModuleDefaultFilters(input);
+  return canonicalizeModuleDefaultFilterGroup(normalizeModuleDefaultFilters(input));
+}
+
+function canonicalizeModuleDefaultFilterGroup(group: ModuleDefaultFilterGroup): ModuleDefaultFilterGroup {
+  return {
+    ...group,
+    items: group.items.map(item => item.kind === "group"
+      ? canonicalizeModuleDefaultFilterGroup(item)
+      : { ...item, field: serializeFieldRef(item.field) }),
+  };
 }
 
 export function resolveModuleDefaultFilters(
@@ -275,7 +286,7 @@ function matchesModuleDefaultFilterNode(
 ): boolean {
   if (isResolvedGroup(node)) return matchesModuleDefaultFilterGroup(row, node);
 
-  const left = getByPath(row, node.field);
+  const left: any = getFieldRefValue(row, node.field);
   const right = node.value;
 
   switch (node.op) {
@@ -393,16 +404,6 @@ function buildNowIso(now?: Date | string | null) {
   const date = now ? new Date(now) : new Date();
   if (Number.isNaN(date.getTime())) return new Date().toISOString();
   return date.toISOString();
-}
-
-function getByPath(obj: any, path: string) {
-  return String(path || "")
-    .split(".")
-    .filter(Boolean)
-    .reduce<any>((acc, key) => {
-      if (acc && typeof acc === "object" && key in acc) return acc[key];
-      return undefined;
-    }, obj);
 }
 
 function isPlainObject(value: unknown): value is PlainObject {

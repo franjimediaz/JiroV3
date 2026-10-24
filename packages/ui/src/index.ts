@@ -3,6 +3,8 @@ export { Sidebar } from "./Sidebar";
 export { ActionMenu } from "./ActionMenu";
 export { PopupSelector } from "./modals/PopUpSelector";
 export { default as SelectorTabla } from "./components/fields/Selector";
+export { default as RelatedFieldSelector, clearRelatedFieldSchemaCache } from "./components/fields/RelatedFieldSelector";
+export type { RelatedFieldSelectorProps } from "./components/fields/RelatedFieldSelector";
 export { IconPicker } from "./components/fields/IconPicker";
 export { isActive } from "./utils";
 export { default as ModuloForm } from "./ModuloForm/ModuloForm";

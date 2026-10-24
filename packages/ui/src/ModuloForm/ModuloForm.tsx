@@ -6,15 +6,19 @@ import { useState, useTransition, useEffect, useRef, useCallback} from "react";
 import styles from "./modulo-detalle.module.css";
 import { applyModuleUiPatch, WORKFLOW_CATALOG, updateRecordNameField } from "@repo/types";
 import  Selector from "../components/fields/Selector";
+import RelatedFieldSelector from "../components/fields/RelatedFieldSelector";
 import {IconPicker} from "@repo/ui";
-import type { CalendarSpecialViewConfig, CalendarViewMode, ConfigurableAuditEvent, Field as FieldSchema, ModuleCapabilityKey, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
-import { applyModuleAuditConfigToProps, applyModuleCapabilitiesToProps, getEffectiveModuleAuditConfig, getEffectiveModuleCapabilities, MODULE_AUDIT_EVENT_OPTIONS, MODULE_CAPABILITY_OPTIONS, normalizeModuleDefaultFilters, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
+import type { CalendarSpecialViewConfig, CalendarViewMode, ConfigurableAuditEvent, Field as FieldSchema, FieldRefLike, ModuleCapabilityKey, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
+import { serializeFieldRef, serializeModuleSchema, applyModuleAuditConfigToProps, applyModuleCapabilitiesToProps, getEffectiveModuleAuditConfig, getEffectiveModuleCapabilities, MODULE_AUDIT_EVENT_OPTIONS, MODULE_CAPABILITY_OPTIONS, normalizeModuleDefaultFilters, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
-import { FieldRow, FieldConfigEditor, VisibilityConfigEditor } from "./FieldRow"
+import { FieldConfigEditor, VisibilityConfigEditor } from "./FieldRow"
 import ModuleDefaultFiltersBuilder from "./ModuleDefaultFiltersBuilder";
 import { invalidateModuleSchemaCache } from "../providers/DataProvider";
 import UiFormActionsEditor, { type UiFormAction } from "./UiFormActionsEditor";
 import { useSearchParams, useRouter } from "next/dist/client/components/navigation";
+
+import { SortableFieldList } from "./SortableFieldList";
+import { reorderFields, updateSectionReferences, duplicateField } from "./fieldOrder";
 
 type PickTarget = "columns" | "groupByField" | "parentFilterField" | "sumField";
 type ModuleFieldOption = { name: string; label?: string; type?: string; ref?: any };
@@ -56,13 +60,13 @@ function validateVisibilityConfigClient(path: string, visibility: any): string |
     if (!rule || typeof rule !== "object") {
       return `${rulePath} debe ser objeto`;
     }
-    if (!["currentRecord", "relatedRecord"].includes(rule.source)) {
+    if (rule.source !== undefined && !["currentRecord", "relatedRecord"].includes(rule.source)) {
       return `${rulePath}.source inválido`;
     }
     if (!VALID_VISIBILITY_OPERATORS.includes(rule.op)) {
       return `${rulePath}.op inválido`;
     }
-    if (rule.source === "currentRecord" && (typeof rule.field !== "string" || !rule.field.trim())) {
+    if (rule.source !== "relatedRecord" && !(typeof rule.field === "string" ? rule.field.trim() : rule.field?.field)) {
       return `${rulePath}.field requerido`;
     }
     if (rule.source === "relatedRecord") {
@@ -269,15 +273,16 @@ function normalizeCalendarConfig(input: any): CalendarSpecialViewConfig {
     ? cfg.enabledViews.filter((v: any) => ["month", "week", "day"].includes(String(v)))
     : ["month", "week", "day"];
 
+  const ref = (value: any) => typeof value === "string" ? value.trim() : value?.field ? serializeFieldRef(value) : "";
   return {
     sourceModuleSlug,
-    titleField: String(cfg.titleField || "").trim(),
-    startField: String(cfg.startField || "").trim(),
-    endField: String(cfg.endField || "").trim(),
-    allDayField: String(cfg.allDayField || "").trim(),
-    colorField: String(cfg.colorField || "").trim(),
-    descriptionField: String(cfg.descriptionField || "").trim(),
-    resourceField: String(cfg.resourceField || "").trim(),
+    titleField: ref(cfg.titleField),
+    startField: ref(cfg.startField),
+    endField: ref(cfg.endField),
+    allDayField: ref(cfg.allDayField),
+    colorField: ref(cfg.colorField),
+    descriptionField: ref(cfg.descriptionField),
+    resourceField: ref(cfg.resourceField),
     parentLinkField: String(cfg.parentLinkField || "").trim(),
     enabledViews: enabledViews.length ? (enabledViews as CalendarViewMode[]) : ["month", "week", "day"],
     defaultView: ["month", "week", "day"].includes(String(cfg.defaultView))
@@ -296,6 +301,22 @@ function sortFieldsForCalendar(fields: ModuleFieldOption[], preferredTypes: stri
   });
 }
 
+function CalendarReadFieldSelector({ label, sourceModuleSlug, value, onChange, readOnly, allowedTypes }: {
+  label: string;
+  sourceModuleSlug: string;
+  value: CalendarSpecialViewConfig["titleField"];
+  onChange: (value: any) => void;
+  readOnly?: boolean;
+  allowedTypes?: string[];
+}) {
+  return <div>
+    <label className={styles.label}>{label}</label>
+    <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value={value} onChange={onChange}
+      disabled={readOnly || !sourceModuleSlug}
+      allowedField={allowedTypes?.length ? (field) => allowedTypes.includes(field.type) : undefined} />
+  </div>;
+}
+
 // Helpers para el selector de modo
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -308,6 +329,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function PlanEditorConfigPanel({
   value,
+  sourceModuleSlug,
   fields,
   fieldsByTable,
   readOnly,
@@ -315,6 +337,7 @@ function PlanEditorConfigPanel({
   onChange,
 }: {
   value: PlanEditorSpecialViewConfig;
+  sourceModuleSlug: string;
   fields: ModuleFieldOption[];
   fieldsByTable: Record<string, ModuleFieldOption[]>;
   readOnly: boolean;
@@ -391,7 +414,8 @@ function PlanEditorConfigPanel({
           <input className={styles.input} value={options.exportTitle || ""} onChange={(e) => updateOptions({ exportTitle: e.target.value })} disabled={readOnly} />
         </div>
 
-        <PlanFieldSelect label="Subtitulo exportacion" value={options.exportSubtitleField || ""} fields={fields} disabled={readOnly} allowEmpty onChange={(field) => updateOptions({ exportSubtitleField: field })} />
+        <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value={options.exportSubtitleField || ""} disabled={readOnly}
+          onChange={(exportSubtitleField) => updateOptions({ exportSubtitleField })} />
       </div>
 
       <div className={styles.card} style={{ marginTop: 12 }}>
@@ -444,7 +468,8 @@ function PlanEditorConfigPanel({
                 <span className={styles.label}>Label</span>
                 <input className={styles.input} value={item.label || ""} disabled={readOnly} onChange={(e) => updateOptions({ export: { ...exportOptions, metadataFields: (exportOptions.metadataFields || []).map((field, fieldIndex) => fieldIndex === index ? { ...field, label: e.target.value } : field) } })} />
               </label>
-              <PlanFieldSelect label="Field" value={item.field || ""} fields={fields} disabled={readOnly} allowEmpty onChange={(field) => updateOptions({ export: { ...exportOptions, metadataFields: (exportOptions.metadataFields || []).map((metadata, fieldIndex) => fieldIndex === index ? { ...metadata, field } : metadata) } })} />
+              <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value={item.field || ""} disabled={readOnly}
+                onChange={(field) => updateOptions({ export: { ...exportOptions, metadataFields: (exportOptions.metadataFields || []).map((metadata, fieldIndex) => fieldIndex === index ? { ...metadata, field } : metadata) } })} />
               <button type="button" className={styles.btn} disabled={readOnly} onClick={() => updateOptions({ export: { ...exportOptions, metadataFields: (exportOptions.metadataFields || []).filter((_, fieldIndex) => fieldIndex !== index) } })}>
                 Eliminar
               </button>
@@ -701,7 +726,8 @@ function PlanEditorConfigPanel({
                   />
                 </div>
                 <PlanFieldSelect label="valueField" value={target.valueField || "id"} fields={fieldOptions} disabled={readOnly || !target.moduleSlug} onChange={(field) => updateLinkTarget(index, { valueField: field })} />
-                <PlanFieldSelect label="displayField" value={target.displayField || "nombre"} fields={fieldOptions} disabled={readOnly || !target.moduleSlug} onChange={(field) => updateLinkTarget(index, { displayField: field })} />
+                <RelatedFieldSelector sourceModuleSlug={target.moduleSlug || ""} value={target.displayField || "nombre"} disabled={readOnly || !target.moduleSlug}
+                  onChange={(displayField) => updateLinkTarget(index, { displayField })} />
                 <label>
                   <span className={styles.label}>table</span>
                   <input className={styles.input} value={target.table || ""} disabled={readOnly} onChange={(e) => updateLinkTarget(index, { table: e.target.value })} />
@@ -834,8 +860,9 @@ function PlanSourceEditor({
           <PlanFieldSelect
             key={String(fieldName)}
             label={String(fieldName)}
-            value={String(source[fieldName] || "")}
+            value={source[fieldName] as FieldRefLike || ""}
             fields={fieldOptions}
+            sourceModuleSlug={fieldName === "valueField" ? undefined : source.moduleSlug}
             disabled={readOnly || !source.enabled || !source.moduleSlug}
             allowEmpty={fieldName !== "valueField" && fieldName !== "labelField"}
             onChange={(field) => onChange({ [fieldName]: field } as Partial<PlanDynamicSourceConfig>)}
@@ -853,22 +880,29 @@ function PlanFieldSelect({
   fields,
   disabled,
   allowEmpty = false,
+  sourceModuleSlug,
   onChange,
 }: {
   label: string;
-  value: string;
+  value: FieldRefLike;
   fields: ModuleFieldOption[];
   disabled?: boolean;
   allowEmpty?: boolean;
-  onChange: (field: string) => void;
+  sourceModuleSlug?: string;
+  onChange: (field: any) => void;
 }) {
-  const hasValue = !!value && !fields.some((field) => field.name === value);
+  if (sourceModuleSlug) return <div>
+    <span className={styles.label}>{label}</span>
+    <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value={value} disabled={disabled} onChange={onChange} />
+  </div>;
+  const directValue = typeof value === "string" ? value : value.field;
+  const hasValue = !!directValue && !fields.some((field) => field.name === directValue);
   return (
     <label>
       <span className={styles.label}>{label}</span>
-      <select className={styles.input} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+      <select className={styles.input} value={directValue} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
         {allowEmpty ? <option value="">Sin campo</option> : <option value="">Seleccionar campo</option>}
-        {hasValue ? <option value={value}>{value}</option> : null}
+        {hasValue ? <option value={directValue}>{directValue}</option> : null}
         {fields.map((field) => (
           <option key={field.name} value={field.name}>
             {field.label || field.name}{field.type ? ` (${field.type})` : ""}
@@ -1014,7 +1048,7 @@ useEffect(() => {
 
   // JSON avanzado (opcional)
   const [showRaw, setShowRaw] = useState(false);
-  const [rawText, setRawText] = useState(() => JSON.stringify(propsObj, null, 2));
+  const [rawText, setRawText] = useState(() => JSON.stringify(serializeModuleSchema(propsObj), null, 2));
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
 
@@ -1031,7 +1065,7 @@ const setFormActions = (actions: UiFormAction[]) => {
   const ui = { ...(propsObj.ui || {}), formActions: actions as any };
   const next = { ...propsObj, ui };
   setPropsObj(next);
-  setRawText(JSON.stringify(next, null, 2));
+  setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
 };
 
 const getSpecialViews = (): SpecialViewConfig[] => {
@@ -1049,7 +1083,7 @@ const setSpecialViews = (specialViews: SpecialViewConfig[]) => {
   const ui = { ...restUi, specialViews };
   const next = { ...propsObj, ui };
   setPropsObj(next);
-  setRawText(JSON.stringify(next, null, 2));
+  setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
 };
 
 
@@ -1069,7 +1103,7 @@ const setSpecialViews = (specialViews: SpecialViewConfig[]) => {
     const ui = { ...(propsObj.ui || {}), tabs };
     const next = { ...propsObj, ui };
     setPropsObj(next);
-    setRawText(JSON.stringify(next, null, 2));
+    setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
   };
 
 
@@ -1154,26 +1188,26 @@ const setSpecialViews = (specialViews: SpecialViewConfig[]) => {
   // =========================
   const updateField = (idx: number, patch: Field) => {
     const nextFields = updateRecordNameField(propsObj.fields, idx, patch);
-    const nextObj = { ...propsObj, fields: nextFields };
+    const nextObj = updateSectionReferences({ ...propsObj, fields: nextFields }, propsObj.fields[idx].name, patch.name);
     setPropsObj(nextObj);
-    setRawText(JSON.stringify(nextObj, null, 2));
+    setRawText(JSON.stringify(serializeModuleSchema(nextObj), null, 2));
   };
 
   const removeField = (idx: number) => {
     const nextFields = propsObj.fields.filter((_, i) => i !== idx);
-    const nextObj = { ...propsObj, fields: nextFields };
+    const removedName = propsObj.fields[idx].name;
+    const nextObj = nextFields.some(field => field.name === removedName) ? { ...propsObj, fields: nextFields } : updateSectionReferences({ ...propsObj, fields: nextFields }, removedName);
     setPropsObj(nextObj);
-    setRawText(JSON.stringify(nextObj, null, 2));
+    setRawText(JSON.stringify(serializeModuleSchema(nextObj), null, 2));
   };
 
-  const moveField = (idx: number, dir: -1 | 1) => {
-    const next = [...propsObj.fields];
-    const swap = idx + dir;
-    if (swap < 0 || swap >= next.length) return;
-    [next[idx], next[swap]] = [next[swap], next[idx]];
-    const nextObj = { ...propsObj, fields: next };
-    setPropsObj(nextObj);
-    setRawText(JSON.stringify(nextObj, null, 2));
+  const onReorderFields = (active: Field, over: Field) => {
+    if (readOnly) return;
+    const fields = reorderFields(propsObj.fields, active, over);
+    if (fields === propsObj.fields) return;
+    const next = { ...propsObj, fields };
+    setPropsObj(next);
+    setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
   };
 
   const addField = (base: Field) => {
@@ -1181,7 +1215,27 @@ const setSpecialViews = (specialViews: SpecialViewConfig[]) => {
     const next = updateRecordNameField(appended, appended.length - 1, base);
     const nextObj = { ...propsObj, fields: next };
     setPropsObj(nextObj);
-    setRawText(JSON.stringify(nextObj, null, 2));
+    setRawText(JSON.stringify(serializeModuleSchema(nextObj), null, 2));
+  };
+
+  const renderFields = (fields: Field[]) => <SortableFieldList fields={fields}
+    rowProps={{ readOnly, fieldsByTable, loadingByTable, ensureFieldsLoaded, currentFields: propsObj.fields }}
+    onChange={(field, patch) => updateField(propsObj.fields.indexOf(field), patch)}
+    onRemove={field => removeField(propsObj.fields.indexOf(field))}
+    onDuplicate={field => addField(duplicateField(field, propsObj.fields))}
+    onReorder={onReorderFields} />;
+
+  const applyRawJson = () => {
+    try {
+      const parsed = normalizeModuleSchema(JSON.parse(rawText));
+      const error = validatePropsClient(parsed);
+      if (error) throw new Error(error);
+      setPropsObj(parsed);
+      setRawText(JSON.stringify(serializeModuleSchema(parsed), null, 2));
+      setMsg({ ok: true, text: "JSON aplicado al editor. Guarda el módulo para persistirlo." });
+    } catch (error) {
+      setMsg({ ok: false, text: error instanceof Error ? error.message : "JSON inválido" });
+    }
   };
 
   // =========================
@@ -1234,7 +1288,7 @@ const setSpecialViews = (specialViews: SpecialViewConfig[]) => {
       fd.set("orden", String(orden));
       fd.set("activo", String(activo));
       fd.set("sidebar", String(toSave.ui?.sidebar === true));
-      fd.set("props", JSON.stringify(toSave));
+      fd.set("props", JSON.stringify(tipo === "carpeta" ? toSave : serializeModuleSchema(toSave)));
 
       const res = await onSave(fd);
       setMsg({ ok: res.ok, text: res.detail });
@@ -1312,7 +1366,7 @@ const auditConfig = getEffectiveModuleAuditConfig(propsObj);
 const setAuditConfig = (nextConfig: typeof auditConfig) => {
   const next = applyModuleAuditConfigToProps(propsObj, nextConfig);
   setPropsObj(next);
-  setRawText(JSON.stringify(next, null, 2));
+  setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
 };
 
 const setAuditEnabled = (enabled: boolean) => {
@@ -1340,7 +1394,7 @@ const setModuleCapability = (key: ModuleCapabilityKey, checked: boolean) => {
     [key]: checked,
   });
   setPropsObj(next);
-  setRawText(JSON.stringify(next, null, 2));
+  setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
 };
 
 const [editorTab, setEditorTab] = useState<
@@ -1481,7 +1535,7 @@ const editorTabs = [
               const db = { ...propsObj.db, table: e.target.value };
               const next = { ...propsObj, db };
               setPropsObj(next);
-              setRawText(JSON.stringify(next, null, 2));
+              setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
             }}
             {...readOnlyAttr}
           />
@@ -1496,7 +1550,7 @@ const editorTabs = [
               const db = { ...propsObj.db, primaryKey: e.target.value || undefined };
               const next = { ...propsObj, db };
               setPropsObj(next);
-              setRawText(JSON.stringify(next, null, 2));
+              setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
             }}
             {...readOnlyAttr}
           />
@@ -1511,7 +1565,7 @@ const editorTabs = [
               const db = { ...propsObj.db, softDelete: e.target.checked };
               const next = { ...propsObj, db };
               setPropsObj(next);
-              setRawText(JSON.stringify(next, null, 2));
+              setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
             }}
             {...readOnlyAttr}
           />
@@ -1541,12 +1595,13 @@ const editorTabs = [
       <ModuleDefaultFiltersBuilder
         value={propsObj.db.defaultFilters}
         fields={propsObj.fields}
+        sourceModuleSlug={slug}
         readOnly={readOnly}
         onChange={(defaultFilters) => {
           const db = { ...propsObj.db, defaultFilters };
           const next = { ...propsObj, db };
           setPropsObj(next);
-          setRawText(JSON.stringify(next, null, 2));
+          setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
         }}
       />
     </Section>
@@ -1565,7 +1620,7 @@ const editorTabs = [
             onChange={(e) => {
               const next = applyModuleUiPatch(propsObj, { sidebar: e.target.checked });
               setPropsObj(next);
-              setRawText(JSON.stringify(next, null, 2));
+              setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
             }}
             {...readOnlyAttr}
           />
@@ -1584,7 +1639,7 @@ const editorTabs = [
             onChange={(e) => {
               const next = applyModuleUiPatch(propsObj, { dashboard: e.target.checked });
               setPropsObj(next);
-              setRawText(JSON.stringify(next, null, 2));
+              setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
             }}
           />
         </div>
@@ -1598,7 +1653,7 @@ const editorTabs = [
             onChange={(e) => {
               const next = applyModuleUiPatch(propsObj, { color: e.target.value });
               setPropsObj(next);
-              setRawText(JSON.stringify(next, null, 2));
+              setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
             }}
             {...readOnlyAttr}
             style={{ padding: 1, height: 42 }}
@@ -1613,7 +1668,7 @@ const editorTabs = [
             onChange={(icon: string) => {
               const next = applyModuleUiPatch(propsObj, { icon });
               setPropsObj(next);
-              setRawText(JSON.stringify(next, null, 2));
+              setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
             }}
           />
           
@@ -1628,6 +1683,7 @@ const editorTabs = [
             styles={styles}
             IconPicker={IconPicker}
             sourceFields={sourceFields}
+            sourceModuleSlug={slug}
             getTableFields={getTableFields}
             fieldsByTable={fieldsByTable}
             loadingByTable={loadingByTable}
@@ -1685,7 +1741,7 @@ const editorTabs = [
       <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
         <ConfigEditor title="Añadir campo" value={{name: `campo_${propsObj.fields.length + 1}`, label: "Nuevo campo", type: "text"} as Field}
           readOnly={readOnly} onChange={addField}>
-          {(draft, update) => <FieldConfigEditor field={draft} onChange={update} readOnly={readOnly}
+          {(draft, update) => <FieldConfigEditor field={draft} onChange={update} readOnly={readOnly} sourceModuleSlug={slug}
             fieldsByTable={fieldsByTable} loadingByTable={loadingByTable}
             ensureFieldsLoaded={ensureFieldsLoaded} currentFields={propsObj.fields} />}
         </ConfigEditor>
@@ -1696,25 +1752,7 @@ const editorTabs = [
       )}
 
       <div className="d-flex flex-column gap-2" style={{ marginTop: 12 }}>
-        {propsObj.fields.map((field, idx) => {
-
-          return (
-            <FieldRow key={idx}
-                  field={field}
-                  onChange={(patch: Field) => updateField(idx, patch)}
-                  onRemove={() => removeField(idx)}
-                  onMoveUp={() => moveField(idx, -1)}
-                  onMoveDown={() => moveField(idx, +1)}
-                  canUp={idx > 0}
-                  canDown={idx < propsObj.fields.length - 1}
-                  readOnly={readOnly}
-                  fieldsByTable={fieldsByTable}
-                  loadingByTable={loadingByTable}
-                  ensureFieldsLoaded={ensureFieldsLoaded}
-                  currentFields={propsObj.fields}
-                />
-          );
-        })}
+        {renderFields(propsObj.fields)}
       </div>
     </Section>
   )}
@@ -2009,28 +2047,7 @@ const editorTabs = [
                             <div className={styles.hint}>No hay campos asignados a esta sección.</div>
                           ) : (
                             <div className="d-flex flex-column gap-2">
-                              {fieldsInSection.map((f) => {
-                                const fieldIdx = propsObj.fields.findIndex((x) => x.name === f.name);
-                                if (fieldIdx === -1) return null;
-
-                                return (
-                                  <FieldRow
-                                        key={fieldIdx}
-                                        field={propsObj.fields[fieldIdx]}
-                                        onChange={(patch: Field) => updateField(fieldIdx, patch)}
-                                        onRemove={() => removeField(fieldIdx)}
-                                        onMoveUp={() => moveField(fieldIdx, -1)}
-                                        onMoveDown={() => moveField(fieldIdx, +1)}
-                                        canUp={fieldIdx > 0}
-                                        canDown={fieldIdx < propsObj.fields.length - 1}
-                                        readOnly={readOnly}
-                                        fieldsByTable={fieldsByTable}
-                                        loadingByTable={loadingByTable}
-                                        ensureFieldsLoaded={ensureFieldsLoaded}
-                                        currentFields={propsObj.fields}
-                                      />
-                                );
-                              })}
+                              {renderFields(fieldsInSection)}
                             </div>
                           )}
                         </div>
@@ -2067,25 +2084,7 @@ const editorTabs = [
 
                     <div className={styles.sectionBody}>
                       <div className="d-flex flex-column gap-2">
-                        {unassigned.map(({ idx2 }) => {
-
-                          return (
-                            <FieldRow key={idx2}
-                                  field={propsObj.fields[idx2]}
-                                  onChange={(patch: Field) => updateField(idx2, patch)}
-                                  onRemove={() => removeField(idx2)}
-                                  onMoveUp={() => moveField(idx2, -1)}
-                                  onMoveDown={() => moveField(idx2, +1)}
-                                  canUp={idx2 > 0}
-                                  canDown={idx2 < propsObj.fields.length - 1}
-                                  readOnly={readOnly}
-                                  fieldsByTable={fieldsByTable}
-                                  loadingByTable={loadingByTable}
-                                  ensureFieldsLoaded={ensureFieldsLoaded}
-                                  currentFields={propsObj.fields}
-                                />
-                          );
-                        })}
+                        {renderFields(unassigned.map(({ f }) => f))}
                       </div>
                     </div>
                   </details>
@@ -2473,28 +2472,17 @@ const editorTabs = [
                       />
                     </div>
 
-                    <div>
-                      <label className={styles.label}>Título del evento</label>
-                      <select
-                        className={styles.input}
-                        value={calendarConfig.titleField || ""}
-                        onChange={(e) => updateCalendarConfig({ titleField: e.target.value })}
-                        disabled={readOnly || !calendarConfig.sourceModuleSlug}
-                      >
-                        <option value="">— Seleccionar campo —</option>
-                        {titleFieldOptions.map((field) => (
-                          <option key={field.name} value={field.name}>
-                            {field.label || field.name}{field.type ? ` (${field.type})` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <CalendarReadFieldSelector label="Titulo del evento" sourceModuleSlug={calendarConfig.sourceModuleSlug} value={calendarConfig.titleField} onChange={(titleField) => updateCalendarConfig({ titleField })} readOnly={readOnly} />
 
                     <div>
                       <label className={styles.label}>Fecha inicio</label>
+                      <RelatedFieldSelector sourceModuleSlug={calendarConfig.sourceModuleSlug} value={calendarConfig.startField}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug} allowedField={(field) => field.type === "date" || field.type === "datetime"}
+                        onChange={(startField) => updateCalendarConfig({ startField })} />
                       <select
                         className={styles.input}
-                        value={calendarConfig.startField || ""}
+                        style={{ display: "none" }}
+                        value={typeof calendarConfig.startField === "string" ? calendarConfig.startField : calendarConfig.startField?.field || ""}
                         onChange={(e) => updateCalendarConfig({ startField: e.target.value })}
                         disabled={readOnly || !calendarConfig.sourceModuleSlug}
                       >
@@ -2509,9 +2497,13 @@ const editorTabs = [
 
                     <div>
                       <label className={styles.label}>Fecha fin</label>
+                      <RelatedFieldSelector sourceModuleSlug={calendarConfig.sourceModuleSlug} value={calendarConfig.endField}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug} allowedField={(field) => field.type === "date" || field.type === "datetime"}
+                        onChange={(endField) => updateCalendarConfig({ endField })} />
                       <select
                         className={styles.input}
-                        value={calendarConfig.endField || ""}
+                        style={{ display: "none" }}
+                        value={typeof calendarConfig.endField === "string" ? calendarConfig.endField : calendarConfig.endField?.field || ""}
                         onChange={(e) => updateCalendarConfig({ endField: e.target.value })}
                         disabled={readOnly || !calendarConfig.sourceModuleSlug}
                       >
@@ -2526,9 +2518,13 @@ const editorTabs = [
 
                     <div>
                       <label className={styles.label}>Todo el día</label>
+                      <RelatedFieldSelector sourceModuleSlug={calendarConfig.sourceModuleSlug} value={calendarConfig.allDayField}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug} allowedField={(field) => field.type === "boolean"}
+                        onChange={(allDayField) => updateCalendarConfig({ allDayField })} />
                       <select
                         className={styles.input}
-                        value={calendarConfig.allDayField || ""}
+                        style={{ display: "none" }}
+                        value={typeof calendarConfig.allDayField === "string" ? calendarConfig.allDayField : calendarConfig.allDayField?.field || ""}
                         onChange={(e) => updateCalendarConfig({ allDayField: e.target.value })}
                         disabled={readOnly || !calendarConfig.sourceModuleSlug}
                       >
@@ -2543,9 +2539,13 @@ const editorTabs = [
 
                     <div>
                       <label className={styles.label}>Color</label>
+                      <RelatedFieldSelector sourceModuleSlug={calendarConfig.sourceModuleSlug} value={calendarConfig.colorField}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug} allowedField={(field) => field.type === "color" || field.type === "text"}
+                        onChange={(colorField) => updateCalendarConfig({ colorField })} />
                       <select
                         className={styles.input}
-                        value={calendarConfig.colorField || ""}
+                        style={{ display: "none" }}
+                        value={typeof calendarConfig.colorField === "string" ? calendarConfig.colorField : calendarConfig.colorField?.field || ""}
                         onChange={(e) => updateCalendarConfig({ colorField: e.target.value })}
                         disabled={readOnly || !calendarConfig.sourceModuleSlug}
                       >
@@ -2560,9 +2560,13 @@ const editorTabs = [
 
                     <div>
                       <label className={styles.label}>Descripción</label>
+                      <RelatedFieldSelector sourceModuleSlug={calendarConfig.sourceModuleSlug} value={calendarConfig.descriptionField}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug} allowedField={(field) => field.type === "text" || field.type === "textarea"}
+                        onChange={(descriptionField) => updateCalendarConfig({ descriptionField })} />
                       <select
                         className={styles.input}
-                        value={calendarConfig.descriptionField || ""}
+                        style={{ display: "none" }}
+                        value={typeof calendarConfig.descriptionField === "string" ? calendarConfig.descriptionField : calendarConfig.descriptionField?.field || ""}
                         onChange={(e) => updateCalendarConfig({ descriptionField: e.target.value })}
                         disabled={readOnly || !calendarConfig.sourceModuleSlug}
                       >
@@ -2577,9 +2581,13 @@ const editorTabs = [
 
                     <div>
                       <label className={styles.label}>Resource / responsable</label>
+                      <RelatedFieldSelector sourceModuleSlug={calendarConfig.sourceModuleSlug} value={calendarConfig.resourceField}
+                        disabled={readOnly || !calendarConfig.sourceModuleSlug}
+                        onChange={(resourceField) => updateCalendarConfig({ resourceField })} />
                       <select
                         className={styles.input}
-                        value={calendarConfig.resourceField || ""}
+                        style={{ display: "none" }}
+                        value={typeof calendarConfig.resourceField === "string" ? calendarConfig.resourceField : calendarConfig.resourceField?.field || ""}
                         onChange={(e) => updateCalendarConfig({ resourceField: e.target.value })}
                         disabled={readOnly || !calendarConfig.sourceModuleSlug}
                       >
@@ -2663,6 +2671,7 @@ const editorTabs = [
               {view.type === "planEditor" && planEditorConfig && (
                 <PlanEditorConfigPanel
                   value={planEditorConfig}
+                  sourceModuleSlug={slug}
                   fields={propsObj.fields as ModuleFieldOption[]}
                   fieldsByTable={fieldsByTable}
                   readOnly={readOnly}
@@ -2811,13 +2820,13 @@ const editorTabs = [
 
                 <div className={styles.grid}>
                   <div>
-                    <label className={styles.label}>Tabla destino (source.table)</label>
+                    <label className={styles.label}>Módulo destino (source.moduleSlug)</label>
 
                     <Selector
                       moduleSlug="modulos"
                       displayField="nombre"
                       valueField="slug"
-                      value={t.config?.source?.table || t.config?.sourceTable || ""}
+                      value={t.config?.source?.moduleSlug || t.config?.source?.table || t.config?.sourceTable || ""}
                       readOnly={readOnly}
                       placeholder="— Seleccionar —"
                       label="Selecciona la tabla destino"
@@ -2837,8 +2846,8 @@ const editorTabs = [
                             ...prev,
                             config: {
                               ...(prev.config || {}),
-                              source: { ...(prev.config?.source || {}), table },
-                              sourceTable: table,
+                              source: { ...(prev.config?.source || {}), moduleSlug: table },
+
                             },
                           };
                         })
@@ -2862,7 +2871,7 @@ const editorTabs = [
                         type="button"
                         className="btn btn-outline-light"
                         onClick={() => {
-                          const table = t.config?.source?.table || t.config?.sourceTable || "";
+                          const table = t.config?.source?.moduleSlug || t.config?.source?.table || t.config?.sourceTable || "";
                           if (table) ensureFieldsLoaded(table);
                           setPickTarget("columns");
                           setPickOpen(true);
@@ -2878,7 +2887,7 @@ const editorTabs = [
                     </div>
 
                     {(() => {
-                      const sourceTable = t.config?.source?.table || t.config?.sourceTable || "";
+                      const sourceTable = t.config?.source?.moduleSlug || t.config?.source?.table || t.config?.sourceTable || "";
                       const availableFields = fieldsByTable[sourceTable] || [];
                       const fieldsLoading = !!loadingByTable[sourceTable];
 
@@ -2955,7 +2964,39 @@ const editorTabs = [
 
                       return (
                         <>
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
+                              <label className={styles.label}>Columnas de lectura</label>
+                              <button type="button" className={styles.btn} disabled={readOnly}
+                                onClick={() => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), columns: [...(prev.config?.columns || []), { field: "", label: "Nueva columna" }] } } : prev)}>
+                                + Añadir columna
+                              </button>
+                            </div>
+                            {(t.config?.columns || []).map((column: any, columnIndex: number) => (
+                              <div key={columnIndex} className={styles.grid} style={{ marginTop: 8 }}>
+                                <RelatedFieldSelector sourceModuleSlug={sourceTable} value={column.field || ""} disabled={readOnly}
+                                  onChange={(field) => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), columns: (prev.config?.columns || []).map((item: any, index: number) => index === columnIndex ? { ...item, field } : item) } } : prev)} />
+                                <input className={styles.input} value={column.label || ""} disabled={readOnly} placeholder="Etiqueta"
+                                  onChange={(event) => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), columns: (prev.config?.columns || []).map((item: any, index: number) => index === columnIndex ? { ...item, label: event.target.value } : item) } } : prev)} />
+                                <button type="button" className={styles.btn} disabled={readOnly}
+                                  onClick={() => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), columns: (prev.config?.columns || []).filter((_: any, index: number) => index !== columnIndex) } } : prev)}>
+                                  Eliminar
+                                </button>
+                              </div>
+                            ))}
+                          </div>
                           <div>
+                            <label className={styles.label}>Agrupar por</label>
+                            <RelatedFieldSelector sourceModuleSlug={sourceTable}
+                              value={t.config?.grouping?.groupByField || (t.config?.groupBy || [])[0] || ""} disabled={readOnly}
+                              onChange={(groupByField) => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), grouping: { ...(prev.config?.grouping || {}), groupByField } } } : prev)} />
+                          </div>
+                          <div>
+                            <label className={styles.label}>Título de grupo (opcional)</label>
+                            <RelatedFieldSelector sourceModuleSlug={sourceTable} value={t.config?.grouping?.groupTitleField || ""} disabled={readOnly}
+                              onChange={(groupTitleField) => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), grouping: { ...(prev.config?.grouping || {}), groupTitleField } } } : prev)} />
+                          </div>
+                          <div style={{ display: "none" }}>
                             <label className={styles.label}>groupBy (campo)</label>
                             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                               <input
@@ -3011,6 +3052,12 @@ const editorTabs = [
                           </div>
 
                           <div>
+                            <label className={styles.label}>Totalizar campo (opcional)</label>
+                            <RelatedFieldSelector sourceModuleSlug={sourceTable} value={t.config?.totals?.sumField || ""} disabled={readOnly}
+                              allowedField={(field) => ["number", "money", "percent"].includes(field.type)}
+                              onChange={(sumField) => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), totals: sumField ? { ...(prev.config?.totals || {}), enabled: true, sumField, showGroupTotals: true, showGrandTotal: true } : { ...(prev.config?.totals || {}), enabled: false, sumField: "" } } } : prev)} />
+                          </div>
+                          <div style={{ display: "none" }}>
                             <label className={styles.label}>Sum Field (opcional)</label>
                             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                               <input
@@ -3058,7 +3105,7 @@ const editorTabs = [
                 </div>
 
                 <div className="small text-muted mt-2">
-                  Nota: el TreeView genérico espera <code>source.table</code>,{" "}
+                  Nota: el TreeView genérico espera <code>source.moduleSlug</code>,{" "}
                   <code>grouping.groupByField</code> y <code>columns</code> como objetos.
                 </div>
               </div>
@@ -3127,17 +3174,13 @@ const editorTabs = [
                       />
                     </div>
 
-                      <div>
-                        <label className={styles.label}>Título del evento</label>
-                        <select className={styles.input} value={calendarConfig.titleField || ""} onChange={(e) => updateCalendarTabConfig({ titleField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
-                          <option value="">— Seleccionar campo —</option>
-                          {titleFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
-                        </select>
-                      </div>
+                      <CalendarReadFieldSelector label="Título del evento" sourceModuleSlug={sourceModuleSlug} value={calendarConfig.titleField} onChange={(titleField) => updateCalendarTabConfig({ titleField })} readOnly={readOnly} />
 
                       <div>
                         <label className={styles.label}>Fecha inicio</label>
-                        <select className={styles.input} value={calendarConfig.startField || ""} onChange={(e) => updateCalendarTabConfig({ startField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                        <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value={calendarConfig.startField} disabled={readOnly || !sourceModuleSlug}
+                          allowedField={(field) => field.type === "date" || field.type === "datetime"} onChange={(startField) => updateCalendarTabConfig({ startField })} />
+                        <select style={{ display: "none" }} className={styles.input} value={typeof calendarConfig.startField === "string" ? calendarConfig.startField : calendarConfig.startField?.field || ""} onChange={(e) => updateCalendarTabConfig({ startField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
                           <option value="">— Seleccionar campo —</option>
                           {startFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
                         </select>
@@ -3145,7 +3188,9 @@ const editorTabs = [
 
                       <div>
                         <label className={styles.label}>Fecha fin</label>
-                        <select className={styles.input} value={calendarConfig.endField || ""} onChange={(e) => updateCalendarTabConfig({ endField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                        <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value={calendarConfig.endField} disabled={readOnly || !sourceModuleSlug}
+                          allowedField={(field) => field.type === "date" || field.type === "datetime"} onChange={(endField) => updateCalendarTabConfig({ endField })} />
+                        <select style={{ display: "none" }} className={styles.input} value={typeof calendarConfig.endField === "string" ? calendarConfig.endField : calendarConfig.endField?.field || ""} onChange={(e) => updateCalendarTabConfig({ endField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
                           <option value="">— Sin campo —</option>
                           {endFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
                         </select>
@@ -3153,7 +3198,9 @@ const editorTabs = [
 
                       <div>
                         <label className={styles.label}>Todo el día</label>
-                        <select className={styles.input} value={calendarConfig.allDayField || ""} onChange={(e) => updateCalendarTabConfig({ allDayField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                        <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value={calendarConfig.allDayField} disabled={readOnly || !sourceModuleSlug}
+                          allowedField={(field) => field.type === "boolean"} onChange={(allDayField) => updateCalendarTabConfig({ allDayField })} />
+                        <select style={{ display: "none" }} className={styles.input} value={typeof calendarConfig.allDayField === "string" ? calendarConfig.allDayField : calendarConfig.allDayField?.field || ""} onChange={(e) => updateCalendarTabConfig({ allDayField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
                           <option value="">— Sin campo —</option>
                           {allDayFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
                         </select>
@@ -3161,7 +3208,9 @@ const editorTabs = [
 
                       <div>
                         <label className={styles.label}>Color</label>
-                        <select className={styles.input} value={calendarConfig.colorField || ""} onChange={(e) => updateCalendarTabConfig({ colorField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                        <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value={calendarConfig.colorField} disabled={readOnly || !sourceModuleSlug}
+                          allowedField={(field) => field.type === "color" || field.type === "text"} onChange={(colorField) => updateCalendarTabConfig({ colorField })} />
+                        <select style={{ display: "none" }} className={styles.input} value={typeof calendarConfig.colorField === "string" ? calendarConfig.colorField : calendarConfig.colorField?.field || ""} onChange={(e) => updateCalendarTabConfig({ colorField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
                           <option value="">— Sin campo —</option>
                           {colorFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
                         </select>
@@ -3169,7 +3218,9 @@ const editorTabs = [
 
                       <div>
                         <label className={styles.label}>Descripción</label>
-                        <select className={styles.input} value={calendarConfig.descriptionField || ""} onChange={(e) => updateCalendarTabConfig({ descriptionField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                        <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value={calendarConfig.descriptionField} disabled={readOnly || !sourceModuleSlug}
+                          allowedField={(field) => field.type === "text" || field.type === "textarea"} onChange={(descriptionField) => updateCalendarTabConfig({ descriptionField })} />
+                        <select style={{ display: "none" }} className={styles.input} value={typeof calendarConfig.descriptionField === "string" ? calendarConfig.descriptionField : calendarConfig.descriptionField?.field || ""} onChange={(e) => updateCalendarTabConfig({ descriptionField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
                           <option value="">— Sin campo —</option>
                           {descriptionFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
                         </select>
@@ -3177,7 +3228,9 @@ const editorTabs = [
 
                       <div>
                         <label className={styles.label}>Resource / responsable</label>
-                        <select className={styles.input} value={calendarConfig.resourceField || ""} onChange={(e) => updateCalendarTabConfig({ resourceField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
+                        <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value={calendarConfig.resourceField} disabled={readOnly || !sourceModuleSlug}
+                          onChange={(resourceField) => updateCalendarTabConfig({ resourceField })} />
+                        <select style={{ display: "none" }} className={styles.input} value={typeof calendarConfig.resourceField === "string" ? calendarConfig.resourceField : calendarConfig.resourceField?.field || ""} onChange={(e) => updateCalendarTabConfig({ resourceField: e.target.value })} disabled={readOnly || !sourceModuleSlug}>
                           <option value="">— Sin campo —</option>
                           {resourceFieldOptions.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}{field.type ? ` (${field.type})` : ""}</option>)}
                         </select>
@@ -3265,6 +3318,7 @@ const editorTabs = [
                 return (
                   <PlanEditorConfigPanel
                     value={planEditorConfig}
+                    sourceModuleSlug={slug}
                     fields={propsObj.fields as ModuleFieldOption[]}
                     fieldsByTable={fieldsByTable}
                     readOnly={readOnly}
@@ -3310,6 +3364,8 @@ const editorTabs = [
       </div>
 
       {showRaw && (
+        <>
+        <button type="button" className={styles.btn} disabled={readOnly} onClick={applyRawJson}>Aplicar JSON al editor</button>
         <textarea
           className={styles.textarea}
           rows={16}
@@ -3318,6 +3374,7 @@ const editorTabs = [
           spellCheck={false}
           disabled={readOnly}
         />
+        </>
       )}
     </Section>
   )}
@@ -3344,5 +3401,3 @@ const editorTabs = [
     
   );
 }
-
-

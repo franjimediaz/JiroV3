@@ -2,6 +2,9 @@ import type { ModuleDefaultFilterGroup, ModuleDefaultQueryFilterLike } from "./m
 import type { SelectorTableFilterGroup, SelectorTableFilterOperator } from "./selectorTableFilters";
 import type { ModuleAuditConfig } from "./auditPolicy";
 import type { ModuleCapabilities } from "./moduleCapabilities";
+import type { FieldRef, FieldRefLike } from "./fieldRefs";
+
+export type FormulaDependency = { token: string; ref: FieldRef };
 
 export type Compute =
   | { type: "none" }
@@ -9,18 +12,20 @@ export type Compute =
       type: "formula";
       expr: string;               // p.ej. "cantidad * precioUnidad + totalMateriales"
       deps: string[];             // p.ej. ["cantidad","precioUnidad","totalMateriales"]
+      dependencies?: FormulaDependency[];
       persist: "none" | "onSave" | "always";
     }
   | {
       type: "aggregate";
-      sourceTable: string;        // p.ej. "materiales"
-      field: string;              // p.ej. "coste"
+      sourceTable?: string;        // legacy physical table
+      sourceModuleSlug?: string;
+      field: FieldRefLike;
       op: "sum" | "avg" | "min" | "max" | "count";
       where: Array<{
-        field: string;
+        field: FieldRefLike;
         op: "=" | "!=" | ">" | "<" | ">=" | "<=" | "in";
         valueFrom?: "this" | "context"; // "this" usa valores del propio formulario
-        path?: string;                  // nombre del campo en "this", p.ej. "servicioId"
+        path?: FieldRefLike;
         value?: any;                    // valor literal cuando no usas valueFrom
       }>;
       persist: "none" | "onSave" | "always";
@@ -65,13 +70,13 @@ export type PdfPreviewSpecialViewConfig = {
 };
 export type CalendarSpecialViewConfig = {
   sourceModuleSlug: string;
-  titleField: string;
-  startField: string;
-  endField?: string;
-  allDayField?: string;
-  colorField?: string;
-  descriptionField?: string;
-  resourceField?: string;
+  titleField: FieldRefLike;
+  startField: FieldRefLike;
+  endField?: FieldRefLike;
+  allDayField?: FieldRefLike;
+  colorField?: FieldRefLike;
+  descriptionField?: FieldRefLike;
+  resourceField?: FieldRefLike;
   parentLinkField?: string;
   defaultView?: CalendarViewMode;
   enabledViews?: CalendarViewMode[];
@@ -81,18 +86,18 @@ export type PlanDynamicSourceConfig = {
   moduleSlug?: string;
   table?: string;
   valueField?: string;
-  labelField?: string;
-  displayField?: string;
-  iconField?: string;
-  colorField?: string;
-  categoryField?: string;
-  typeField?: string;
-  orderField?: string;
-  lockedField?: string;
-  visibleField?: string;
-  descriptionField?: string;
-  planJsonField?: string;
-  blockJsonField?: string;
+  labelField?: FieldRefLike;
+  displayField?: FieldRefLike;
+  iconField?: FieldRefLike;
+  colorField?: FieldRefLike;
+  categoryField?: FieldRefLike;
+  typeField?: FieldRefLike;
+  orderField?: FieldRefLike;
+  lockedField?: FieldRefLike;
+  visibleField?: FieldRefLike;
+  descriptionField?: FieldRefLike;
+  planJsonField?: FieldRefLike;
+  blockJsonField?: FieldRefLike;
   filters?: QueryFilter[];
   sort?: QuerySort[];
 };
@@ -101,7 +106,7 @@ export type PlanLinkTargetConfig = {
   moduleSlug: string;
   table?: string;
   valueField?: string;
-  displayField?: string;
+  displayField?: FieldRefLike;
   filters?: QueryFilter[];
   sort?: QuerySort[];
 };
@@ -154,7 +159,7 @@ export type PlanEditorSpecialViewConfig = {
       includeGrid?: boolean;
       includeLayerLegend?: boolean;
       pageOrientation?: "portrait" | "landscape";
-      metadataFields?: Array<{ label: string; field: string }>;
+      metadataFields?: Array<{ label: string; field: FieldRefLike }>;
     };
     clipboard?: {
       pasteIntoActiveLayer?: boolean;
@@ -172,7 +177,7 @@ export type PlanEditorSpecialViewConfig = {
       preserveLinks?: boolean;
     };
     exportTitle?: string;
-    exportSubtitleField?: string;
+    exportSubtitleField?: FieldRefLike;
     calibration?: {
       enabled?: boolean;
       allowedUnits?: Array<"m" | "cm" | "mm" | "km" | "in" | "ft" | "px">;
@@ -223,11 +228,11 @@ export type SelectorTablaRef = {
   moduleSlug: string;
   multiple?: boolean;
   table?: string;
-  displayField: string; // obligatorio SOLO aquí
+  displayField: FieldRefLike; // obligatorio SOLO aquí
   valueField?: string;
   hasStyle?: boolean;
-  styleIconField?: string;  
-  styleColorField?: string;
+  styleIconField?: FieldRefLike;
+  styleColorField?: FieldRefLike;
   filters?: QueryFilter[] | SelectorTableFilterGroup;
   sort?: QuerySort[];
 };
@@ -255,8 +260,8 @@ export type VisibilityOperator =
   | "notEmpty";
 
 export type VisibilityRule = {
-  source: "currentRecord" | "relatedRecord";
-  field: string;
+  source?: "currentRecord" | "relatedRecord";
+  field: FieldRefLike;
   op: VisibilityOperator;
   value?: any;
   relationField?: string;
@@ -525,13 +530,13 @@ export type SeedNode = {
 export type FilterOp = SelectorTableFilterOperator;
 
 export type QueryFilter = {
-  field: string;
+  field: FieldRefLike;
   op: FilterOp;
   value?: any;
 };
 
 export type QuerySort = {
-  field: string;
+  field: FieldRefLike;
   direction: "asc" | "desc";
 };
 export type CacheEntry = { label: string; icon?: string; color?: string };
@@ -539,8 +544,8 @@ export type CacheEntry = { label: string; icon?: string; color?: string };
 type ColumnType = "text" | "money" | "date" | "datetime" | "boolean" | "select";
 
 export type TreeViewFilter =
-  | { kind: "eq"; field: string; value?: any; valueFromParent?: string }
-  | { kind: "in"; field: string; values?: any[]; valuesFromParent?: string };
+  | { kind: "eq"; field: FieldRefLike; value?: any; valueFromParent?: FieldRefLike }
+  | { kind: "in"; field: FieldRefLike; values?: any[]; valuesFromParent?: FieldRefLike };
 
 export type TreeViewLookup = {
   field: string; // campo en filas (FK o valor)
@@ -559,20 +564,21 @@ export type TreeViewLevel = {
 
 export type TreeViewConfig = {
   source: {
+    moduleSlug?: string;
     table: string;
     select?: string[]; // si no, se deduce
-    orderBy?: { field: string; ascending?: boolean };
+    orderBy?: { field: FieldRefLike; ascending?: boolean };
     filters?: TreeViewFilter[];
   };
 
   grouping: {
-    groupByField: string; // ej "service"
-    groupTitleField?: string; // si groupByField ya es texto (no FK)
+    groupByField: FieldRefLike;
+    groupTitleField?: FieldRefLike;
     level?: TreeViewLevel;
   };
 
   columns: Array<{
-    field: string;
+    field: FieldRefLike;
     label: string;
     type?: ColumnType;
     width?: string;
@@ -581,7 +587,7 @@ export type TreeViewConfig = {
 
   totals?: {
     enabled: boolean;
-    sumField: string; // ej "total"
+    sumField: FieldRefLike;
     currency?: string; // default "EUR"
     showGroupTotals?: boolean;
     showGrandTotal?: boolean;
@@ -630,7 +636,7 @@ export type FormMode = "view" | "edit" | "create";
 
 /** condiciones simples para deshabilitar */
 export type ActionDisabledWhen =
-  | { type: "missingFields"; fields: string[] }
+  | { type: "missingFields"; fields: FieldRefLike[] }
   | { type: "modeIs"; modes: FormMode[] };
 
 export type ActionConfirm = {
@@ -671,10 +677,10 @@ type BaseFormAction = {
 export type CreateRelatedAction = BaseFormAction & {
   type: "createRelated";
   target: {
-    table: string;
-    moduleSlug?: string; // opcional, si luego quieres resolver tabla por módulo
+    table?: string; // legacy physical table
+    moduleSlug?: string; // logical module identity
   };
-  fieldMap?: Record<string, string>;
+  fieldMap?: Record<string, FieldRefLike>;
   defaults?: Record<string, unknown>;
   afterCreate?: {
     navigateTo?: "record" | "list" | "none";

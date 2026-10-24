@@ -47,16 +47,18 @@ test("metadata enumerates only direct declared scalar fields; aggregate compatib
     {name: "virtual", type: "text", virtual: true}, {name: "hidden", type: "text", visible: false},
   ]}};
   const target = {slug: "customers", name: "Clientes", schema: {db: {table: "customers"}, fields: [{name: "name", label: "Nombre", type: "text"}]}};
-  assert.deepEqual(types.reportFieldOptions(root, [root, target]).map(option => option.ref), [{field: "customer"}, {field: "name", relation: "customer"}]);
+  assert.deepEqual(types.reportFieldOptions(root, [root, target]).map(option => option.ref), [{field: "customer"}, {field: "name", relations: ["customer"]}]);
   assert.equal(types.reportFieldOptions(root, [root]).length, 1);
   assert.ok(types.reportAggregations({type: "money"}).includes("avg"));
   assert.ok(!types.reportAggregations({type: "text"}).includes("sum"));
 });
-test("metadata resolver follows only configured selector paths up to two levels and feeds the pure query builder", async () => {
+test("metadata resolver follows only configured selector paths up to three levels and feeds the pure query builder", async () => {
   const schemas = {
     orders: {db: {table: "orders", primaryKey: "id"}, fields: [{name: "customer", type: "selectorTabla", ref: {moduleSlug: "customers"}}]},
     customers: {db: {table: "customers", primaryKey: "id"}, fields: [{name: "country", type: "selectorTabla", ref: {moduleSlug: "countries"}}]},
-    countries: {db: {table: "countries", primaryKey: "id"}, fields: [{name: "name", label: "País", type: "text"}]},
+    countries: {db: {table: "countries", primaryKey: "id"}, fields: [{name: "continent", type: "selectorTabla", ref: {moduleSlug: "continents"}}, {name: "name", label: "País", type: "text"}]},
+    continents: {db: {table: "continents", primaryKey: "id"}, fields: [{name: "hemisphere", type: "selectorTabla", ref: {moduleSlug: "hemispheres"}}, {name: "name", label: "Continente", type: "text"}]},
+    hemispheres: {db: {table: "hemispheres", primaryKey: "id"}, fields: [{name: "name", label: "Hemisferio", type: "text"}]},
   };
   const permissions = [];
   const dependencies = {
@@ -72,7 +74,10 @@ test("metadata resolver follows only configured selector paths up to two levels 
   assert.equal(query.source.table, "orders"); assert.equal(query.fields[0].table, "countries");
   assert.deepEqual(query.fields[0].relationPath.map(item => item.field), ["customer", "country"]);
   assert.deepEqual(permissions, [["orders", "ver"], ["customers", "ver"], ["countries", "ver"]]);
-  await assert.rejects(resolveReportMetadata({...report, config: {columns: [{...report.config.columns[0], ref: {...report.config.columns[0].ref, relations: ["customer", "country", "continent"]}}]}}, dependencies), /máximo de 2/);
+  const threeHopReport = {...report, config: {columns: [{...report.config.columns[0], ref: {...report.config.columns[0].ref, relations: ["customer", "country", "continent"]}}]}};
+  const threeHopMetadata = await resolveReportMetadata(threeHopReport, dependencies);
+  assert.deepEqual(threeHopMetadata.fields[0].relations.map(item => item.field), ["customer", "country", "continent"]);
+  await assert.rejects(resolveReportMetadata({...report, config: {columns: [{...report.config.columns[0], ref: {...report.config.columns[0].ref, relations: ["customer", "country", "continent", "hemisphere"]}}]}}, dependencies), /máximo de 3/);
   assert.throws(() => buildReportQuery({...list(), config: {columns: [column("country"), column("amount", "amount", "sum")], groupBy: []}}, {
     source: {module: "orders", table: "orders", primaryKey: "id", schema: schemas.orders}, fields: [
       {id: "country", ref: {field: "country"}, module: "orders", table: "orders", field: {name: "country", type: "text"}, relations: [], aggregations: ["none", "count"]},

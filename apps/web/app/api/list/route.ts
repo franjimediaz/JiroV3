@@ -1,11 +1,9 @@
 // app/api/list/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import type { QueryFilter } from "@repo/types";
+import { fieldRefKey, normalizeFieldRef, type FieldRefInput, type QueryFilter, type QuerySort } from "@repo/types";
 import {
-  applyQueryFilters,
   buildModuleDefaultFilterRuntimeContext,
-  filterRowsWithDefaultFilters,
   resolveDefaultFiltersForQuery,
 } from "@/lib/moduleDefaultFilters";
 import { requireModulePermission } from "@/lib/auth/requireModulePermission";
@@ -13,14 +11,17 @@ import { handleApiError } from "@/lib/auth/handleApiError";
 import { compileAdvancedFilters, defaultFilterExpression, filterIdentifier } from "@/lib/advancedFilters";
 import { badRequest, forbidden } from "@/lib/auth/apiError";
 import { getEffectiveModuleCapabilities } from "@repo/types";
+import { applyFieldRefFilters, applyFieldRefSort, buildFieldRefSelect, collectFieldRefFilterGroupInputs, collectQueryFieldRefInputs, compileFieldRefFilterGroup } from "@/lib/fields/fieldRefQuery";
+import { resolveFieldRefs } from "@/lib/fields/resolveFieldRef";
 
 type ListFilter = QueryFilter;
-type ListSort = { field: string; dir: "asc" | "desc" };
+type ListSort = QuerySort | { field: QuerySort["field"]; dir: "asc" | "desc" };
 
 type ListBody = {
   moduleSlug: string;
   filters?: ListFilter[];
   sort?: ListSort[];
+  fieldRefs?: FieldRefInput[];
   limit?: number;
   offset?: number;
   advancedFilters?: unknown;
@@ -103,32 +104,59 @@ export async function POST(req: Request) {
       if (limitRaw !== undefined && (!Number.isInteger(limitRaw) || limitRaw < 1 || limitRaw > 200)) throw badRequest("Tamaño de página no válido");
       if (offsetRaw !== undefined && (!Number.isSafeInteger(offsetRaw) || offsetRaw < 0)) throw badRequest("Página no válida");
     }
+    const bodyFilters = Array.isArray(body?.filters) ? body.filters : [];
+    const sort: QuerySort[] = (Array.isArray(body?.sort) ? body.sort : []).map(item => ({
+      field: item.field,
+      direction: (item as any).dir === "desc" || (item as any).direction === "desc" ? "desc" : "asc",
+    }));
+    const queryFilters = defaultFilters.canQueryDirectly
+      ? [...(defaultFilters.filters as QueryFilter[]), ...bodyFilters]
+      : bodyFilters;
+    const groupedDefaultRefs = defaultFilters.canQueryDirectly ? [] : collectFieldRefFilterGroupInputs(defaultFilters.group);
+    const fieldRefInputs = collectQueryFieldRefInputs({ projections: [...(body.fieldRefs || []), ...groupedDefaultRefs], filters: queryFilters, sort });
+    const relatedInputs = fieldRefInputs.filter(ref => normalizeFieldRef(ref).relations.length > 0);
+    const resolvedFieldRefs = relatedInputs.length ? await resolveFieldRefs(moduleSlug, relatedInputs) : [];
+    const directResolved = fieldRefInputs.filter(ref => !normalizeFieldRef(ref).relations.length).map(ref => {
+      const normalized = normalizeFieldRef(ref);
+      const fieldSchema = props.fields?.find((field: any) => field.name === normalized.field && !field.virtual && field.visible !== false);
+      const primaryKey = String(props.db?.primaryKey || "id");
+      if (!fieldSchema && normalized.field !== primaryKey) throw badRequest(`Campo no declarado o no disponible: ${normalized.field}`);
+      return { key: fieldRefKey(ref), ref: normalized, field: normalized.field, fieldSchema: fieldSchema || { name: primaryKey, label: primaryKey, type: "text" }, relations: [] };
+    });
+    resolvedFieldRefs.push(...directResolved as any);
+    const resolvedByKey = new Map(resolvedFieldRefs.map(ref => [ref.key, ref]));
+    const projectionRefs = (body.fieldRefs || [])
+      .map(ref => resolvedByKey.get(fieldRefKey(ref)))
+      .filter(Boolean) as typeof resolvedFieldRefs;
+    const filterRefs = queryFilters
+      .map(filter => resolvedByKey.get(fieldRefKey(filter.field)))
+      .filter(Boolean) as typeof resolvedFieldRefs;
+    const compiledDefaults = defaultFilters.canQueryDirectly
+      ? undefined
+      : compileFieldRefFilterGroup(defaultFilters.group, resolvedFieldRefs);
+    const relationSelect = buildFieldRefSelect(projectionRefs, filterRefs);
+    const select = ["*", ...relationSelect, ...(compiled?.embeds.map(embed => embed.select) || []), ...(compiledDefaults?.embeds.map(embed => embed.select) || [])].join(",");
     let q = advanced
-      ? supabase.from(tableName).select(["*", ...compiled!.embeds.map(embed => embed.select)].join(","), { count: "exact" })
-      : supabase.from(tableName).select("*");
+      ? supabase.from(tableName).select(select, { count: "exact" })
+      : supabase.from(tableName).select(select);
     if (compiled) {
       for (const embed of compiled.embeds) q = q.or(embed.expression, { referencedTable: embed.alias });
-      const expressions = [compiled.expression, defaultFilterExpression(defaultFilters.group, props)].filter(Boolean);
+      for (const embed of compiledDefaults?.embeds || []) q = q.or(embed.expression, { referencedTable: embed.alias });
+      const defaultExpression = compiledDefaults?.expression || defaultFilterExpression(defaultFilters.group, props);
+      const expressions = [compiled.expression, defaultExpression].filter(Boolean);
       if (expressions.length) q = q.or(`and(${expressions.join(",")})`);
+    } else if (compiledDefaults) {
+      for (const embed of compiledDefaults.embeds) q = q.or(embed.expression, { referencedTable: embed.alias });
+      if (compiledDefaults.expression) q = q.or(compiledDefaults.expression);
     } else if (defaultFilters.canQueryDirectly) {
-      q = applyQueryFilters(q, defaultFilters.filters as QueryFilter[]);
+      q = applyFieldRefFilters(q, defaultFilters.filters as QueryFilter[], resolvedFieldRefs);
     }
 
-    const bodyFilters = Array.isArray(body?.filters) ? body.filters : [];
     if (bodyFilters.length > 0) {
-      q = applyQueryFilters(q, bodyFilters);
+      q = applyFieldRefFilters(q, bodyFilters, resolvedFieldRefs);
     }
 
-    const sort = Array.isArray(body?.sort) ? body.sort : [];
-    for (const s of sort) {
-      if (!s || typeof s !== "object") continue;
-      const field = String((s as any).field || "").trim();
-      const dir = (s as any).dir === "desc" || (s as any).direction === "desc" ? "desc" : "asc";
-      if (!field) continue;
-      if (advanced && !props.fields?.some((f: any) => f.name === field && !f.virtual)) throw badRequest("Campo de ordenación no permitido");
-      if (advanced) filterIdentifier(field);
-      q = q.order(field, { ascending: dir === "asc" });
-    }
+    q = applyFieldRefSort(q, sort, resolvedFieldRefs);
     if (advanced) q = q.order(filterIdentifier(props.db.primaryKey || "id"), { ascending: true });
 
     const limit = Number.isFinite(limitRaw as any) ? Math.max(1, Math.min(200, Number(limitRaw))) : 50;
@@ -157,7 +185,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const rows = advanced || defaultFilters.canQueryDirectly ? data ?? [] : filterRowsWithDefaultFilters(data ?? [], defaultFilters.group);
+    const rows = data ?? [];
     return NextResponse.json({ ok: true, data: rows, ...(advanced ? { count: count ?? 0 } : {}) });
   } catch (error) {
     return handleApiError(error, requestId, { route: "/api/list", method: "POST", moduleSlug });

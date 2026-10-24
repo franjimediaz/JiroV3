@@ -245,6 +245,9 @@ const { applyModuleUiPatch } = loadSource("packages/types/moduleUi.ts");
 const { normalizeModuleSchema } = loadSource(
   "packages/types/normalizeModuleSchema.ts",
 );
+const { serializeModuleSchema } = loadSource(
+  "packages/types/serializeModuleSchema.ts",
+);
 const formSource = readFileSync(
   "packages/ui/src/ModuloForm/ModuloForm.tsx",
   "utf8",
@@ -311,6 +314,7 @@ function toggleDashboard(propsObj, checked) {
     {
       propsObj,
       applyModuleUiPatch,
+      serializeModuleSchema,
       setPropsObj: (value) => {
         next = value;
       },
@@ -320,7 +324,7 @@ function toggleDashboard(propsObj, checked) {
     },
     { target: { checked } },
   );
-  assert.deepEqual(JSON.parse(raw), next);
+  assert.deepEqual(JSON.parse(raw), serializeModuleSchema(next));
   return next;
 }
 async function submit(propsObj) {
@@ -336,6 +340,7 @@ async function submit(propsObj) {
     showRaw: false,
     rawText: "",
     normalizeModuleSchema,
+    serializeModuleSchema,
     applyModuleUiPatch,
     validatePropsClient: () => null,
     setMsg: () => {},

@@ -1,15 +1,13 @@
 import type { AdvancedFilterGroup } from "./advancedFilters";
 import type { Field, ModuleSchema } from "./fields";
+import { fieldRefKey, fieldRefRelations, type FieldRef } from "./fieldRefs";
 
 export type ReportAggregation = "none" | "count" | "countDistinct" | "sum" | "avg" | "min" | "max";
-export type ReportFieldRef = {
+export type ReportFieldRef = FieldRef & {
   /** Must match ReportDefinition.sourceModule; retained on the ref for portable definitions. */
   module?: string;
-  field: string;
   /** Legacy one-hop representation. */
   relation?: string;
-  /** Configured selectorTabla field names, never table or FK names. */
-  relations?: string[];
   alias?: string;
   label?: string;
 };
@@ -81,8 +79,8 @@ export type ReportResult = {
   totals: ReportScalar[]; scanned: number;
 };
 
-export const reportRelationPath = (ref: ReportFieldRef) => ref.relations || (ref.relation ? [ref.relation] : []);
-export const reportFieldKey = (ref: ReportFieldRef) => JSON.stringify([ref.module || "", reportRelationPath(ref), ref.field]);
+export const reportRelationPath = (ref: ReportFieldRef) => fieldRefRelations(ref);
+export const reportFieldKey = (ref: ReportFieldRef) => JSON.stringify([ref.module || "", fieldRefKey(ref)]);
 export function reportFields(schema: ModuleSchema): Field[] {
   return schema.fields.filter(field => !field.virtual && field.visible !== false &&
     ["text", "textarea", "number", "money", "percent", "date", "datetime", "boolean", "select", "selectorTabla", "color"].includes(field.type) &&
@@ -93,7 +91,7 @@ export function reportFieldOptions(source: ReportSource, sources: ReportSource[]
     const options: ReportFieldOption[] = [{ ref: {field: field.name}, label: field.label || field.name, field }];
     const target = field.type === "selectorTabla" ? sources.find(item => item.slug === field.ref.moduleSlug) : undefined;
     if (target) options.push(...reportFields(target.schema).map(child => ({
-      ref: {relation: field.name, field: child.name}, label: `${field.label || target.name} > ${child.label || child.name}`, field: child,
+      ref: {relations: [field.name], field: child.name}, label: `${field.label || target.name} > ${child.label || child.name}`, field: child,
     })));
     return options;
   });

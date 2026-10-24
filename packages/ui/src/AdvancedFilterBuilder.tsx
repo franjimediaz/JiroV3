@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { advancedFilterOperators, ADVANCED_FILTER_MAX_DEPTH, type AdvancedFilterCondition, type AdvancedFilterGroup,
+import { advancedFilterOperators, ADVANCED_FILTER_MAX_DEPTH, fieldRefKey, normalizeFieldRef, type AdvancedFilterCondition, type AdvancedFilterGroup,
   type AdvancedFilterOperator, type AdvancedSearchField } from "@repo/types";
 import Selector from "./components/fields/Selector";
 
@@ -10,7 +10,12 @@ export const advancedFilterOperatorLabels: Record<AdvancedFilterOperator, string
   endsWith: "Termina en", ">": "Mayor que / después", ">=": "Mayor o igual", "<": "Menor que / antes", "<=": "Menor o igual",
   between: "Entre", in: "Incluido en", notIn: "No incluido en", isNull: "Vacío", isNotNull: "No vacío",
 };
-const keyOf = (option: AdvancedSearchField) => JSON.stringify([option.relation || "", option.field.name]);
+const keyOf = (option: AdvancedSearchField) => fieldRefKey(option.ref);
+const conditionRef = (condition: AdvancedFilterCondition) => {
+  const ref = normalizeFieldRef(condition.field);
+  if (condition.relation && !ref.relations.length) ref.relations = [condition.relation];
+  return ref;
+};
 
 export function AdvancedFilterBuilder({ value, onChange, fields, depth = 1 }: {
   value: AdvancedFilterGroup; onChange: (next: AdvancedFilterGroup) => void; fields: AdvancedSearchField[]; depth?: number;
@@ -34,7 +39,7 @@ export function AdvancedFilterBuilder({ value, onChange, fields, depth = 1 }: {
     <div className="d-flex gap-2 flex-wrap">
       <button type="button" className="btn btn-sm btn-outline-secondary" disabled={!fields.length} onClick={() => {
         const first = fields[0]; if (!first) return;
-        onChange({...value, items: [...value.items, {kind: "condition", field: first.field.name, relation: first.relation, op: "=", value: first.field.type === "boolean" ? true : ""}]});
+        onChange({...value, items: [...value.items, {kind: "condition", field: first.ref, op: "=", value: first.field.type === "boolean" ? true : ""}]});
       }}>+ Condición</button>
       <button type="button" className="btn btn-sm btn-outline-secondary" disabled={depth >= ADVANCED_FILTER_MAX_DEPTH - 1}
         onClick={() => onChange({...value, items: [...value.items, {kind: "group", logic: "AND", items: []}]})}>+ Grupo</button>
@@ -43,7 +48,7 @@ export function AdvancedFilterBuilder({ value, onChange, fields, depth = 1 }: {
 }
 
 function Condition({value, fields, onChange}: {value: AdvancedFilterCondition; fields: AdvancedSearchField[]; onChange: (next: AdvancedFilterCondition) => void}) {
-  const selected = fields.find(option => option.field.name === value.field && option.relation === value.relation);
+  const selected = fields.find(option => keyOf(option) === fieldRefKey(conditionRef(value)));
   const field = selected?.field;
   const operators = field ? advancedFilterOperators(field) : [];
   const multiple = value.op === "in" || value.op === "notIn";
@@ -53,9 +58,9 @@ function Condition({value, fields, onChange}: {value: AdvancedFilterCondition; f
   const convert = (raw: string) => numeric && raw !== "" ? Number(raw) : raw;
   return <div className="row g-2">
     <div className="col-12 col-lg-4">
-      <select className="form-select form-select-sm" aria-label="Campo del filtro" value={JSON.stringify([value.relation || "", value.field])}
-        onChange={event => { const next = fields.find(option => keyOf(option) === event.target.value); if (next) onChange({kind: "condition", field: next.field.name, relation: next.relation, op: "=", value: next.field.type === "boolean" ? true : ""}); }}>
-        {!selected && <option value={JSON.stringify([value.relation || "", value.field])}>Campo no disponible</option>}
+      <select className="form-select form-select-sm" aria-label="Campo del filtro" value={fieldRefKey(conditionRef(value))}
+        onChange={event => { const next = fields.find(option => keyOf(option) === event.target.value); if (next) onChange({kind: "condition", field: next.ref, op: "=", value: next.field.type === "boolean" ? true : ""}); }}>
+        {!selected && <option value={fieldRefKey(conditionRef(value))}>Campo no disponible</option>}
         {fields.map(option => <option key={keyOf(option)} value={keyOf(option)}>{option.label}</option>)}
       </select>
     </div>

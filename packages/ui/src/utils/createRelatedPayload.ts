@@ -1,4 +1,4 @@
-import type { CreateRelatedAction, ModuleSchema } from "@repo/types";
+import { getFieldRefValue, normalizeFieldRef, type CreateRelatedAction, type ModuleSchema } from "@repo/types";
 
 export function buildCreateRelatedPayload(
   action: CreateRelatedAction,
@@ -8,10 +8,12 @@ export function buildCreateRelatedPayload(
 ) {
   const payload: Record<string, unknown> = { ...action.defaults };
   const primaryKey = schema.db?.primaryKey || "id";
-  const read = (path: string) => path.split(".").reduce<unknown>((value, key) =>
-    value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined, values);
+  const read = (source: Parameters<typeof getFieldRefValue>[1]) => getFieldRefValue(values, source);
   const parentFields = Object.entries(action.fieldMap || {})
-    .filter(([, source]) => source === primaryKey || source === "id")
+    .filter(([, source]) => {
+      const ref = normalizeFieldRef(source);
+      return !ref.relations.length && (ref.field === primaryKey || ref.field === "id");
+    })
     .map(([destination]) => destination);
 
   for (const [destination, source] of Object.entries(action.fieldMap || {})) {

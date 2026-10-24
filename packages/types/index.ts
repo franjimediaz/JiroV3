@@ -79,6 +79,8 @@ export type {
   SelectorTableFilterResolutionContext,
 } from "./selectorTableFilters";
 export type { AccionModulo, MapaAcciones, PermisosPorModulo, RolePermisosSchema } from "./perms";
+export * from "./systemPermissions";
+export * from "./serializeModuleSchema";
 export { VALID_FIELD_TYPES, Appareance_Valid_Types} from "./fields";
 export {
   createEmptyModuleDefaultFilterCondition,
@@ -169,4 +171,6 @@ export { COPY_RELATED_MAX_DEPTH } from "./workflows";
 
 export * from "./advancedFilters";
 export * from "./reports";
+export * from "./fieldRefs";
 export { normalizeEmptyRelations } from "./recordValues";
+export { isPersistableField, pickPersistablePayload, SERVER_CONTROLLED_FIELDS } from "./persistablePayload";

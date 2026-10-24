@@ -3,7 +3,7 @@
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-import { SeedNode } from "@repo/types";
+import { serializeModuleSchema, type SeedNode } from "@repo/types";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 
 const TABLE = "modulos";
@@ -32,7 +32,7 @@ async function upsertModulo(node: SeedNode, parentId: string | null) {
     tipo: node.tipo,
     orden: node.orden ?? 0,
     activo: node.activo ?? true,
-    props: node.props ?? {},
+    props: node.tipo === "carpeta" ? node.props ?? {} : serializeModuleSchema(node.props ?? {}),
   };
 
   if (!existing) {

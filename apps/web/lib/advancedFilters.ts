@@ -1,4 +1,4 @@
-import { advancedFilterFields, advancedFilterOperators, ADVANCED_FILTER_MAX_CONDITIONS, ADVANCED_FILTER_MAX_DEPTH,
+import { advancedFilterFields, advancedFilterOperators, ADVANCED_FILTER_MAX_CONDITIONS, ADVANCED_FILTER_MAX_DEPTH, normalizeFieldRef,
   type Field, type ModuleSchema, type ModuleDefaultResolvedFilterGroup } from "@repo/types";
 import { badRequest, forbidden } from "./auth/apiError";
 import { getEffectiveModuleCapabilities } from "@repo/types";
@@ -20,7 +20,7 @@ function literal(value: unknown): string {
 }
 
 export function filterConditionExpression(field: string, op: string, value: unknown, text = false): string {
-  const column = filterIdentifier(field);
+  const column = field.split(".").map(filterIdentifier).join(".");
   const term = (operator: string, val: unknown) => `${column}.${operator}.${literal(val)}`;
   const empty = `${column}.is.null`;
   if (op === "isNull" || (op === "=" && value == null)) return text ? `or(${empty},${term("eq", "")})` : empty;
@@ -49,9 +49,11 @@ export function defaultFilterExpression(group: ModuleDefaultResolvedFilterGroup,
   if (!group.items.length) return undefined;
   const items = group.items.map(item => {
     if ("items" in item) return defaultFilterExpression(item, schema) || `${filterIdentifier(schema.db.primaryKey || "id")}.not.is.null`;
-    if (!schema.fields.some(field => field.name === item.field) && item.field !== (schema.db.primaryKey || "id"))
-      throw badRequest(`Campo de filtro por defecto no declarado: ${item.field}`);
-    return filterConditionExpression(item.field, item.op, item.value);
+    const ref = normalizeFieldRef(item.field);
+    if (ref.relations.length) throw badRequest("Los filtros relacionados se resuelven mediante el planificador de consultas");
+    if (!schema.fields.some(field => field.name === ref.field) && ref.field !== (schema.db.primaryKey || "id"))
+      throw badRequest(`Campo de filtro por defecto no declarado: ${ref.field}`);
+    return filterConditionExpression(ref.field, item.op, item.value);
   });
   return `${group.logic === "OR" ? "or" : "and"}(${items.join(",")})`;
 }
@@ -95,41 +97,54 @@ export async function compileAdvancedFilters(input: unknown, schema: ModuleSchem
       return parts.length ? `${node.logic === "OR" ? "or" : "and"}(${parts.join(",")})` : undefined;
     }
     if (node.kind !== "condition" || ++conditions > ADVANCED_FILTER_MAX_CONDITIONS) throw badRequest("Condición no válida o demasiadas condiciones");
-    if (typeof node.field !== "string" || typeof node.op !== "string" || (node.relation !== undefined && typeof node.relation !== "string"))
+    if ((typeof node.field !== "string" && (!node.field || typeof node.field !== "object" || Array.isArray(node.field))) || typeof node.op !== "string" || (node.relation !== undefined && typeof node.relation !== "string"))
       throw badRequest("Campo, operador o relación no válido");
+    const configuredRef = normalizeFieldRef(node.field as any);
+    if (node.relation && !configuredRef.relations.length) configuredRef.relations = [node.relation];
+    if (!configuredRef.field || configuredRef.relations.length > 3) throw badRequest("Ruta de campo no valida");
     let target = schema;
-    let relationColumn: string | undefined;
-    let related: Awaited<ReturnType<typeof resolveModuleConfig>> | undefined;
-    if (node.relation !== undefined) {
-      const relation = advancedFilterFields(schema).find(field => field.name === node.relation);
+    const relationSteps: Array<{ relationColumn: string; related: Awaited<ReturnType<typeof resolveModuleConfig>> }> = [];
+    const visited = new Set<string>();
+    for (const relationName of configuredRef.relations) {
+      const relation = advancedFilterFields(target).find(field => field.name === relationName);
       if (!relation || relation.type !== "selectorTabla" || relation.ref.multiple) throw badRequest("Relación no permitida para búsqueda");
-      relationColumn = filterIdentifier(relation.name);
+      const relationColumn = filterIdentifier(relation.name);
       const slug = relation.ref.moduleSlug;
-      related = relations.get(slug);
+      if (visited.has(slug)) throw badRequest("La ruta de busqueda contiene un ciclo");
+      visited.add(slug);
+      let related = relations.get(slug);
       if (!related) {
         related = await dependencies.resolveModuleConfig(slug);
         await dependencies.requireModulePermission(related.permissionsKey, "ver");
         if (!related.table) throw badRequest("La relación no apunta a un módulo de datos");
         relations.set(slug, related);
       }
+      relationSteps.push({ relationColumn, related });
       target = related.schema;
     }
-    const field = advancedFilterFields(target).find(field => field.name === node.field);
+    const field = advancedFilterFields(target).find(field => field.name === configuredRef.field);
     if (!field) throw badRequest(`Campo no permitido para búsqueda: ${String(node.field).slice(0, 80)}`);
     if (!advancedFilterOperators(field).some(operator => operator === node.op)) throw badRequest(`Operador no permitido para ${field.label || field.name}`);
     validateValue(field, node.op, node.value);
     const expression = filterConditionExpression(field.name, node.op, node.value, ["text", "textarea", "color"].includes(field.type));
-    if (!related) return expression;
+    if (!relationSteps.length) return expression;
     // Empty embeds + not.is.null are EXISTS predicates; no related records are downloaded.
     // One alias per condition preserves OR across root and related columns.
     let alias = `jiro_search_${embeds.length}`;
     while (schema.fields.some(field => field.name === alias)) alias += "_";
-    const defaults = defaultFilterExpression(resolveDefaultFiltersForQuery(target.db.defaultFilters, runtime).group, target);
+    const defaults = relationSteps.length === 1 ? defaultFilterExpression(resolveDefaultFiltersForQuery(target.db.defaultFilters, runtime).group, target) : undefined;
     // PostgREST accepts the single-column FK's source column as a hint. This
     // is NOT an assumed constraint name (e.g. obraId resolves TASK_obraId_fkey).
     // Both identifiers come from validated schemas; PostgREST checks the real FK.
-    embeds.push({ alias, select: `${alias}:${filterIdentifier(related.table!)}!${relationColumn}()`,
-      expression: defaults ? `and(${expression},${defaults})` : expression });
+    const renderStep = (index: number): string => {
+      const step = relationSteps[index]!;
+      const prefix = index === 0 ? `${alias}:` : `${step.relationColumn}:`;
+      const join = index > 0 ? "!inner" : "";
+      return `${prefix}${filterIdentifier(step.related.table!)}!${step.relationColumn}${join}(${index + 1 < relationSteps.length ? renderStep(index + 1) : ""})`;
+    };
+    const nestedField = [...configuredRef.relations.slice(1), field.name].map(filterIdentifier).join(".");
+    const relatedExpression = filterConditionExpression(nestedField, node.op, node.value, ["text", "textarea", "color"].includes(field.type));
+    embeds.push({ alias, select: renderStep(0), expression: defaults ? `and(${relatedExpression},${defaults})` : relatedExpression });
     return `${alias}.not.is.null`;
   }
   if (!input || typeof input !== "object" || !("kind" in input) || input.kind !== "group") throw badRequest("La búsqueda debe contener un grupo raíz");

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import {ActionMenu} from "../../ActionMenu";
-import { normalizeTreeViewConfig } from "@repo/types";
+import { fieldRefKey, getFieldRefValue, isDirectFieldRef, normalizeFieldRef, normalizeTreeViewConfig, type FieldRefLike } from "@repo/types";
 import { getModuleColorVariables } from "../../utils/colorContrast";
 import { dataProvider as schemaProvider } from "../../providers/DataProvider";
 import {
@@ -27,24 +27,26 @@ type LegacyConfig = {
   columns?: any[];
   totals?: {
     enabled?: boolean;
-    sumField?: string;
+    sumField?: FieldRefLike;
     currency?: string;
     showGroupTotals?: boolean;
     showGrandTotal?: boolean;
   };
   ui?: { title?: string };
-  orderBy?: { field: string; ascending?: boolean };
+  orderBy?: { field: FieldRefLike; ascending?: boolean };
   filters?: LegacyFilter[];
 };
 
 type TreeViewQuery = {
   table: string;
+  moduleSlug?: string;
   select: string[];
+  fieldRefs?: FieldRefLike[];
   filters?: Array<
-    | { op: "eq"; field: string; value: any }
-    | { op: "in"; field: string; value: any[] }
+    | { op: "eq"; field: FieldRefLike; value: any }
+    | { op: "in"; field: FieldRefLike; value: any[] }
   >;
-  orderBy?: { field: string; ascending?: boolean };
+  orderBy?: { field: FieldRefLike; ascending?: boolean };
 };
 
 type LookupQuery = {
@@ -64,7 +66,7 @@ type TreeViewDataProvider = {
 type ResolveTableFn = (moduleSlug: string) => { table: string; valueField?: string } | null;
 
 type NormalizedColumn = {
-  field: string;
+  field: FieldRefLike;
   label: string;
   type?: ColumnType;
   width?: string;
@@ -225,7 +227,7 @@ function normalizeColumns(input: any): NormalizedColumn[] {
 
       out.push({
         field,
-        label: typeof c.label === "string" ? c.label : field,
+        label: typeof c.label === "string" ? c.label : normalizeFieldRef(field).field,
         type: (c.type as ColumnType) || undefined,
         width: typeof c.width === "string" ? c.width : undefined,
         options: Array.isArray(c.options) ? c.options : undefined,
@@ -237,8 +239,9 @@ function normalizeColumns(input: any): NormalizedColumn[] {
   const seen = new Set<string>();
   return out.filter((c) => {
     if (!c.field) return false;
-    if (seen.has(c.field)) return false;
-    seen.add(c.field);
+    const key = fieldRefKey(c.field);
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }
@@ -332,16 +335,16 @@ export default function TreeView(p: Props) {
     }
 
     // ✅ valueFromParent (nuevo)
-    if (f.op === "eq" && typeof f.valueFromParent === "string") {
-      const v = getByPath(parentRecord, f.valueFromParent);
+    if (f.op === "eq" && f.valueFromParent) {
+      const v = getFieldRefValue(parentRecord, f.valueFromParent);
       if (v === undefined) continue;
       out.push({ op: "eq", field: f.field, value: v });
       continue;
     }
 
     // ✅ valuesFromParent (nuevo, arrays)
-    if (f.op === "in" && typeof f.valuesFromParent === "string") {
-      const v = getByPath(parentRecord, f.valuesFromParent);
+    if (f.op === "in" && f.valuesFromParent) {
+      const v = getFieldRefValue(parentRecord, f.valuesFromParent);
       if (!Array.isArray(v) || v.length === 0) continue;
       out.push({ op: "in", field: f.field, value: v });
       continue;
@@ -360,11 +363,14 @@ export default function TreeView(p: Props) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const groupByField = (cfg as any)?.grouping?.groupByField;
+  const groupTitleField = (cfg as any)?.grouping?.groupTitleField;
   const columns = useMemo(() => normalizeColumns(cfg?.columns), [cfg?.columns]);
   const totals = cfg?.totals || {};
   const currency = totals.currency || "EUR";
   const sumField = totals.sumField;
   const sourceRef =
+    (cfg as any)?.source?.moduleSlug ||
+    (p.config as any)?.source?.moduleSlug ||
     (cfg as any)?.source?.table ||
     (p.config as any)?.source?.table ||
     (p.config as any)?.sourceTable;
@@ -440,18 +446,19 @@ const handleDelete =
   // infer column types from schema if missing
   const effectiveColumns: NormalizedColumn[] = useMemo(() => {
     return columns.map((c) => {
-      const f = fieldsByName[c.field];
+      const directName = normalizeFieldRef(c.field).field;
+      const f = isDirectFieldRef(c.field) ? fieldsByName[directName] : undefined;
       const configLabel = String(c.label || "").trim();
       const schemaLabel = String(f?.label || "").trim();
       const normalizedConfigLabel = normalizeComparableLabel(configLabel);
-      const normalizedFieldName = normalizeComparableLabel(c.field);
+      const normalizedFieldName = normalizeComparableLabel(directName);
       const normalizedSchemaLabel = normalizeComparableLabel(schemaLabel);
       const shouldPreferSchemaLabel =
         !!schemaLabel &&
         (!configLabel ||
           normalizedConfigLabel === normalizedFieldName ||
           normalizedConfigLabel === normalizedSchemaLabel);
-      const label = shouldPreferSchemaLabel ? schemaLabel : configLabel || schemaLabel || c.field;
+      const label = shouldPreferSchemaLabel ? schemaLabel : configLabel || schemaLabel || directName;
 
 
       let type = c.type;
@@ -473,31 +480,30 @@ const handleDelete =
 
   // list select fields
   const selectFields = useMemo(() => {
-    const s = new Set<string>(["id"]);
-    if (groupByField) s.add(groupByField);
-    for (const c of effectiveColumns) s.add(c.field);
-    if (totals.enabled && sumField) s.add(sumField);
-    return Array.from(s);
-  }, [groupByField, effectiveColumns, totals.enabled, sumField]);
+    const refs = ["id", groupByField, groupTitleField, ...effectiveColumns.map(column => column.field), totals.enabled ? sumField : undefined].filter(Boolean) as FieldRefLike[];
+    return [...new Map(refs.map(ref => [fieldRefKey(ref), ref])).values()];
+  }, [groupByField, groupTitleField, effectiveColumns, totals.enabled, sumField]);
 
-  const getResolvedField = (fieldName: string, fallback?: any) => {
-    const schemaField = fieldsByName[fieldName];
+  const getResolvedField = (fieldName: FieldRefLike, fallback?: any) => {
+    if (!isDirectFieldRef(fieldName)) return fallback ? { ...fallback, name: fieldRefKey(fieldName) } : null;
+    const directName = normalizeFieldRef(fieldName).field;
+    const schemaField = fieldsByName[directName];
     if (schemaField) {
-      return fallback ? { ...fallback, ...schemaField, name: schemaField.name || fieldName } : schemaField;
+      return fallback ? { ...fallback, ...schemaField, name: schemaField.name || directName } : schemaField;
     }
     if (!fallback) return null;
-    return { ...fallback, name: fallback.name || fallback.field || fieldName };
+    return { ...fallback, name: fallback.name || directName };
   };
 
   // ---------------- selectorTabla lookups ----------------
   // ✅ Regla: TODO selectorTabla intentará traer displayField + icon + color (siempre)
 const relationFields = useMemo(() => {
-  const selectedNames = new Set<string>(effectiveColumns.map((column) => column.field));
-  if (groupByField) selectedNames.add(groupByField);
+  const selectedNames = new Map(effectiveColumns.filter(column => isDirectFieldRef(column.field)).map((column) => [fieldRefKey(column.field), column.field]));
+  if (groupByField && isDirectFieldRef(groupByField)) selectedNames.set(fieldRefKey(groupByField), groupByField);
 
-  const resolvedFields = Array.from(selectedNames)
+  const resolvedFields = Array.from(selectedNames.values())
     .map((fieldName) => {
-      const column = effectiveColumns.find((item) => item.field === fieldName);
+      const column = effectiveColumns.find((item) => fieldRefKey(item.field) === fieldRefKey(fieldName));
       return getResolvedField(fieldName, column ? { ...column, field: column.field } : undefined);
     })
     .filter((field): field is any => !!field);
@@ -537,7 +543,9 @@ const pendingLookupKeys = useMemo(
     try {
       const data = await provider.list({
         table: sourceTable!,
-        select: selectFields,
+        moduleSlug: typeof sourceRef === "string" ? sourceRef : undefined,
+        select: selectFields.filter(isDirectFieldRef).map(ref => normalizeFieldRef(ref).field),
+        fieldRefs: selectFields,
         filters: normalizedFilters || [],
         orderBy: cfg?.orderBy,
       });
@@ -546,7 +554,7 @@ const pendingLookupKeys = useMemo(
       setRows(list);
 
       if (!openGroupKey && list.length > 0) {
-        const k = normalizeId(list[0]?.[groupByField!]);
+        const k = normalizeId(getFieldRefValue(list[0], groupByField!));
         setOpenGroupKey(k || null);
       }
     } catch (e: any) {
@@ -613,7 +621,7 @@ const pendingLookupKeys = useMemo(
 
     const groups = new Map<string, any[]>();
     for (const r of rows) {
-      const k = normalizeId(r?.[groupByField!]) || "";
+      const k = normalizeId(getFieldRefValue(r, groupByField!)) || "";
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k)!.push(r);
     }
@@ -621,9 +629,9 @@ const pendingLookupKeys = useMemo(
     const out = Array.from(groups.entries()).map(([key, items]) => {
       const total =
         totals.enabled && sumField
-          ? items.reduce((acc, it) => acc + Number(it?.[sumField] || 0), 0)
+          ? items.reduce((acc, it) => acc + Number(getFieldRefValue(it, sumField) || 0), 0)
           : 0;
-      return { key, rawValue: items[0]?.[groupByField!], items, total };
+      return { key, rawValue: getFieldRefValue(items[0], groupByField!), titleValue: groupTitleField ? getFieldRefValue(items[0], groupTitleField) : undefined, items, total };
     });
 
     const headerFieldDef = groupByField ? getResolvedField(groupByField) : null;
@@ -645,16 +653,16 @@ const pendingLookupKeys = useMemo(
     }
 
     return out;
-  }, [isReady, rows, groupByField, totals.enabled, sumField, fieldsByName, lookupCache, pendingLookupKeys, lookupStatusByKey]);
+  }, [isReady, rows, groupByField, groupTitleField, totals.enabled, sumField, fieldsByName, lookupCache, pendingLookupKeys, lookupStatusByKey]);
 
   const grandTotal = useMemo(() => {
     if (!totals.enabled || !sumField) return 0;
-    return rows.reduce((acc, r) => acc + Number(r?.[sumField] || 0), 0);
+    return rows.reduce((acc, r) => acc + Number(getFieldRefValue(r, sumField) || 0), 0);
   }, [rows, totals.enabled, sumField]);
 
   const hasSelectorColumns =
-    effectiveColumns.some((c) => fieldsByName[c.field]?.type === "selectorTabla") ||
-    (groupByField && fieldsByName[groupByField]?.type === "selectorTabla");
+    effectiveColumns.some((c) => isDirectFieldRef(c.field) && fieldsByName[normalizeFieldRef(c.field).field]?.type === "selectorTabla") ||
+    (groupByField && isDirectFieldRef(groupByField) && fieldsByName[normalizeFieldRef(groupByField).field]?.type === "selectorTabla");
 
   const missingResolve = hasSelectorColumns && !resolveTable;
   const missingLookup = hasSelectorColumns && !provider?.lookup;
@@ -689,7 +697,11 @@ const pendingLookupKeys = useMemo(
     
   };
 
-  const renderGroupHeader = (groupKey: any) => {
+  const renderGroupHeader = (groupKey: any, titleValue?: unknown) => {
+    if (groupTitleField && titleValue !== null && titleValue !== undefined && titleValue !== "") {
+      const titleField = getResolvedField(groupTitleField);
+      return <div className="fw-bold">{renderValueForField(titleField, titleValue, titleField?.type || "text")}</div>;
+    }
     if (!groupByField) return <div className="fw-bold">{String(groupKey || "â€”")}</div>;
 
     const f = getResolvedField(groupByField);
@@ -715,7 +727,7 @@ const pendingLookupKeys = useMemo(
 
   const renderCell = (row: any, col: NormalizedColumn) => {
     const f = getResolvedField(col.field, col);
-    const raw = row?.[col.field];
+    const raw = getFieldRefValue(row, col.field);
     return renderValueForField(f, raw, col.type || "text");
     /*
 
@@ -750,7 +762,7 @@ const pendingLookupKeys = useMemo(
         <thead>
           <tr className="text-muted small">
             {(effectiveColumns || []).map((c, idx) => (
-              <th key={`${c.field}__${idx}`} style={{ width: c.width || undefined }}>
+              <th key={`${fieldRefKey(c.field)}__${idx}`} style={{ width: c.width || undefined }}>
                 {c.label}
               </th>
             ))}
@@ -764,7 +776,7 @@ const pendingLookupKeys = useMemo(
           {items.map((r, ridx) => (
             <tr key={normalizeId(r?.id) || String(ridx)}>
               {(effectiveColumns || []).map((c, idx) => (
-                <td key={`${c.field}__${idx}`} className="fw-semibold" style={{
+                <td key={`${fieldRefKey(c.field)}__${idx}`} className="fw-semibold" style={{
                   borderRight: "1px solid rgb(0, 0, 0)"
                 }}>
                   {renderCell(r, c)}
@@ -862,7 +874,7 @@ const pendingLookupKeys = useMemo(
                     onClick={() => setOpenGroupKey((prev) => (prev === g.key ? null : g.key))}
                   >
                     <div className="d-flex w-100 align-items-center justify-content-between">
-                      {renderGroupHeader(g.rawValue)}
+                      {renderGroupHeader(g.rawValue, g.titleValue)}
                       <div className="ms-3 d-flex align-items-center gap-2">
                         <span className="badge text-bg-light">{g.items.length}</span>
                         {totals.enabled && totals.showGroupTotals && sumField && (

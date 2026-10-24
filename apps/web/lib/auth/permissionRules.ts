@@ -13,6 +13,8 @@ export const ACTION_PERMISSION_MAP: Record<string, string> = {
   remove: "eliminar",
 };
 export function normalizePermissionAction(value: string) {
+  // Workflow keys are exact, case-sensitive action names, not CRUD aliases.
+  if (value.includes(".")) return value.trim();
   const key = value.trim().toLowerCase();
   return ACTION_PERMISSION_MAP[key] || key;
 }

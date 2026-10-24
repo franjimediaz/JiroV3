@@ -1,11 +1,24 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { CalendarSpecialViewConfig, CalendarViewMode, ModuleSchema } from "@repo/types";
-import { normalizeCalendarConfig, getRecordName } from "@repo/types";
+import { getFieldRefValue, isDirectFieldRef, normalizeCalendarConfig, normalizeFieldRef, getRecordName } from "@repo/types";
 import { getRecordNameSchema } from "../../utils/recordNameSchema";
 import type { DataProvider } from "../../engines/computeEngine";
 import { dataProvider as defaultDataProvider } from "../../providers/DataProvider";
+import {
+  buildCalendarListFilters,
+  buildCalendarRecordHref,
+  buildCalendarEventTooltip,
+  formatEventTime,
+  formatEventTimeRange,
+  getCalendarEventPalette,
+  getCalendarRecordId,
+  getVisibleCalendarRange,
+  isCalendarEventActivationKey,
+  layoutOverlappingEvents,
+} from "./calendarPresentation";
+import styles from "./ModuleCalendarView.module.css";
 
 type CalendarEvent = {
   id: string;
@@ -16,6 +29,7 @@ type CalendarEvent = {
   color?: string;
   description?: string;
   resource?: string;
+  recordId?: string;
   raw: any;
 };
 
@@ -26,6 +40,7 @@ type Props = {
   parentSchema?: ModuleSchema | null;
   parentModuleSlug?: string;
   parentRecordId?: string;
+  resolveRoute?: (source: string) => string | null | undefined;
 };
 
 type LoadState =
@@ -56,16 +71,8 @@ function startOfWeek(date: Date) {
   return addDays(startOfDay(date), -day);
 }
 
-function endOfWeek(date: Date) {
-  return addDays(startOfWeek(date), 7);
-}
-
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-function endOfMonth(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 1);
 }
 
 function isSameDay(a: Date, b: Date) {
@@ -198,207 +205,166 @@ function clipEventToDay(event: CalendarEvent, day: Date) {
   return { start, end };
 }
 
-function getViewDateStep(view: CalendarViewMode) {
-  if (view === "month") return 30;
-  if (view === "week") return 7;
-  return 1;
+function shiftViewDate(date: Date, view: CalendarViewMode, direction: -1 | 1) {
+  if (view === "month") return new Date(date.getFullYear(), date.getMonth() + direction, 1);
+  return addDays(date, direction * (view === "week" ? 7 : 1));
 }
 
 function orderMonthEvents(events: CalendarEvent[]) {
   return [...events].sort((a, b) => a.start.getTime() - b.start.getTime());
 }
 
+function eventStyle(event: CalendarEvent, moduleColor?: string): CSSProperties {
+  const palette = getCalendarEventPalette(event.color, moduleColor);
+  return {
+    "--event-accent": palette.accent,
+    "--event-bg": palette.background,
+    "--event-fg": palette.foreground,
+  } as CSSProperties;
+}
+
 function buildEventFromRecord(record: any, config: CalendarSpecialViewConfig, schema?: ModuleSchema | null): CalendarEvent | null {
-  const rawStart = record?.[config.startField];
+  const rawStart = getFieldRefValue(record, config.startField);
   const start = parseDateValue(rawStart);
   if (!start) return null;
 
-  const allDay = config.allDayField ? !!record?.[config.allDayField] : looksDateOnly(rawStart);
-  const end = getEventEnd(config.endField ? record?.[config.endField] : null, start, allDay);
-  const title = getRecordName(record, schema, { legacyField: config.titleField, fallback: "(Sin título)" });
+  const allDay = config.allDayField ? !!getFieldRefValue(record, config.allDayField) : looksDateOnly(rawStart);
+  const end = getEventEnd(config.endField ? getFieldRefValue(record, config.endField) : null, start, allDay);
+  const titleValue = getFieldRefValue(record, config.titleField);
+  const title = isDirectFieldRef(config.titleField)
+    ? getRecordName(record, schema, { legacyField: normalizeFieldRef(config.titleField).field, fallback: "(Sin título)" })
+    : String(titleValue ?? "(Sin título)");
+
+  const primaryKey = String(schema?.db?.primaryKey || "id").trim();
+  const recordId = getCalendarRecordId(record, primaryKey);
 
   return {
-    id: String(record?.id ?? `${title}-${start.toISOString()}`),
+    id: recordId ?? `${title}-${start.toISOString()}`,
     title,
     start,
     end,
     allDay,
-    color: config.colorField ? String(record?.[config.colorField] ?? "") || undefined : undefined,
-    description: config.descriptionField ? String(record?.[config.descriptionField] ?? "") || undefined : undefined,
-    resource: config.resourceField ? String(record?.[config.resourceField] ?? "") || undefined : undefined,
+    color: config.colorField ? String(getFieldRefValue(record, config.colorField) ?? "") || undefined : undefined,
+    description: config.descriptionField ? String(getFieldRefValue(record, config.descriptionField) ?? "") || undefined : undefined,
+    resource: config.resourceField ? String(getFieldRefValue(record, config.resourceField) ?? "") || undefined : undefined,
+    recordId,
     raw: record,
   };
 }
 
-function MonthView({
-  currentDate,
-  events,
-}: {
+type EventViewProps = {
   currentDate: Date;
   events: CalendarEvent[];
-}) {
+  moduleColor?: string;
+  onOpenEvent: (event: CalendarEvent) => void;
+};
+
+function eventInteractionProps(event: CalendarEvent, onOpenEvent: (event: CalendarEvent) => void) {
+  return {
+    role: "button",
+    tabIndex: 0,
+    onClick: () => onOpenEvent(event),
+    onKeyDown: (keyboardEvent: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!isCalendarEventActivationKey(keyboardEvent.key)) return;
+      keyboardEvent.preventDefault();
+      onOpenEvent(event);
+    },
+  };
+}
+
+function MonthView({ currentDate, events, moduleColor, onOpenEvent }: EventViewProps) {
   const gridStart = startOfWeek(startOfMonth(currentDate));
   const days = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
-
   return (
-    <div className="d-flex flex-column gap-2">
-      <div className="row g-2">
-        {DAY_LABELS.map((label) => (
-          <div key={label} className="col">
-            <div className="small fw-semibold text-muted text-center">{label}</div>
-          </div>
-        ))}
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-          gap: 8,
-        }}
-      >
-        {days.map((day) => {
-          const dayEvents = orderMonthEvents(events.filter((event) => intersectsDay(event, day)));
-          const inMonth = day.getMonth() === currentDate.getMonth();
-          return (
-            <div
-              key={day.toISOString()}
-              className="border rounded-3 p-2"
-              style={{
-                minHeight: 120,
-                background: inMonth ? "#fff" : "#f8fafc",
-              }}
-            >
-              <div className={`small fw-semibold mb-2 ${inMonth ? "" : "text-muted"}`}>{formatDayNumber(day)}</div>
-              <div className="d-flex flex-column gap-1">
-                {dayEvents.slice(0, 3).map((event) => (
-                  <div
-                    key={`${event.id}-${day.toISOString()}`}
-                    className="small rounded px-2 py-1 text-truncate"
-                    title={event.title}
-                    style={{
-                      background: event.color || "#e0ecff",
-                      color: "#0f172a",
-                    }}
-                  >
-                    {event.title}
-                  </div>
-                ))}
-                {dayEvents.length > 3 && (
-                  <div className="small text-muted">+{dayEvents.length - 3} más</div>
-                )}
+    <div className={`${styles.viewport} ${styles.monthViewport}`}>
+      <div className={styles.month}>
+        <div className={styles.monthWeekdays}>
+          {DAY_LABELS.map(label => <div key={label} className={styles.monthWeekday}>{label}</div>)}
+        </div>
+        <div className={styles.monthGrid}>
+          {days.map(day => {
+            const dayEvents = orderMonthEvents(events.filter(event => intersectsDay(event, day)));
+            const inMonth = day.getMonth() === currentDate.getMonth();
+            const today = isSameDay(day, new Date());
+            const weekend = day.getDay() === 0 || day.getDay() === 6;
+            return <div key={day.toISOString()} className={`${styles.monthDay} ${!inMonth ? styles.outsideMonth : ""} ${weekend ? styles.weekend : ""}`}>
+              <div className={`${styles.dayNumber} ${today ? styles.todayNumber : ""}`}>{formatDayNumber(day)}</div>
+              <div className={styles.monthEvents}>
+                {dayEvents.slice(0, 4).map(event => <div key={`${event.id}-${day.toISOString()}`} className={styles.monthEvent}
+                  title={buildCalendarEventTooltip(event)} aria-label={buildCalendarEventTooltip(event)} style={eventStyle(event, moduleColor)}
+                  {...eventInteractionProps(event, onOpenEvent)}>
+                  {!event.allDay && <span className={styles.eventTime}>{formatEventTime(event.start)}</span>}
+                  <span className={styles.eventTitle}>{event.title}</span>
+                </div>)}
+                {dayEvents.length > 4 && <div className={styles.moreEvents}>+{dayEvents.length - 4} más</div>}
               </div>
-            </div>
-          );
-        })}
+            </div>;
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
-function TimedGrid({
-  days,
-  events,
-  singleDay,
-}: {
-  days: Date[];
-  events: CalendarEvent[];
-  singleDay?: boolean;
-}) {
-  const timedEventsByDay = days.map((day) =>
-    events.filter((event) => intersectsDay(event, day) && !event.allDay)
-  );
-  const allDayEventsByDay = days.map((day) =>
-    events.filter((event) => intersectsDay(event, day) && event.allDay)
-  );
-
+function TimedGrid({ days, events, singleDay, moduleColor, onOpenEvent }: Omit<EventViewProps, "currentDate"> & { days: Date[]; singleDay?: boolean }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const timedEventsByDay = days.map(day => events.filter(event => intersectsDay(event, day) && !event.allDay));
+  const allDayEventsByDay = days.map(day => events.filter(event => intersectsDay(event, day) && event.allDay));
   return (
-    <div className="border rounded-3 overflow-hidden" style={{ background: "#fff" }}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: `80px repeat(${days.length}, minmax(0, 1fr))`,
-          borderBottom: "1px solid #e5e7eb",
-          background: "#f8fafc",
-        }}
-      >
-        <div className="p-2 small text-muted">Todo el día</div>
-        {days.map((day, index) => (
-          <div key={day.toISOString()} className="p-2 border-start">
-            <div className="small fw-semibold">{singleDay ? "Agenda" : DAY_LABELS[index]}</div>
-            <div className="small text-muted">
-              {day.toLocaleDateString("es-ES", { day: "numeric", month: "short" })}
-            </div>
-            <div className="d-flex flex-column gap-1 mt-2">
-              {allDayEventsByDay[index].map((event) => (
-                <div
-                  key={`${event.id}-all-day`}
-                  className="small rounded px-2 py-1 text-truncate"
-                  style={{ background: event.color || "#dbeafe", color: "#0f172a" }}
-                  title={event.title}
-                >
-                  {event.title}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: `80px repeat(${days.length}, minmax(0, 1fr))`,
-          position: "relative",
-        }}
-      >
-        <div>
-          {HOUR_LABELS.map((hour) => (
-            <div key={hour} className="small text-muted px-2" style={{ height: 56, borderTop: "1px solid #eef2f7" }}>
-              {hour}
-            </div>
-          ))}
+    <div className={styles.viewport}>
+      <div className={styles.timedCalendar} style={{ "--calendar-days": days.length } as CSSProperties}>
+        <div className={styles.timeHeader}>
+          <div className={styles.allDayLabel}>Todo el día</div>
+          {days.map((day, index) => <div key={day.toISOString()} className={`${styles.dayHeader} ${isSameDay(day, now) ? styles.dayHeaderToday : ""}`}>
+            <div className={styles.dayHeaderName}>{singleDay ? day.toLocaleDateString("es-ES", { weekday: "short" }) : DAY_LABELS[index]}</div>
+            <div className={styles.dayHeaderDate}>{day.toLocaleDateString("es-ES", { day: "numeric", month: "short" })}</div>
+            <div className={styles.allDayList}>{allDayEventsByDay[index].map(event => <div key={`${event.id}-all-day`} className={styles.allDayEvent}
+              style={eventStyle(event, moduleColor)} title={buildCalendarEventTooltip(event)} aria-label={buildCalendarEventTooltip(event)}
+              {...eventInteractionProps(event, onOpenEvent)}>
+              <span className={styles.eventTitle}>{event.title}</span>
+            </div>)}</div>
+          </div>)}
         </div>
-
-        {days.map((day, dayIndex) => (
-          <div key={day.toISOString()} className="position-relative border-start" style={{ height: 24 * 56 }}>
-            {HOUR_LABELS.map((hour) => (
-              <div key={hour} style={{ height: 56, borderTop: "1px solid #eef2f7" }} />
-            ))}
-
-            {timedEventsByDay[dayIndex].map((event) => {
-              const clipped = clipEventToDay(event, day);
-              const startMinutes = getMinutesSinceDayStart(clipped.start);
-              const endMinutes = Math.max(startMinutes + 30, getMinutesSinceDayStart(clipped.end));
-              const top = (startMinutes / 60) * 56;
-              const height = ((endMinutes - startMinutes) / 60) * 56;
-
-              return (
-                <div
-                  key={`${event.id}-${day.toISOString()}-timed`}
-                  className="position-absolute rounded-3 px-2 py-1 overflow-hidden"
-                  style={{
-                    top,
-                    left: 6,
-                    right: 6,
-                    height,
-                    background: event.color || "#bfdbfe",
-                    color: "#0f172a",
-                    border: "1px solid rgba(15, 23, 42, 0.08)",
-                  }}
-                  title={event.description ? `${event.title}\n${event.description}` : event.title}
-                >
-                  <div className="small fw-semibold text-truncate">{event.title}</div>
-                  <div className="small text-truncate">
-                    {event.start.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
-                    {" - "}
-                    {event.end.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ))}
+        <div className={styles.timeBody}>
+          <div className={styles.hourAxis}>{HOUR_LABELS.map(hour => <div key={hour} className={styles.hourLabel}>{hour}</div>)}</div>
+          {days.map((day, dayIndex) => {
+            const layouts = layoutOverlappingEvents(timedEventsByDay[dayIndex]);
+            const showNow = isSameDay(day, now);
+            return <div key={day.toISOString()} className={`${styles.dayColumn} ${showNow ? styles.todayColumn : ""}`}>
+              {HOUR_LABELS.map(hour => <div key={hour} className={styles.hourLine} />)}
+              {Array.from({ length: 24 }, (_, hour) => <div key={`half-${hour}`} className={styles.halfHourLine} style={{ top: hour * 56 + 28 }} />)}
+              {showNow && <div className={styles.nowLine} style={{ top: (getMinutesSinceDayStart(now) / 60) * 56 }}>
+                <span className={styles.nowLabel}>{formatEventTime(now)}</span>
+              </div>}
+              {layouts.map(({ event, column, columns }) => {
+                const clipped = clipEventToDay(event, day);
+                const startMinutes = getMinutesSinceDayStart(clipped.start);
+                const endMinutes = Math.max(startMinutes + 15, getMinutesSinceDayStart(clipped.end));
+                const top = (startMinutes / 60) * 56;
+                const height = Math.max(18, ((endMinutes - startMinutes) / 60) * 56);
+                const width = 100 / columns;
+                return <div key={`${event.id}-${day.toISOString()}-timed`} className={styles.timedEvent}
+                  style={{ ...eventStyle(event, moduleColor), top, left: `calc(${column * width}% + 3px)`, width: `calc(${width}% - 6px)`, height }}
+                  title={buildCalendarEventTooltip(event)} aria-label={buildCalendarEventTooltip(event)}
+                  {...eventInteractionProps(event, onOpenEvent)}>
+                  {height < 34 ? <div className={styles.timedEventCompact}>
+                    <span className={styles.timedEventTime}>{formatEventTime(event.start)}</span>
+                    <span className={styles.timedEventTitle}>{event.title}</span>
+                  </div> : <>
+                    <div className={styles.timedEventTime}>{formatEventTimeRange(event)}</div>
+                    <div className={styles.timedEventTitle}>{event.title}</div>
+                  </>}
+                  {height >= 52 && event.resource && <div className={styles.timedEventMeta}>{event.resource}</div>}
+                  {height >= 88 && event.description && <div className={styles.timedEventDescription}>{event.description}</div>}
+                </div>;
+              })}
+            </div>;
+          })}
+        </div>
       </div>
     </div>
   );
@@ -411,6 +377,7 @@ export default function ModuleCalendarView({
   parentSchema,
   parentModuleSlug,
   parentRecordId,
+  resolveRoute,
 }: Props) {
   const normalizedConfig = useMemo(() => normalizeCalendarConfig(config), [config]);
   const [state, setState] = useState<LoadState>({
@@ -422,6 +389,9 @@ export default function ModuleCalendarView({
   const enabledViews = useMemo(() => normalizeViews(normalizedConfig), [normalizedConfig]);
   const [currentView, setCurrentView] = useState<CalendarViewMode>(normalizeDefaultView(normalizedConfig));
   const [currentDate, setCurrentDate] = useState(() => new Date());
+  const visibleRange = useMemo(() => getVisibleCalendarRange(currentView, currentDate), [currentView, currentDate]);
+  const visibleRangeStartMs = visibleRange.start.getTime();
+  const visibleRangeEndMs = visibleRange.end.getTime();
   const sourceModuleSlug = useMemo(() => String(normalizedConfig?.sourceModuleSlug || "").trim(), [normalizedConfig?.sourceModuleSlug]);
   const parentLinkResolution = useMemo(
     () =>
@@ -461,16 +431,43 @@ export default function ModuleCalendarView({
 
     (async () => {
       try {
-        setState((prev) => ({ ...prev, status: "loading", error: null }));
-        const filters =
-          shouldFilterByParent && filterField && parentRecordId
-            ? [{ field: filterField, op: "=", value: parentRecordId }]
-            : [];
+        setState({ status: "loading", events: [], invalidCount: 0, error: null });
         const recordSchema = sourceSchema || await getRecordNameSchema(dataProvider, sourceModuleSlug);
+        const startFieldName = normalizeFieldRef(normalizedConfig.startField).field;
+        const endFieldName = normalizeFieldRef(normalizedConfig.endField).field;
+        const startFieldType = isDirectFieldRef(normalizedConfig.startField)
+          ? recordSchema?.fields?.find(field => field.name === startFieldName)?.type
+          : undefined;
+        const endFieldType = normalizedConfig.endField
+          ? isDirectFieldRef(normalizedConfig.endField)
+            ? recordSchema?.fields?.find(field => field.name === endFieldName)?.type
+            : undefined
+          : undefined;
+        const parentFilter = shouldFilterByParent && filterField && parentRecordId
+          ? { field: filterField, op: "=" as const, value: parentRecordId }
+          : undefined;
+        const filters = buildCalendarListFilters({
+          startField: normalizedConfig.startField,
+          endField: normalizedConfig.endField,
+          startFieldType,
+          endFieldType,
+          range: { start: new Date(visibleRangeStartMs), end: new Date(visibleRangeEndMs) },
+          parentFilter,
+        });
         const result = await (dataProvider as any).list({
           moduleSlug: sourceModuleSlug,
           filters,
-          limit: 500,
+          sort: [{ field: normalizedConfig.startField, direction: "asc" }],
+          fieldRefs: [
+            normalizedConfig.titleField,
+            normalizedConfig.startField,
+            normalizedConfig.endField,
+            normalizedConfig.allDayField,
+            normalizedConfig.colorField,
+            normalizedConfig.descriptionField,
+            normalizedConfig.resourceField,
+          ].filter(Boolean),
+          limit: 200,
         });
 
         const rows = Array.isArray(result?.data) ? result.data : [];
@@ -516,13 +513,21 @@ export default function ModuleCalendarView({
     shouldFilterByParent,
     sourceModuleSlug,
     waitingForParentRecord,
+    sourceSchema,
+    visibleRangeStartMs,
+    visibleRangeEndMs,
   ]);
 
   const visibleEvents = state.events;
+  const moduleColor = String(sourceSchema?.ui?.color || parentSchema?.ui?.color || "").trim() || undefined;
 
   const goToday = () => setCurrentDate(new Date());
-  const goPrev = () => setCurrentDate((prev) => addDays(prev, -getViewDateStep(currentView)));
-  const goNext = () => setCurrentDate((prev) => addDays(prev, getViewDateStep(currentView)));
+  const goPrev = () => setCurrentDate((prev) => shiftViewDate(prev, currentView, -1));
+  const goNext = () => setCurrentDate((prev) => shiftViewDate(prev, currentView, 1));
+  const openEvent = (event: CalendarEvent) => {
+    const href = buildCalendarRecordHref(resolveRoute?.(sourceModuleSlug), sourceModuleSlug, event.recordId);
+    if (href) window.location.assign(href);
+  };
 
   if (!normalizedConfig?.sourceModuleSlug) {
     return <div className="alert alert-secondary mb-0">Selecciona primero un módulo fuente para el calendario.</div>;
@@ -549,22 +554,23 @@ export default function ModuleCalendarView({
   }
 
   return (
-    <div className="d-flex flex-column gap-3">
-      <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div className="d-flex align-items-center gap-2">
-          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={goPrev}>
-            Anterior
-          </button>
+    <div className={`${styles.calendar} d-flex flex-column gap-3`}>
+      <div className={styles.toolbar} aria-label="Controles del calendario">
+        <div className={styles.toolbarNav}>
           <button type="button" className="btn btn-outline-secondary btn-sm" onClick={goToday}>
             Hoy
           </button>
-          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={goNext}>
-            Siguiente
+          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={goPrev} aria-label="Periodo anterior" title="Periodo anterior">
+            <span aria-hidden="true">‹</span><span className={styles.navText}> Anterior</span>
           </button>
-          <div className="fw-semibold ms-2">{formatHeaderRange(currentView, currentDate)}</div>
+          <button type="button" className="btn btn-outline-secondary btn-sm" onClick={goNext} aria-label="Periodo siguiente" title="Periodo siguiente">
+            <span className={styles.navText}>Siguiente </span><span aria-hidden="true">›</span>
+          </button>
         </div>
 
-        <div className="btn-group">
+        <h3 className={styles.toolbarTitle}>{formatHeaderRange(currentView, currentDate)}</h3>
+
+        <div className={`${styles.viewSwitch} btn-group`} role="group" aria-label="Vista del calendario">
           {enabledViews.map((view) => (
             <button
               key={view}
@@ -600,14 +606,16 @@ export default function ModuleCalendarView({
 
       {visibleEvents.length > 0 && (
         <>
-          {currentView === "month" && <MonthView currentDate={currentDate} events={visibleEvents} />}
+          {currentView === "month" && <MonthView currentDate={currentDate} events={visibleEvents} moduleColor={moduleColor} onOpenEvent={openEvent} />}
           {currentView === "week" && (
             <TimedGrid
               days={Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(currentDate), i))}
               events={visibleEvents}
+              moduleColor={moduleColor}
+              onOpenEvent={openEvent}
             />
           )}
-          {currentView === "day" && <TimedGrid days={[startOfDay(currentDate)]} events={visibleEvents} singleDay />}
+          {currentView === "day" && <TimedGrid days={[startOfDay(currentDate)]} events={visibleEvents} singleDay moduleColor={moduleColor} onOpenEvent={openEvent} />}
         </>
       )}
     </div>

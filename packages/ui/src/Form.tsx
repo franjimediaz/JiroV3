@@ -1,5 +1,7 @@
 "use client";
 
+import { orderedSectionFields } from "./utils/formFieldOrder";
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CalendarSpecialViewConfig,
@@ -11,7 +13,7 @@ import type {
   TreeViewDataProvider,
   UiTab,
 } from "@repo/types";
-import { normalizeCalendarConfig, normalizeModuleSchema, normalizePlanEditorConfig, normalizeEmptyRelations } from "@repo/types";
+import { fieldRefKey, formatFieldRefPath, normalizeCalendarConfig, normalizeFieldRef, normalizeModuleSchema, normalizePlanEditorConfig, normalizeEmptyRelations } from "@repo/types";
 import { applyCompute } from "./engines/computeEngine";
 import type { DataProvider } from "./engines/computeEngine";
 import { evaluateFieldVisibility, evaluateTabVisibility } from "./engines/visibilityEngine";
@@ -383,7 +385,17 @@ export default function Form({
   );
 
   const visibilityRelationFields = useMemo(() => {
-    const relationFields = new Map<string, string>();
+    const relationFields = new Map<string, { configuredModuleSlug: string; fieldRefs: any[] }>();
+    const addReadRef = (input: unknown, configuredModuleSlug = "") => {
+      const ref = normalizeFieldRef(input as any);
+      const relationField = ref.relations[0];
+      if (!relationField) return;
+      const current = relationFields.get(relationField) || { configuredModuleSlug: "", fieldRefs: [] };
+      current.configuredModuleSlug ||= configuredModuleSlug;
+      const tail = { relations: ref.relations.slice(1), field: ref.field };
+      if (!current.fieldRefs.some(item => fieldRefKey(item) === fieldRefKey(tail))) current.fieldRefs.push(tail);
+      relationFields.set(relationField, current);
+    };
 
     const visibilityTargets = [
       ...(normalizedSchema.fields || []),
@@ -392,24 +404,45 @@ export default function Form({
     ];
 
     for (const target of visibilityTargets) {
+      const disabledWhen = (target as any).disabledWhen;
+      if (disabledWhen?.type === "missingFields" && Array.isArray(disabledWhen.fields)) {
+        disabledWhen.fields.forEach((field: unknown) => addReadRef(field));
+      }
+      if ((target as any).type === "createRelated") {
+        Object.values((target as any).fieldMap || {}).forEach(field => addReadRef(field));
+      }
+      const planConfig = (target as any).type === "planEditor"
+        ? ((target as any).config || target)
+        : (target as any).type === "special-view" && (target as any).config?.type === "planEditor"
+          ? ((target as any).config?.config || (target as any).config)
+          : undefined;
+      const planOptions = planConfig?.options || planConfig?.config?.options;
+      if (planOptions?.exportSubtitleField) addReadRef(planOptions.exportSubtitleField);
+      for (const metadata of planOptions?.export?.metadataFields || []) addReadRef(metadata?.field);
       const visibility = (target as any).visibility;
       if (!visibility?.enabled || !Array.isArray(visibility.rules)) continue;
 
       for (const rule of visibility.rules) {
-        if (rule?.source !== "relatedRecord") continue;
-        const relationField = String(rule.relationField || "").trim();
-        if (relationField && !relationFields.has(relationField)) {
-          relationFields.set(relationField, String(rule.relatedModuleSlug || "").trim());
+        const ref = normalizeFieldRef(rule?.field);
+        const relationField = ref.relations[0] || (rule?.source === "relatedRecord" ? String(rule.relationField || "").trim() : "");
+        if (!relationField) continue;
+        const current = relationFields.get(relationField) || { configuredModuleSlug: "", fieldRefs: [] };
+        current.configuredModuleSlug ||= String(rule.relatedModuleSlug || "").trim();
+        if (ref.relations.length) {
+          const tail = { relations: ref.relations.slice(1), field: ref.field };
+          if (!current.fieldRefs.some(item => fieldRefKey(item) === fieldRefKey(tail))) current.fieldRefs.push(tail);
         }
+        relationFields.set(relationField, current);
       }
     }
 
-    return Array.from(relationFields.entries()).map(([relationField, configuredModuleSlug]) => {
+    return Array.from(relationFields.entries()).map(([relationField, config]) => {
       const field = (normalizedSchema.fields || []).find((candidate) => candidate.name === relationField);
       return {
         relationField,
-        moduleSlug: configuredModuleSlug || String((field as any)?.ref?.moduleSlug || "").trim(),
+        moduleSlug: config.configuredModuleSlug || String((field as any)?.ref?.moduleSlug || "").trim(),
         valueField: String((field as any)?.ref?.valueField || "id").trim() || "id",
+        fieldRefs: config.fieldRefs,
       };
     });
   }, [normalizedSchema.fields, formActions, runtimeTabs]);
@@ -480,19 +513,20 @@ export default function Form({
       const nextRecords: Record<string, any> = {};
 
       await Promise.all(
-        visibilityRelationFields.map(async ({ relationField, moduleSlug, valueField }) => {
+        visibilityRelationFields.map(async ({ relationField, moduleSlug, valueField, fieldRefs }) => {
           const rawValue = valuesRef.current?.[relationField];
           const selectedId = Array.isArray(rawValue) ? rawValue[0] : rawValue;
           if (selectedId === null || selectedId === undefined || selectedId === "" || !moduleSlug) return;
 
           try {
             let record: any | null = null;
-            if (typeof dataProvider.getOne === "function" && valueField === "id") {
+            if (!fieldRefs.length && typeof dataProvider.getOne === "function" && valueField === "id") {
               record = await dataProvider.getOne(moduleSlug, String(selectedId));
             } else if (typeof dataProvider.list === "function") {
               const result = await dataProvider.list({
                 moduleSlug,
                 filters: [{ field: valueField, op: "=", value: selectedId }],
+                fieldRefs,
                 limit: 1,
               });
               record = Array.isArray(result?.data) ? result.data[0] ?? null : null;
@@ -649,23 +683,6 @@ export default function Form({
     };
   }, [normalizedSchema.fields, values, dataProvider]);
 
-  const reverseLinkFields = useMemo(
-    () => (normalizedSchema.fields || []).filter((field) => field.type === "ReverseLink"),
-    [normalizedSchema.fields]
-  );
-
-  useEffect(() => {
-    if (reverseLinkFields.length === 0) {
-      setActiveReverseLink(null);
-      return;
-    }
-
-    const currentStillExists = reverseLinkFields.some((field) => field.name === activeReverseLink);
-    if (!currentStillExists) {
-      setActiveReverseLink(reverseLinkFields[0].name);
-    }
-  }, [activeReverseLink, reverseLinkFields]);
-
   const formSections = useMemo<FormSection[]>(() => {
     if (activeTab?.type === "form") {
       return (activeTab.config?.formSections || []) as FormSection[];
@@ -679,14 +696,6 @@ export default function Form({
     setOpenSections(firstId ? { [firstId]: true } : {});
   }, [activeTabId, formSections]);
 
-  const fieldsByName = useMemo(() => {
-    const map: Record<string, Field> = {};
-    for (const field of normalizedSchema.fields || []) {
-      map[field.name] = field;
-    }
-    return map;
-  }, [normalizedSchema.fields]);
-
   const fieldsInSections = useMemo(() => {
     const names = new Set<string>();
     for (const section of formSections) {
@@ -697,14 +706,29 @@ export default function Form({
     return names;
   }, [formSections]);
 
-  const unsectionedFields = useMemo(() => {
-    if (formSections.length === 0) return [];
+  const reverseLinkFields = useMemo(
+    () => (normalizedSchema.fields || []).filter((field) => field.type === "ReverseLink"),
+    [normalizedSchema.fields]
+  );
 
-    return (normalizedSchema.fields || []).filter((field) => {
-      if (field.type === "ReverseLink") return false;
-      return !fieldsInSections.has(field.name);
-    });
-  }, [formSections.length, normalizedSchema.fields, fieldsInSections]);
+  const trailingReverseLinks = useMemo(
+    () => formSections.length > 0 ? reverseLinkFields.filter(field => !fieldsInSections.has(field.name)) : [],
+    [formSections.length, reverseLinkFields, fieldsInSections]
+  );
+
+  const displayedReverseLinks = useMemo(
+    () => (formSections.length > 0 ? trailingReverseLinks : reverseLinkFields).filter(field =>
+      isFieldVisibleInMode(field, effectiveMode) && evaluateFieldVisibility({
+        field, values, schema: normalizedSchema as ModuleSchema, relatedRecordsByField,
+      })),
+    [formSections.length, trailingReverseLinks, reverseLinkFields, effectiveMode, values, normalizedSchema, relatedRecordsByField]
+  );
+  const displayedReverseLinkId = displayedReverseLinks.some(field => field.name === activeReverseLink)
+    ? activeReverseLink : displayedReverseLinks[0]?.name ?? null;
+
+  useEffect(() => {
+    setActiveReverseLink(displayedReverseLinkId);
+  }, [displayedReverseLinkId]);
 
   const moduleFolder = normalizedSchema?.db?.table || "general";
   const computeDepsKey = useMemo(() => JSON.stringify(lightDeps(values)), [values]);
@@ -887,7 +911,11 @@ export default function Form({
       // Hidden fields keep their current value; visibility is a rendering concern, not data mutation.
       return null;
     }
-    if (field.type === "ReverseLink") return null;
+    if (field.type === "ReverseLink") return (
+      <div key={field.name} className="col-12">
+        <ReverseLinkTable field={field} parentRecord={values} mode={effectiveMode} moduleColor={sectionColors.background} />
+      </div>
+    );
 
     const value = values[field.name] ?? "";
     const isOverride = isOverrideEnabled(values, field.name);
@@ -1031,7 +1059,7 @@ export default function Form({
         value={values[sourceField]}
         mode={effectiveMode}
         dataProvider={dataProvider}
-        record={values}
+        record={{ ...values, ...relatedRecordsByField }}
         moduleSlug={effectiveModuleSlug}
         recordId={effectiveRecordId}
         onChange={(nextPlan) => handleChange(sourceField, nextPlan)}
@@ -1040,6 +1068,7 @@ export default function Form({
   };
 
   const treeSourceSlug =
+    (treeViewConfig as any)?.source?.moduleSlug ??
     (treeViewConfig as any)?.source?.table ??
     (treeViewConfig as any)?.sourceTable ??
     null;
@@ -1072,7 +1101,7 @@ export default function Form({
           ...(((treeViewConfig as any)?.columns || []) as any[]).map((column) => column?.field || column?.name),
           (treeViewConfig as any)?.totals?.sumField,
         ]
-          .map((field) => String(field || "").trim())
+          .map((field) => normalizeFieldRef(field).field)
           .filter(Boolean)
       )
     );
@@ -1146,11 +1175,7 @@ export default function Form({
                 {isOpen && (
                   <div className="card-body">
                     <div className="row g-3">
-                      {section.fields.map((fieldName) => {
-                        const field = fieldsByName[fieldName];
-                        if (!field) return null;
-                        return renderField(field);
-                      })}
+                      {orderedSectionFields(normalizedSchema.fields || [], section.fields || []).map(field => renderField(field))}
                     </div>
                   </div>
                 )}
@@ -1161,7 +1186,7 @@ export default function Form({
       );
     }
 
-    return <div className="row g-3">{(normalizedSchema.fields || []).map((field) => renderField(field))}</div>;
+    return <div className="row g-3">{(normalizedSchema.fields || []).filter(field => field.type !== "ReverseLink").map((field) => renderField(field))}</div>;
   };
 
   const renderTreeViewContent = () => (
@@ -1170,7 +1195,7 @@ export default function Form({
         <div className="fw-semibold">{treeViewConfig?.ui?.title || ""}</div>
         <div className="small text-muted">
           {treeViewConfig?.source?.table ? `Tabla: ${treeViewConfig.source.table}` : ""}
-          {treeViewConfig?.grouping?.groupByField ? ` | groupBy: ${treeViewConfig.grouping.groupByField}` : ""}
+          {treeViewConfig?.grouping?.groupByField ? ` | groupBy: ${formatFieldRefPath(treeViewConfig.grouping.groupByField)}` : ""}
         </div>
       </div>
 
@@ -1221,6 +1246,7 @@ export default function Form({
           parentSchema={schema}
           parentModuleSlug={effectiveModuleSlug}
           parentRecordId={effectiveRecordId}
+          resolveRoute={resolveRoute}
         />
       </div>
     </div>
@@ -1248,6 +1274,7 @@ export default function Form({
             parentSchema={schema}
             parentModuleSlug={effectiveModuleSlug}
             parentRecordId={effectiveRecordId}
+            resolveRoute={resolveRoute}
           />
         );
       case "planEditor":
@@ -1303,19 +1330,19 @@ export default function Form({
         renderCalendarContent()
       )}
 
-      {showReverseLinks && reverseLinkFields.length > 0 && (
+      {showReverseLinks && displayedReverseLinks.length > 0 && (
         <div className="jiro-reverse-links d-flex flex-column gap-3">
           <div className="card">
             <ModuleTabs
-              items={reverseLinkFields.map(field => ({ id: field.name, label: (field.label as string) || field.name }))}
-              activeId={activeReverseLink}
+              items={displayedReverseLinks.map(field => ({ id: field.name, label: (field.label as string) || field.name }))}
+              activeId={displayedReverseLinkId}
               onChange={setActiveReverseLink}
               label="Relaciones inversas"
             />
 
             <div className="card-body">
-              {reverseLinkFields.map((field) => {
-                if (activeReverseLink !== field.name) return null;
+              {displayedReverseLinks.map((field) => {
+                if (displayedReverseLinkId !== field.name) return null;
                 return <ReverseLinkTable key={field.name} field={field} parentRecord={values} mode={effectiveMode} moduleColor={sectionColors.background} />;
               })}
             </div>

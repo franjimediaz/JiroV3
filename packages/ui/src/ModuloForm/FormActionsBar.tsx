@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
-import type { ModuleSchema } from "@repo/types";
+import { getFieldRefValue, type ModuleSchema } from "@repo/types";
 import { ActionMenu } from "../ActionMenu";
 import { applyCompute } from "../engines/computeEngine"; // ajusta ruta real si difiere
 import { dataProvider } from "../providers/DataProvider"; // ajusta ruta real si difiere
@@ -82,6 +82,10 @@ export default function FormActionsBar(props: {
   const busyRef = useRef(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const hydratedValues = useMemo(
+    () => ({ ...values, ...(relatedRecordsByField || {}) }),
+    [values, relatedRecordsByField],
+  );
 
   const effectiveActions = useMemo(() => {
     const list = Array.isArray(actions) ? actions : [];
@@ -132,9 +136,9 @@ export default function FormActionsBar(props: {
     if (dw.type === "missingFields") {
       return dw.fields.some(
         (f) =>
-          values?.[f] === undefined ||
-          values?.[f] === null ||
-          values?.[f] === "",
+          getFieldRefValue(hydratedValues, f) === undefined ||
+          getFieldRefValue(hydratedValues, f) === null ||
+          getFieldRefValue(hydratedValues, f) === "",
       );
     }
     return false;
@@ -191,9 +195,10 @@ export default function FormActionsBar(props: {
       }
 
       if (a.type === "createRelated") {
-        const payload = buildCreateRelatedPayload(a, schema, values, parentRecordId);
+        const payload = buildCreateRelatedPayload(a, schema, hydratedValues, parentRecordId);
 
         const created = await (dataProvider as any).create?.({
+          moduleSlug: a.target.moduleSlug || a.target.table,
           table: a.target.table,
           data: payload,
         });
@@ -208,6 +213,7 @@ export default function FormActionsBar(props: {
           created?.id ?? created?.data?.id ?? created?.record?.id;
         const after = a.afterCreate || { navigateTo: "record", openEdit: true };
         const source = a.target.moduleSlug || a.target.table;
+        if (!source) throw new Error("Falta el modulo destino de createRelated");
 
         if (after.navigateTo === "none") return;
 

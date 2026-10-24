@@ -2,15 +2,18 @@
 // ✅ Esto va en tu APP (no en @repo/ui). Aquí sí puedes usar Supabase o fetch.
 
 import { createClient } from "@/lib/supabase/client";
+import type { FieldRefLike } from "@repo/types";
 
 type TreeViewQuery = {
   table: string;
+  moduleSlug?: string;
   select: string[];
+  fieldRefs?: FieldRefLike[];
   filters?: Array<
-    | { op: "eq"; field: string; value: any }
-    | { op: "in"; field: string; value: any[] }
+    | { op: "eq"; field: FieldRefLike; value: any }
+    | { op: "in"; field: FieldRefLike; value: any[] }
   >;
-  orderBy?: { field: string; ascending?: boolean };
+  orderBy?: { field: FieldRefLike; ascending?: boolean };
 };
 
 type LookupQuery = {
@@ -56,12 +59,29 @@ export function createSupabaseTreeViewProvider(): TreeViewDataProvider {
 
   return {
     // ---------------- list ----------------
-    async list({ table, select, filters, orderBy }) {
+    async list({ table, moduleSlug, select, fieldRefs, filters, orderBy }) {
+      if (moduleSlug && (fieldRefs?.length || filters?.some(filter => typeof filter.field !== "string") || (orderBy && typeof orderBy.field !== "string"))) {
+        const response = await fetch("/api/list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            moduleSlug,
+            fieldRefs,
+            filters: filters?.map(filter => ({ field: filter.field, op: filter.op === "eq" ? "=" : "in", value: filter.value })),
+            sort: orderBy ? [{ field: orderBy.field, direction: orderBy.ascending === false ? "desc" : "asc" }] : [],
+            limit: 200,
+          }),
+        });
+        const json = await response.json().catch(() => null);
+        if (!response.ok || !json?.ok) throw new Error(json?.detail || "Error cargando TreeView");
+        return Array.isArray(json.data) ? json.data : [];
+      }
       let q = supabase.from(table).select(safeParseSelect(select));
 
       q = applyFilters(q, filters);
 
-      if (orderBy?.field) {
+      if (orderBy?.field && typeof orderBy.field === "string") {
         q = q.order(orderBy.field, { ascending: orderBy.ascending ?? true });
       }
 

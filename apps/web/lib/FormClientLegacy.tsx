@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Form } from "@repo/ui";
 //import TreeServices from "./TreeServices";
 //import Calendar from "./Calendar";
-import type { ModuleSchema } from "@repo/types";
+import { pickPersistablePayload, type ModuleSchema } from "@repo/types";
 import { RequirePerms } from "@/lib/perms";
 
 
@@ -34,24 +34,6 @@ function sanitize(values: any, schema: any) {
 
     if (v === "") out[f.name] = null;
   }
-
-  return out;
-}
-
-function pickPersistablePayload(values: any, schema: ModuleSchema) {
-  const allowed = new Set(
-    (schema.fields || [])
-      .filter((f) => f.virtual !== true)
-      .filter((f) => !(f.compute && (f.compute as any).persist === "none"))
-      .map((f) => f.name)
-  );
-
-  const out: Record<string, any> = {};
-  for (const k of allowed) out[k] = values?.[k];
-
-  delete out.meta;
-  delete out.created_at;
-  delete out.updated_at;
 
   return out;
 }
@@ -113,7 +95,7 @@ export default function FormClient({
 
         const supabase = createClient();
         const sanitized = sanitize(values, schema);
-        const payload = pickPersistablePayload(sanitized, schema);
+        const payload = pickPersistablePayload(sanitized, schema, { operation: "update", primaryKey });
 
         const { error } = await supabase.from(table).update(payload).eq(primaryKey, id);
         if (error) throw error;

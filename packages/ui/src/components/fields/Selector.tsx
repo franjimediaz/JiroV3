@@ -6,21 +6,31 @@ import { PopupSelector } from "../../modals/PopUpSelector";
 import {
   getRecordName,
   getRecordNameFieldName,
+  getFieldRefValue,
+  isDirectFieldRef,
   matchesSelectorTableFilterGroup,
   resolveSelectorTableFiltersToQuery,
   type QueryFilter,
   type QuerySort,
   type SelectorTableFilterResolutionContext,
   type SelectorTableFiltersInput,
+  type FieldRefLike,
 } from "@repo/types";
 import { getRecordNameSchema } from "../../utils/recordNameSchema";
 
 type PopupItem = { value: string; label: string; raw?: any };
 type CacheEntry = { label: string; icon?: string; color?: string };
 
+function collectResolvedFilterFieldRefs(group: any): FieldRefLike[] {
+  if (!group || !Array.isArray(group.items)) return [];
+  return group.items.flatMap((item: any) =>
+    Array.isArray(item?.items) ? collectResolvedFilterFieldRefs(item) : item?.field ? [item.field] : []
+  );
+}
+
 type Props = {
   moduleSlug: string;
-  displayField: string;
+  displayField: FieldRefLike;
   valueField?: string;
   filters?: SelectorTableFiltersInput;
   sort?: QuerySort[];
@@ -32,8 +42,8 @@ type Props = {
   placeholder?: string;
   limit?: number;
   hasStyle?: boolean;
-  styleIconField?: string;
-  styleColorField?: string;
+  styleIconField?: FieldRefLike;
+  styleColorField?: FieldRefLike;
   displayValue?: string;
   isDisplayLoading?: boolean;
   displayIcon?: string;
@@ -50,6 +60,18 @@ function ensureList() {
 function toStr(v: any) {
   if (v === null || v === undefined) return "";
   return String(v);
+}
+
+function selectorLabel(row: any, schema: any, displayField: FieldRefLike, valueField: string, fallback?: string) {
+  if (isDirectFieldRef(displayField)) {
+    return getRecordName(row, schema, {
+      legacyField: typeof displayField === "string" ? displayField : displayField.field,
+      valueField,
+      fallback,
+    });
+  }
+  const value = getFieldRefValue(row, displayField);
+  return value == null || value === "" ? (fallback || toStr(row?.[valueField])) : String(value);
 }
 
 function renderStyled(label: string, icon?: string, color?: string) {
@@ -189,7 +211,9 @@ export default function SelectorTabla({
 
         if (term) {
           nextFilters.push({
-            field: getRecordNameFieldName(schema, displayField),
+            field: isDirectFieldRef(displayField)
+              ? getRecordNameFieldName(schema, typeof displayField === "string" ? displayField : displayField.field)
+              : displayField,
             op: "ilike",
             value: `%${term}%`,
           });
@@ -204,6 +228,7 @@ export default function SelectorTabla({
           hasStyle,
           styleIconField,
           styleColorField,
+          fieldRefs: [displayField, styleIconField, styleColorField, ...collectResolvedFilterFieldRefs(resolvedFilters.group)],
         } as any);
 
         const rawRows = Array.isArray(res?.data) ? res.data : [];
@@ -212,7 +237,7 @@ export default function SelectorTabla({
           : rawRows.filter((row: any) => matchesSelectorTableFilterGroup(row, resolvedFilters.group));
         const items: PopupItem[] = rows.map((row: any) => ({
           value: toStr(row[valueField]),
-          label: getRecordName(row, schema, { legacyField: displayField, valueField }),
+          label: selectorLabel(row, schema, displayField, valueField),
           raw: row,
         }));
 
@@ -223,8 +248,8 @@ export default function SelectorTabla({
           const raw = item.raw || {};
           newCache[item.value] = {
             label: item.label,
-            icon: raw?.[styleIconField],
-            color: raw?.[styleColorField],
+            icon: toStr(getFieldRefValue(raw, styleIconField)),
+            color: toStr(getFieldRefValue(raw, styleColorField)),
           };
         });
         setLabelCache((prev) => ({ ...prev, ...newCache }));
@@ -265,25 +290,28 @@ export default function SelectorTabla({
 
       try {
         const schema = await getRecordNameSchema(dataProvider, moduleSlug);
+        const res = await list({
+          moduleSlug,
+          filters: [{ field: valueField, op: "in", value: needResolve }],
+          limit: needResolve.length,
+          hasStyle,
+          styleIconField,
+          styleColorField,
+          fieldRefs: [displayField, styleIconField, styleColorField],
+        } as any);
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        const rowsById = new Map(rows.map((row: any) => [toStr(row?.[valueField]), row]));
+        const resolved: Record<string, CacheEntry> = {};
         for (const id of needResolve) {
-          const res = await list({
-            moduleSlug,
-            filters: [{ field: valueField, op: "=", value: id }],
-            limit: 1,
-            hasStyle,
-            styleIconField,
-            styleColorField,
-          } as any);
-
-          const row = Array.isArray(res?.data) ? res.data[0] : null;
+          const row = rowsById.get(id);
           const nextEntry: CacheEntry = {
-            label: row ? getRecordName(row, schema, { legacyField: displayField, valueField, fallback: id }) : id,
-            icon: row?.[styleIconField],
-            color: row?.[styleColorField],
+            label: row ? selectorLabel(row, schema, displayField, valueField, id) : id,
+            icon: toStr(getFieldRefValue(row, styleIconField)),
+            color: toStr(getFieldRefValue(row, styleColorField)),
           };
-
-          setLabelCache((prev) => ({ ...prev, [id]: nextEntry }));
+          resolved[id] = nextEntry;
         }
+        setLabelCache((prev) => ({ ...prev, ...resolved }));
       } catch {
         // Fallback silencioso: el resumen ya cae al id.
       }
@@ -308,8 +336,8 @@ export default function SelectorTabla({
         if (next.includes(item.value)) {
           newCache[item.value] = {
             label: item.label,
-            icon: item.raw?.[styleIconField],
-            color: item.raw?.[styleColorField],
+            icon: toStr(getFieldRefValue(item.raw, styleIconField)),
+            color: toStr(getFieldRefValue(item.raw, styleColorField)),
           };
         }
       });
@@ -323,8 +351,8 @@ export default function SelectorTabla({
           ...prev,
           [id]: {
             label: found.label,
-            icon: found.raw?.[styleIconField],
-            color: found.raw?.[styleColorField],
+            icon: toStr(getFieldRefValue(found.raw, styleIconField)),
+            color: toStr(getFieldRefValue(found.raw, styleColorField)),
           },
         }));
       }

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import type { PermisosPorModulo, AccionModulo } from "@repo/types";
+import type { RolePermissions, AccionModulo } from "@repo/types";
+import { SYSTEM_PERMISSION_GROUPS, updatePermission, permissionChecked, permissionInherited } from "@repo/types";
 import styles from "./RolDetalle.module.css";
 
 type ModuloLite = {
@@ -16,7 +17,7 @@ type RoleDetail = {
   id: string;
   title: string;
   slug: string;
-  perms: PermisosPorModulo;
+  perms: RolePermissions;
 };
 
 const BASE_ACTIONS: AccionModulo[] = [
@@ -109,40 +110,20 @@ export default function RoleDetailPage() {
     loadModules();
   }, []);
 
-  const updatePermiso = (
-    moduloSlug: string,
-    accion: AccionModulo,
-    value: boolean
-  ) => {
-    if (!role) return;
-
-    setRole((prev) => {
-      if (!prev) return prev;
-      const prevPerms = prev.perms || {};
-      const moduloPerms = prevPerms[moduloSlug] || {};
-      return {
-        ...prev,
-        perms: {
-          ...prevPerms,
-          [moduloSlug]: {
-            ...moduloPerms,
-            [accion]: value,
-          },
-        },
-      };
-    });
+  const updatePermiso = (namespace: string, action: string, value: boolean) => {
+    setRole(prev => prev ? { ...prev, perms: updatePermission(prev.perms || {}, namespace, action, value) } : prev);
   };
 
   const toggleAllForAction = (accion: AccionModulo, value: boolean) => {
     if (!role) return;
     setRole((prev) => {
       if (!prev) return prev;
-      const newPerms: PermisosPorModulo = { ...prev.perms };
+      const newPerms: RolePermissions = { ...prev.perms };
 
       for (const m of modulos) {
-        const currentModulo = newPerms[m.slug] || {};
+        const currentModulo = newPerms[m.slug];
         newPerms[m.slug] = {
-          ...currentModulo,
+          ...(currentModulo === true ? { "*": true } : currentModulo),
           [accion]: value,
         };
       }
@@ -303,7 +284,7 @@ export default function RoleDetailPage() {
                 </thead>
                 <tbody>
                   {modulos.map((m) => {
-                    const moduloPerms = role.perms?.[m.slug] || {};
+
                     return (
                       <tr key={m.id}>
                         <td>{m.nombre}</td>
@@ -320,7 +301,8 @@ export default function RoleDetailPage() {
                                 <input
                                   type="checkbox"
                                   className={styles.checkbox}
-                                  checked={!!moduloPerms[accion]}
+                                  checked={permissionChecked(role.perms || {}, m.slug, accion)}
+                                  disabled={permissionInherited(role.perms || {}, m.slug, accion)}
                                   onChange={(e) =>
                                     updatePermiso(
                                       m.slug,
@@ -348,6 +330,26 @@ export default function RoleDetailPage() {
               )}
             </div>
           )}
+        </section>
+        <section className={styles.card}>
+          <h2 className={styles.cardTitle}>Permisos de sistema</h2>
+          <p className={styles.cardSubtitle}>Cada workflow requiere Ejecutar workflows y su permiso específico. Los permisos heredados de una concesión global (*) aparecen marcados y bloqueados.</p>
+          {SYSTEM_PERMISSION_GROUPS.map(group => (
+            <fieldset key={group.namespace}>
+              <legend>{group.label}</legend>
+              <div className={styles.accionesRow}>
+                {group.permissions.map(permission => (
+                  <label key={permission.action} className={styles.checkboxLabel}>
+                    <input type="checkbox" className={styles.checkbox}
+                      checked={permissionChecked(role.perms || {}, group.namespace, permission.action)}
+                      disabled={permissionInherited(role.perms || {}, group.namespace, permission.action)}
+                      onChange={e => updatePermiso(group.namespace, permission.action, e.target.checked)} />
+                    <span>{permission.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ))}
         </section>
       </div>
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import type { Field, FieldType, ModuleSchema } from "@repo/types";
+import type { Field, FieldType, ModuleSchema, QueryFilter, QuerySort } from "@repo/types";
 import { dataProvider } from "../../providers/DataProvider";
 import { ActionMenu } from "../../ActionMenu";
 import { getContrastingTextColor, lightenColor } from "../../utils/colorContrast";
@@ -23,15 +23,6 @@ type Props = {
   mode: Mode;
   moduleColor?: string;
 };
-
-type ListFilterOp = "=" | "!=" | ">" | "<" | "in";
-type ListFilter = { field: string; op: ListFilterOp; value: any };
-type ListSort = { field: string; dir: "asc" | "desc" };
-
-function toListOp(op: any): ListFilterOp {
-  if (op === "=" || op === "!=" || op === ">" || op === "<" || op === "in") return op;
-  return "=";
-}
 
 export default function ReverseLinkTable({ field, parentRecord, mode, moduleColor }: Props) {
   if (field.type !== "ReverseLink") return null;
@@ -76,22 +67,13 @@ export default function ReverseLinkTable({ field, parentRecord, mode, moduleColo
         const schema = await dataProvider.getSchema(ref.moduleSlug);
         if (!cancelled) setTargetSchema(schema);
 
-        const extraFilters = Array.isArray(ref.filters) ? ref.filters : [];
-        const filters: ListFilter[] = [
-          ...extraFilters.map((item: any): ListFilter => ({
-            field: String(item.field),
-            op: toListOp(item.op),
-            value: item.value,
-          })),
+        const extraFilters: QueryFilter[] = Array.isArray(ref.filters) ? ref.filters : [];
+        const filters: QueryFilter[] = [
+          ...extraFilters,
           { field: ref.foreignKey, op: "=", value: parentId },
         ];
 
-        const sort: ListSort[] = Array.isArray(ref.sort)
-          ? ref.sort.map((item: any): ListSort => ({
-              field: String(item.field),
-              dir: item.direction === "desc" ? "desc" : "asc",
-            }))
-          : [];
+        const sort: QuerySort[] = Array.isArray(ref.sort) ? ref.sort : [];
 
         const result = await dataProvider.list({
           moduleSlug: ref.moduleSlug,

@@ -16,12 +16,12 @@ export default function ReportDesigner({report, sources, onChange}: {
   const [filterDraft, setFilterDraft] = useState<AdvancedFilterGroup | null>(null);
   const [selected, setSelected] = useState("");
   const [search, setSearch] = useState("");
-  const filterOption = (key: string) => filters.find(option => reportFieldKey({field: option.field.name, relation: option.relation}) === key);
+  const filterOption = (key: string) => filters.find(option => reportFieldKey(option.ref) === key);
   const addFilter = (key: string) => {
     const option = filterOption(key);
     if (!option) return;
     const next = structuredClone(report.filters);
-    next.items.push({kind: "condition", field: option.field.name, relation: option.relation, op: "=", value: option.field.type === "boolean" ? true : ""});
+    next.items.push({kind: "condition", field: option.ref, op: "=", value: option.field.type === "boolean" ? true : ""});
     setFilterDraft(next);
   };
   const zones: Zone[] = report.type === "list" ? ["columns"] : ["rows", "columns", "values"];

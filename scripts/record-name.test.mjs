@@ -12,7 +12,8 @@ function load(file) {
   const result = { exports: {} };
   const js = ts.transpileModule(readFileSync(path, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true, target: ts.ScriptTarget.ES2022 } }).outputText;
   new Function("require", "module", "exports", js)(id => {
-    if (id === "@repo/types") return { ...load("packages/types/recordName.ts"), ...load("packages/types/normalizeModuleSchema.ts") };
+    if (id.startsWith("@dnd-kit/")) return createRequire(resolve("packages/ui/package.json"))(id);
+    if (id === "@repo/types") return { ...load("packages/types/recordName.ts"), ...load("packages/types/fieldRefs.ts"), ...load("packages/types/normalizeModuleSchema.ts"), ...load("packages/types/serializeModuleSchema.ts") };
     if (id.startsWith(".")) { const p = resolve(dirname(path), id); return load(p + (existsSync(p + ".ts") ? ".ts" : ".tsx")); }
     return require(id);
   }, result, result.exports);
@@ -100,8 +101,8 @@ test("the module editor updates its JSON with one selected field in create and e
   const code = ts.transpileModule(`const update = ${update};`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   for (const original of [schema, { ...schema, fields: schema.fields.map(field => ({ ...field, recordName: false })) }]) {
     let next, raw;
-    new Function("propsObj", "updateRecordNameField", "setPropsObj", "setRawText", `${code}; update(1, {...propsObj.fields[1], recordName: true});`)(original, updateRecordNameField, value => { next = value; }, value => { raw = value; });
-    assert.deepEqual(JSON.parse(raw), next);
+    new Function("propsObj", "updateRecordNameField", "updateSectionReferences", "setPropsObj", "setRawText", "serializeModuleSchema", `${code}; update(1, {...propsObj.fields[1], recordName: true});`)(original, updateRecordNameField, load("packages/ui/src/ModuloForm/fieldOrder.ts").updateSectionReferences, value => { next = value; }, value => { raw = value; }, load("packages/types/serializeModuleSchema.ts").serializeModuleSchema);
+    assert.deepEqual(JSON.parse(raw), JSON.parse(JSON.stringify(load("packages/types/serializeModuleSchema.ts").serializeModuleSchema(next))));
     assert.equal(next.fields.filter(field => field.recordName).length, 1);
     assert.equal(next.fields[1].recordName, true);
     assert.equal(normalizeModuleSchema(JSON.parse(raw)).fields[1].recordName, true);

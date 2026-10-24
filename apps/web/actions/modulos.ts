@@ -5,7 +5,7 @@ import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { isUUID } from "@/lib/utils/isUUID";
-import { normalizeModuleDefaultFilters, normalizeSelectorTableFilters, VALID_FIELD_TYPES, validateRecordNameFields } from "@repo/types";
+import { serializeModuleSchema, normalizeModuleDefaultFilters, normalizeSelectorTableFilters, VALID_FIELD_TYPES, validateRecordNameFields } from "@repo/types";
 
 const TABLE = "modulos";
 const FIELD_NAMES = ["parent_id", "nombre", "slug", "route", "tipo", "orden", "activo", "props"];
@@ -135,6 +135,7 @@ export async function upsertModuloAction(formData: FormData): Promise<{ ok: bool
     if (Number.isNaN(orden) || orden < 0) return await fail("orden debe ser un entero >= 0");
 
     if (tipo !== "carpeta") {
+      props = serializeModuleSchema(props);
       const validation = validateModuleProps(props);
       if (!validation.ok) return await fail(`Props invalidos: ${validation.detail}`);
     }

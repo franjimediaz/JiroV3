@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { MenuIcon } from "./MenuIcon";
 import type {ActionMenuItem,ActionMenuProps } from "@repo/types";
 
 
@@ -174,7 +175,7 @@ export function ActionMenu({
                   disabled={item.disabled}
                   title={item.title}
                 >
-                  <span className="am-icon">{item.icon}</span>
+                  <span className="am-icon">{MenuIcon({ icon: item.icon })}</span>
                   <span className="am-label">{item.label}</span>
                 </button>
               ))

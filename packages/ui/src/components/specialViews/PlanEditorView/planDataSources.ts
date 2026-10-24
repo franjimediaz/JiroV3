@@ -1,4 +1,4 @@
-import { getRecordName, getRecordNameFieldName, type ModuleSchema } from "@repo/types";
+import { getFieldRefValue, getRecordName, getRecordNameFieldName, isDirectFieldRef, type FieldRefLike, type ModuleSchema } from "@repo/types";
 import { getRecordNameSchema } from "../../../utils/recordNameSchema";
 import type { DataProvider } from "../../../engines/computeEngine";
 import type {
@@ -51,7 +51,10 @@ export async function loadLinkTargetRecords(config: PlanLinkTargetConfig, dataPr
   if (!dataProvider?.list || !config.moduleSlug) return [];
   const filters = [...(config.filters || [])];
   const schema = await getRecordNameSchema(dataProvider, config.moduleSlug);
-  const displayField = getRecordNameFieldName(schema, config.displayField || "id");
+  const configuredDisplay = config.displayField || "id";
+  const displayField = isDirectFieldRef(configuredDisplay)
+    ? getRecordNameFieldName(schema, typeof configuredDisplay === "string" ? configuredDisplay : configuredDisplay.field)
+    : configuredDisplay;
   const valueField = config.valueField || "id";
 
   if (searchText?.trim()) {
@@ -62,13 +65,14 @@ export async function loadLinkTargetRecords(config: PlanLinkTargetConfig, dataPr
     moduleSlug: config.moduleSlug,
     filters,
     sort: config.sort,
+    fieldRefs: [displayField],
     limit: 50,
   });
 
   return (Array.isArray(result?.data) ? result.data : [])
     .map((row) => ({
       recordId: toText((row as RecordLike)?.[valueField]),
-      displayValue: getRecordName(row, schema, { legacyField: displayField, valueField }),
+      displayValue: readLabel(row, schema, displayField, valueField),
       raw: row,
     }))
     .filter((row) => row.recordId);
@@ -83,11 +87,11 @@ export function normalizeSymbolRecord(record: unknown, mapping: PlanDynamicSourc
 
   return {
     id,
-    label: getRecordName(record, schema, { legacyField: labelField, valueField }),
-    icon: mapping.iconField ? toText(record[mapping.iconField]) || undefined : undefined,
-    color: mapping.colorField ? toText(record[mapping.colorField]) || undefined : undefined,
-    category: mapping.categoryField ? toText(record[mapping.categoryField]) || undefined : undefined,
-    type: mapping.typeField ? toText(record[mapping.typeField]) || undefined : undefined,
+    label: readLabel(record, schema, labelField, valueField),
+    icon: mapping.iconField ? toText(getFieldRefValue(record, mapping.iconField)) || undefined : undefined,
+    color: mapping.colorField ? toText(getFieldRefValue(record, mapping.colorField)) || undefined : undefined,
+    category: mapping.categoryField ? toText(getFieldRefValue(record, mapping.categoryField)) || undefined : undefined,
+    type: mapping.typeField ? toText(getFieldRefValue(record, mapping.typeField)) || undefined : undefined,
     raw: record,
     source: buildSource(mapping, id),
   };
@@ -102,16 +106,16 @@ export function normalizeLayerRecord(record: unknown, mapping: PlanDynamicSource
 
   return {
     id: `source_${id}`,
-    name: getRecordName(record, schema, { legacyField: labelField, valueField }),
-    visible: mapping.visibleField ? record[mapping.visibleField] !== false : true,
-    locked: mapping.lockedField ? record[mapping.lockedField] === true : false,
-    order: mapping.orderField ? toNumber(record[mapping.orderField], order) : order,
-    color: mapping.colorField ? toText(record[mapping.colorField]) || undefined : undefined,
+    name: readLabel(record, schema, labelField, valueField),
+    visible: mapping.visibleField ? getFieldRefValue(record, mapping.visibleField) !== false : true,
+    locked: mapping.lockedField ? getFieldRefValue(record, mapping.lockedField) === true : false,
+    order: mapping.orderField ? toNumber(getFieldRefValue(record, mapping.orderField), order) : order,
+    color: mapping.colorField ? toText(getFieldRefValue(record, mapping.colorField)) || undefined : undefined,
     source: buildSource(mapping, id),
   };
 }
 
-export function normalizeTemplateRecord(record: unknown, mapping: PlanDynamicSourceConfig & { descriptionField?: string; planJsonField?: string }, schema?: ModuleSchema): PlanTemplateDefinition | null {
+export function normalizeTemplateRecord(record: unknown, mapping: PlanDynamicSourceConfig & { descriptionField?: FieldRefLike; planJsonField?: FieldRefLike }, schema?: ModuleSchema): PlanTemplateDefinition | null {
   if (!isRecord(record)) return null;
   const valueField = mapping.valueField || "id";
   const labelField = mapping.labelField || mapping.displayField || valueField;
@@ -120,15 +124,15 @@ export function normalizeTemplateRecord(record: unknown, mapping: PlanDynamicSou
   if (!id) return null;
   return {
     id,
-    label: getRecordName(record, schema, { legacyField: labelField, valueField }),
-    description: mapping.descriptionField ? toText(record[mapping.descriptionField]) || undefined : undefined,
-    category: mapping.categoryField ? toText(record[mapping.categoryField]) || undefined : undefined,
-    plan: parseMaybeJson(record[planField]),
+    label: readLabel(record, schema, labelField, valueField),
+    description: mapping.descriptionField ? toText(getFieldRefValue(record, mapping.descriptionField)) || undefined : undefined,
+    category: mapping.categoryField ? toText(getFieldRefValue(record, mapping.categoryField)) || undefined : undefined,
+    plan: parseMaybeJson(getFieldRefValue(record, planField)),
     raw: record,
   };
 }
 
-export function normalizeBlockRecord(record: unknown, mapping: PlanDynamicSourceConfig & { descriptionField?: string; blockJsonField?: string }, schema?: ModuleSchema): PlanBlockDefinition | null {
+export function normalizeBlockRecord(record: unknown, mapping: PlanDynamicSourceConfig & { descriptionField?: FieldRefLike; blockJsonField?: FieldRefLike }, schema?: ModuleSchema): PlanBlockDefinition | null {
   if (!isRecord(record)) return null;
   const valueField = mapping.valueField || "id";
   const labelField = mapping.labelField || mapping.displayField || valueField;
@@ -137,11 +141,11 @@ export function normalizeBlockRecord(record: unknown, mapping: PlanDynamicSource
   if (!id) return null;
   return {
     id,
-    label: getRecordName(record, schema, { legacyField: labelField, valueField }),
-    description: mapping.descriptionField ? toText(record[mapping.descriptionField]) || undefined : undefined,
-    category: mapping.categoryField ? toText(record[mapping.categoryField]) || undefined : undefined,
-    icon: mapping.iconField ? toText(record[mapping.iconField]) || undefined : undefined,
-    block: parseMaybeJson(record[blockField]),
+    label: readLabel(record, schema, labelField, valueField),
+    description: mapping.descriptionField ? toText(getFieldRefValue(record, mapping.descriptionField)) || undefined : undefined,
+    category: mapping.categoryField ? toText(getFieldRefValue(record, mapping.categoryField)) || undefined : undefined,
+    icon: mapping.iconField ? toText(getFieldRefValue(record, mapping.iconField)) || undefined : undefined,
+    block: parseMaybeJson(getFieldRefValue(record, blockField)),
     raw: record,
   };
 }
@@ -156,8 +160,21 @@ async function loadRows(config: PlanDynamicSourceConfig, dataProvider?: DataProv
     hasStyle: !!(config.iconField || config.colorField),
     styleIconField: config.iconField,
     styleColorField: config.colorField,
+    fieldRefs: [config.labelField, config.displayField, config.iconField, config.colorField, config.categoryField,
+      config.typeField, config.orderField, config.lockedField, config.visibleField,
+      (config as any).descriptionField, (config as any).planJsonField, (config as any).blockJsonField],
   });
   return Array.isArray(result?.data) ? result.data : [];
+}
+
+function readLabel(record: RecordLike, schema: ModuleSchema | undefined, field: FieldRefLike, valueField: string) {
+  if (isDirectFieldRef(field)) {
+    return getRecordName(record, schema, {
+      legacyField: typeof field === "string" ? field : field.field,
+      valueField,
+    });
+  }
+  return toText(getFieldRefValue(record, field)) || toText(record[valueField]);
 }
 
 function isEnabledSource(config: PlanDynamicSourceConfig | undefined): config is PlanDynamicSourceConfig {

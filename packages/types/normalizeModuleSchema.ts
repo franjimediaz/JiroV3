@@ -1,4 +1,5 @@
 import { validateRecordNameFields } from "./recordName";
+import { isValidFieldRefShape, serializeFieldRef, type FieldRefLike } from "./fieldRefs";
 import type {
   Appareance,
   CalendarSpecialViewConfig,
@@ -25,6 +26,9 @@ export type LegacySchemaWarning = {
     | "legacy.treeView.groupBy"
     | "legacy.treeView.columns"
     | "legacy.calendar.sourceTable"
+    | "legacy.planEditor.alias"
+    | "legacy.moduleTable"
+    | "legacy.reverseLink.virtual"
     | "invalid.schema"
     | "invalid.field";
   path: string;
@@ -46,12 +50,22 @@ export type NormalizedModuleSchema = Omit<ModuleSchema, "fields"> & {
 const CALENDAR_VIEWS: CalendarViewMode[] = ["month", "week", "day"];
 const DEFAULT_PLAN_CALIBRATION_UNITS: Array<"mm" | "cm" | "m" | "km" | "in" | "ft"> = ["mm", "cm", "m", "km", "in", "ft"];
 
+function normalizeReadFieldRef(value: unknown, fallback = ""): FieldRefLike {
+  if (typeof value === "string") return value.trim() || fallback;
+  if (isValidFieldRefShape(value as any)) return serializeFieldRef(value as any);
+  return fallback;
+}
+
 function isRecord(value: unknown): value is AnyRecord {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 function cloneRecord<T extends AnyRecord>(value: T): T {
   return { ...value };
+}
+
+function recordConfig(value: unknown): AnyRecord {
+  return isRecord(value) ? value : {};
 }
 
 function toString(value: unknown, fallback = "") {
@@ -74,7 +88,7 @@ function normalizeFormSections(input: unknown): FormSection[] {
       id: toString(section.id, `section_${index + 1}`),
       label: toString(section.label || section.title, `Seccion ${index + 1}`),
       description: toString(section.description) || undefined,
-      fields: Array.isArray(section.fields) ? section.fields.map((field) => String(field)).filter(Boolean) : [],
+      fields: Array.isArray(section.fields) ? section.fields.map((field) => typeof field === "string" ? field : isRecord(field) ? field.name : "").filter(Boolean) : [],
     }));
 }
 
@@ -94,6 +108,8 @@ export function normalizeFieldConfig(field: unknown): NormalizedField {
     // Temporary bridge for existing renderers that still consume `appareance`.
     normalized.appareance = appearance;
   }
+
+  if (normalized.type === "ReverseLink") normalized.virtual = true;
 
   if (normalized.type === "address") {
     const address = isRecord(raw.address) ? raw.address : {};
@@ -119,18 +135,18 @@ export function normalizeTreeViewConfig(config: unknown): NormalizedTreeViewConf
 
   const sourceRaw = isRecord(raw.source) ? raw.source : {};
   const groupByLegacy = Array.isArray(raw.groupBy) ? raw.groupBy.find((item: unknown) => typeof item === "string") : undefined;
-  const groupByField = toString(isRecord(raw.grouping) ? raw.grouping.groupByField : undefined) || toString(groupByLegacy);
+  const groupByField = normalizeReadFieldRef(isRecord(raw.grouping) ? raw.grouping.groupByField : undefined) || toString(groupByLegacy);
 
   const columnsRaw = Array.isArray(raw.columns) ? raw.columns : [];
   const columns = columnsRaw
     .map((column: unknown) => {
       if (typeof column === "string") return { field: column, label: column };
       if (!isRecord(column)) return null;
-      const field = toString(column.field || column.name);
-      if (!field) return null;
+      const field = normalizeReadFieldRef(column.field || column.name);
+      if (!field || (typeof field !== "string" && !field.field)) return null;
       return {
         field,
-        label: toString(column.label, field),
+        label: toString(column.label, typeof field === "string" ? field : field.field),
         type: column.type,
         width: toString(column.width) || undefined,
         options: Array.isArray(column.options) ? column.options.map(String) : undefined,
@@ -141,12 +157,12 @@ export function normalizeTreeViewConfig(config: unknown): NormalizedTreeViewConf
   return {
     source: {
       ...sourceRaw,
-      table: toString(sourceRaw.table || raw.sourceTable),
+      table: toString(sourceRaw.moduleSlug || sourceRaw.table || raw.sourceTable),
       select: Array.isArray(sourceRaw.select) ? sourceRaw.select.map(String) : undefined,
       orderBy: isRecord(sourceRaw.orderBy)
-        ? ({ field: toString(sourceRaw.orderBy.field), ascending: sourceRaw.orderBy.ascending !== false } as TreeViewConfig["source"]["orderBy"])
+        ? ({ field: normalizeReadFieldRef(sourceRaw.orderBy.field), ascending: sourceRaw.orderBy.ascending !== false } as TreeViewConfig["source"]["orderBy"])
         : isRecord(raw.orderBy)
-        ? ({ field: toString(raw.orderBy.field), ascending: raw.orderBy.ascending !== false } as TreeViewConfig["source"]["orderBy"])
+        ? ({ field: normalizeReadFieldRef(raw.orderBy.field), ascending: raw.orderBy.ascending !== false } as TreeViewConfig["source"]["orderBy"])
         : undefined,
       filters: Array.isArray(sourceRaw.filters) ? sourceRaw.filters : Array.isArray(raw.filters) ? raw.filters : undefined,
     },
@@ -158,7 +174,7 @@ export function normalizeTreeViewConfig(config: unknown): NormalizedTreeViewConf
     totals: isRecord(raw.totals)
       ? ({
           enabled: raw.totals.enabled !== false,
-          sumField: toString(raw.totals.sumField),
+          sumField: normalizeReadFieldRef(raw.totals.sumField),
           currency: toString(raw.totals.currency) || undefined,
           showGroupTotals: raw.totals.showGroupTotals,
           showGrandTotal: raw.totals.showGrandTotal,
@@ -179,13 +195,13 @@ export function normalizeCalendarConfig(config: unknown): NormalizedCalendarConf
 
   return {
     sourceModuleSlug: toString(raw.sourceModuleSlug || raw.sourceTable),
-    titleField: toString(raw.titleField),
-    startField: toString(raw.startField),
-    endField: toString(raw.endField),
-    allDayField: toString(raw.allDayField),
-    colorField: toString(raw.colorField),
-    descriptionField: toString(raw.descriptionField),
-    resourceField: toString(raw.resourceField),
+    titleField: normalizeReadFieldRef(raw.titleField),
+    startField: normalizeReadFieldRef(raw.startField),
+    endField: normalizeReadFieldRef(raw.endField),
+    allDayField: normalizeReadFieldRef(raw.allDayField),
+    colorField: normalizeReadFieldRef(raw.colorField),
+    descriptionField: normalizeReadFieldRef(raw.descriptionField),
+    resourceField: normalizeReadFieldRef(raw.resourceField),
     parentLinkField: toString(raw.parentLinkField),
     enabledViews,
     defaultView,
@@ -279,7 +295,7 @@ export function normalizePlanEditorConfig(config: unknown): NormalizedPlanEditor
         preserveLinks: blocksRaw.preserveLinks === true,
       },
       exportTitle: toString(options.exportTitle) || undefined,
-      exportSubtitleField: toString(options.exportSubtitleField) || undefined,
+      exportSubtitleField: normalizeReadFieldRef(options.exportSubtitleField) || undefined,
       calibration: normalizePlanCalibration(options.calibration),
       polygonValidation: normalizePolygonValidation(options.polygonValidation),
       measurement: {
@@ -341,18 +357,18 @@ function normalizePlanDynamicSource(input: unknown) {
     moduleSlug: toString(input.moduleSlug),
     table: toString(input.table),
     valueField: toString(input.valueField, "id") || "id",
-    labelField: toString(input.labelField || input.displayField),
-    displayField: toString(input.displayField || input.labelField),
-    iconField: toString(input.iconField) || undefined,
-    colorField: toString(input.colorField) || undefined,
-    categoryField: toString(input.categoryField) || undefined,
-    typeField: toString(input.typeField) || undefined,
-    orderField: toString(input.orderField) || undefined,
-    lockedField: toString(input.lockedField) || undefined,
-    visibleField: toString(input.visibleField) || undefined,
-    descriptionField: toString(input.descriptionField) || undefined,
-    planJsonField: toString(input.planJsonField) || undefined,
-    blockJsonField: toString(input.blockJsonField) || undefined,
+    labelField: normalizeReadFieldRef(input.labelField || input.displayField),
+    displayField: normalizeReadFieldRef(input.displayField || input.labelField),
+    iconField: normalizeReadFieldRef(input.iconField) || undefined,
+    colorField: normalizeReadFieldRef(input.colorField) || undefined,
+    categoryField: normalizeReadFieldRef(input.categoryField) || undefined,
+    typeField: normalizeReadFieldRef(input.typeField) || undefined,
+    orderField: normalizeReadFieldRef(input.orderField) || undefined,
+    lockedField: normalizeReadFieldRef(input.lockedField) || undefined,
+    visibleField: normalizeReadFieldRef(input.visibleField) || undefined,
+    descriptionField: normalizeReadFieldRef(input.descriptionField) || undefined,
+    planJsonField: normalizeReadFieldRef(input.planJsonField) || undefined,
+    blockJsonField: normalizeReadFieldRef(input.blockJsonField) || undefined,
     filters: Array.isArray(input.filters) ? input.filters : [],
     sort: Array.isArray(input.sort) ? input.sort : [],
   };
@@ -364,7 +380,7 @@ function normalizePlanMetadataFields(input: unknown) {
     .filter(isRecord)
     .map((item) => ({
       label: toString(item.label),
-      field: toString(item.field),
+      field: normalizeReadFieldRef(item.field),
     }))
     .filter((item) => item.label && item.field);
 }
@@ -378,7 +394,7 @@ function normalizePlanLinkTargets(input: unknown) {
       moduleSlug: toString(target.moduleSlug),
       table: toString(target.table),
       valueField: toString(target.valueField, "id") || "id",
-      displayField: toString(target.displayField, "nombre") || "nombre",
+      displayField: normalizeReadFieldRef(target.displayField, "nombre") || "nombre",
       filters: Array.isArray(target.filters) ? target.filters : [],
       sort: Array.isArray(target.sort) ? target.sort : [],
     }));
@@ -403,7 +419,7 @@ export function normalizeSpecialViews(config: unknown): NormalizedSpecialView[] 
     .filter(isRecord)
     .map((view, index) => {
       const type = view.type === "calendar" ? "calendar" : view.type === "planEditor" ? "planEditor" : "pdfPreview";
-      const planConfig = normalizePlanEditorConfig(view.config ?? view);
+      const planConfig = normalizePlanEditorConfig({ ...view, ...recordConfig(view.config) });
       return {
         id: toString(view.id, `special_view_${index + 1}`),
         label: toString(view.label || view.title, `Vista especial ${index + 1}`),
@@ -438,7 +454,7 @@ export function normalizeModuleSchema(schema: unknown): NormalizedModuleSchema {
   const fields = Array.isArray(raw.fields) ? raw.fields.map(normalizeFieldConfig) : [];
   validateRecordNameFields(fields);
   const tabs = Array.isArray(uiRaw.tabs) ? [...uiRaw.tabs] : [];
-  const legacyFormSections = normalizeFormSections(uiRaw.formSections);
+  const legacyFormSections = normalizeFormSections(uiRaw.formSections ?? raw.formSections);
   const hasFormTab = tabs.some((tab) => isRecord(tab) && (tab.type || tab.kind || "form") === "form");
 
   if (legacyFormSections.length && !hasFormTab) {
@@ -448,6 +464,12 @@ export function normalizeModuleSchema(schema: unknown): NormalizedModuleSchema {
       type: "form",
       config: { formSections: legacyFormSections },
     } satisfies UiTab);
+  } else if (legacyFormSections.length) {
+    const index = tabs.findIndex(tab => isRecord(tab) && (tab.type || tab.kind || "form") === "form");
+    const tab = tabs[index];
+    if (tab && !Array.isArray(tab.config?.formSections) && !Array.isArray(tab.formSections)) {
+      tabs[index] = { ...tab, config: { ...recordConfig(tab.config), formSections: legacyFormSections } };
+    }
   }
 
   if (isRecord(uiRaw.treeView) && !tabs.some((tab) => isRecord(tab) && (tab.type || tab.kind) === "treeview")) {
@@ -478,7 +500,7 @@ export function normalizeModuleSchema(schema: unknown): NormalizedModuleSchema {
           : type === "calendar"
             ? normalizeCalendarConfig(tab.config ?? tab)
             : type === "planEditor"
-              ? normalizePlanEditorConfig(tab.config ?? tab)
+              ? normalizePlanEditorConfig({ ...tab, ...recordConfig(tab.config) })
               : tab.config ?? tab;
       return {
         id: toString(tab.id, `${type}_${index + 1}`),
@@ -534,6 +556,10 @@ export function getLegacySchemaWarnings(schema: unknown): LegacySchemaWarning[] 
     if (field.appareance !== undefined) {
       warnings.push({ code: "legacy.appareance", path: `fields[${index}].appareance`, message: "Usa appearance; appareance se mantiene solo como compatibilidad temporal." });
     }
+    if (field.type === "ReverseLink" && field.virtual !== true) {
+      warnings.push({ code: "legacy.reverseLink.virtual", path: `fields[${index}].virtual`, message: "ReverseLink es una colección virtual; no se persiste en el registro padre." });
+    }
+    if (field.ref?.table && field.ref?.moduleSlug) warnings.push({ code: "legacy.moduleTable", path: `fields[${index}].ref.table`, message: "moduleSlug identifica el módulo; table es una referencia física legacy." });
   });
 
   const ui = isRecord(schema.ui) ? schema.ui : {};
@@ -543,6 +569,18 @@ export function getLegacySchemaWarnings(schema: unknown): LegacySchemaWarning[] 
   if (isRecord(ui.calendar) && typeof ui.calendar.sourceTable === "string") warnings.push({ code: "legacy.calendar.sourceTable", path: "ui.calendar.sourceTable", message: "Usa sourceModuleSlug." });
 
   const tabs = Array.isArray(ui.tabs) ? ui.tabs : [];
+  for (const [collection, views] of [["tabs", tabs], ["specialViews", ui.specialViews || []]] as const) {
+    if (!Array.isArray(views)) continue;
+    views.forEach((view, index) => {
+      if (!isRecord(view) || view.type !== "planEditor") return;
+      for (const alias of ["sourceField", "options"]) if (view[alias] !== undefined) {
+        warnings.push({ code: "legacy.planEditor.alias", path: `ui.${collection}[${index}].${alias}`, message: `Usa config.${alias}; el alias de runtime no se guarda.` });
+      }
+    });
+  }
+  if (Array.isArray(ui.formActions)) ui.formActions.forEach((action, index) => {
+    if (action?.type === "createRelated" && action.target?.table) warnings.push({ code: "legacy.moduleTable", path: `ui.formActions[${index}].target.table`, message: "Selecciona el módulo destino mediante moduleSlug; se mantiene lectura de table legacy." });
+  });
   tabs.forEach((tab, index) => {
     if (!isRecord(tab)) return;
     const cfg = isRecord(tab.config) ? tab.config : tab;

@@ -18,7 +18,18 @@ function load(file, imports = {}, suffix = "") {
   }, module, module.exports);
   return module.exports;
 }
-const metadata = load("packages/types/workflows.ts");
+const fieldRefs = load("packages/types/fieldRefs.ts");
+const moduleDefaultFilters = load("packages/types/moduleDefaultFilters.ts", { "./fieldRefs": fieldRefs });
+const selectorTableFilters = load("packages/types/selectorTableFilters.ts", { "./fieldRefs": fieldRefs });
+const metadata = {
+  ...load("packages/types/workflows.ts"),
+  ...load("packages/types/serializeModuleSchema.ts", {
+    "./normalizeModuleSchema": {},
+    "./fieldRefs": fieldRefs,
+    "./moduleDefaultFilters": moduleDefaultFilters,
+    "./selectorTableFilters": selectorTableFilters,
+  }),
+};
 const errors = load("apps/web/lib/auth/apiError.ts");
 const common = load("apps/web/lib/validation/common.ts", { "@/lib/auth/apiError": errors });
 const validation = load("apps/web/lib/validation/workflows.ts", { "./common": common, "@/lib/auth/apiError": errors });
@@ -379,6 +390,7 @@ describe("workflow actions and editor behavior", () => {
       react: h.react, "@repo/types": metadata,
       "./ConfigEditor": { ConfigSession: session },
       "../components/fields/Selector": {}, "./FieldRow": {}, "./CopyRelatedWorkflowEditor": {},
+      "../components/fields/RelatedFieldSelector": { RelatedFieldSelector: () => {} },
     });
     let saved;
     const props = { value: [], onChange: (next) => { saved = next; }, styles: {}, sourceFields: [], getTableFields: () => [] };
@@ -446,6 +458,7 @@ describe("workflow actions and editor behavior", () => {
       "../ActionMenu": { ActionMenu: menu },
       "../engines/computeEngine": {}, "../providers/DataProvider": {}, "../pdf": {},
       "../engines/visibilityEngine": { evaluateActionVisibility: () => true },
+      "../utils/createRelatedPayload": load("packages/ui/src/utils/createRelatedPayload.ts"),
     });
     const originalFetch = globalThis.fetch;
     const requests = []; let finish;
@@ -478,6 +491,7 @@ describe("workflow actions and editor behavior", () => {
       "./ConfigEditor": { ConfigSession: () => {} },
       "../components/fields/Selector": {}, "./FieldRow": {},
       "./CopyRelatedWorkflowEditor": { WorkflowJsonEditor: raw },
+      "../components/fields/RelatedFieldSelector": { RelatedFieldSelector: () => {} },
     }, "\nexport { UiFormActionItem };\n");
     let action = { id: "legacy", label: "Legacy", type: "workflow", workflowKey: "invoice.generateFromBudget", input: { nested: { untouched: [1, 2, 3] } } };
     const snapshot = structuredClone(action);

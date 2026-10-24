@@ -3,9 +3,10 @@
 import { ConfigEditor, ConfigSession } from "./ConfigEditor";
 import React, { useMemo, useState, useEffect } from "react";
 import Selector from "../components/fields/Selector";
-import type { Field as FieldSchema, VisibilityConfig } from "@repo/types";
+import RelatedFieldSelector from "../components/fields/RelatedFieldSelector";
+import { serializeFieldRef, type Field as FieldSchema, type FieldRefLike, type VisibilityConfig } from "@repo/types";
 import { VisibilityConfigEditor } from "./FieldRow";
-import { WORKFLOW_CATALOG } from "@repo/types";
+import { WORKFLOW_CATALOG, updateFormActionConfig } from "@repo/types";
 import CopyRelatedWorkflowEditor, { WorkflowJsonEditor } from "./CopyRelatedWorkflowEditor";
 
 type UiMode = "view" | "edit" | "create";
@@ -103,7 +104,7 @@ export type UiFormAction = {
   visibility?: VisibilityConfig;
 
   // payloads según type
-  target?: { table?: string };
+  target?: { moduleSlug?: string; table?: string };
   afterCreate?: { navigateTo?: "record" | "list" | "none" };
   fieldMap?: any;
   defaults?: any;
@@ -126,6 +127,7 @@ type Props = {
 
   IconPicker: React.ComponentType<{ value?: string; onChange: (icon: string) => void }>;
   sourceFields: SimpleField[];
+  sourceModuleSlug?: string;
 
   // ✅ para obtener fields de cualquier tabla (destino/origen)
   getTableFields: (table: string) => SimpleField[];
@@ -267,6 +269,7 @@ function makeDeriveInput(prev: any): DeriveWorkflowInput {
   const first = children[0];
 
   return {
+    ...p,
     kind: "derive",
     source: {
       parentTable: p?.source?.parentTable || "",
@@ -322,6 +325,7 @@ export default function UiFormActionsEditor({
   styles,
   IconPicker,
   sourceFields,
+  sourceModuleSlug,
   getTableFields,
   fieldsByTable = {},
   loadingByTable = {},
@@ -368,7 +372,7 @@ export default function UiFormActionsEditor({
 
   const updateFormAction = (idx: number, patch: Partial<UiFormAction>) => {
     const next = [...actions];
-    next[idx] = { ...next[idx], ...patch };
+    next[idx] = updateFormActionConfig(next[idx], patch) as UiFormAction;
     if (actionDraft) setActionDraft(next);
     else onChange(next);
   };
@@ -613,10 +617,10 @@ export default function UiFormActionsEditor({
                                   moduleSlug="modulos"
                                   displayField="nombre"
                                   valueField="slug"
-                                  value={(a as any).target?.table || ""}
+                                  value={(a as any).target?.moduleSlug || (a as any).target?.table || ""}
                                   readOnly={readOnly}
                                   placeholder="— Seleccionar —"
-                                  label="Selecciona la tabla destino"
+                                  label="Selecciona el módulo destino"
                                   filters={[
                                     { field: "activo", op: "=", value: true },
                                     { field: "tipo", op: "in", value: ["tabla", "subtabla", "vista"] },
@@ -624,9 +628,9 @@ export default function UiFormActionsEditor({
                                   sort={[{ field: "orden", direction: "asc" }]}
                                   onChange={(table: string) => {
                                     const next = (table || "").trim();
-                                    const prev = String((a as any).target?.table || "").trim();
+                                    const prev = String((a as any).target?.moduleSlug || (a as any).target?.table || "").trim();
                                     if (next === prev) return;
-                                    updateFormAction(idx, { target: { ...((a as any).target || {}), table: next } } as any);
+                                    updateFormAction(idx, { target: { moduleSlug: next } } as any);
                                   }}
                                 />
                               </div>
@@ -657,6 +661,7 @@ export default function UiFormActionsEditor({
                                 updateFormAction={updateFormAction}
                                 removeFormAction={removeFormAction}
                                 sourceFields={sourceFields}
+                                sourceModuleSlug={sourceModuleSlug}
                                 getTableFields={getTableFields}
                                 ensureTableFields={ensureTableFields}
                                 workflowCatalog={workflowCatalog}
@@ -821,18 +826,18 @@ export default function UiFormActionsEditor({
    FieldMapEditor (igual que el tuyo, sin cambios funcionales)
 -------------------------------------------------------- */
 
-function normalizePairs(fieldMap: any): Array<{ dest: string; src: string }> {
+function normalizePairs(fieldMap: any): Array<{ dest: string; src: FieldRefLike }> {
   if (!fieldMap || typeof fieldMap !== "object") return [];
   return Object.entries(fieldMap)
-    .map(([dest, src]) => ({ dest: String(dest), src: String(src) }))
-    .filter((x) => x.dest && x.src);
+    .map(([dest, src]) => ({ dest: String(dest), src: src as FieldRefLike }))
+    .filter((x) => x.dest && (typeof x.src === "string" ? x.src : x.src?.field));
 }
 
-function pairsToMap(pairs: Array<{ dest: string; src: string }>) {
-  const out: Record<string, string> = {};
+function pairsToMap(pairs: Array<{ dest: string; src: FieldRefLike }>) {
+  const out: Record<string, FieldRefLike> = {};
   for (const p of pairs) {
     const d = p.dest?.trim();
-    const s = p.src?.trim();
+    const s = serializeFieldRef(p.src);
     if (!d || !s) continue;
     out[d] = s;
   }
@@ -848,15 +853,17 @@ function FieldMapEditor({
   targetLabel,
   sourceFields,
   targetFields,
+  sourceModuleSlug,
 }: {
-  value: Record<string, string> | undefined;
-  onChange: (next: Record<string, string> | undefined) => void;
+  value: Record<string, FieldRefLike> | undefined;
+  onChange: (next: Record<string, FieldRefLike> | undefined) => void;
   readOnly?: boolean;
   styles: Record<string, string>;
   sourceLabel: string;
   targetLabel: string;
   sourceFields: SimpleField[];
   targetFields: SimpleField[];
+  sourceModuleSlug?: string;
 }) {
   const [pairs, setPairs] = useState(() => normalizePairs(value));
 
@@ -864,14 +871,14 @@ function FieldMapEditor({
     setPairs(normalizePairs(value));
   }, [JSON.stringify(value)]);
 
-  const commit = (nextPairs: Array<{ dest: string; src: string }>) => {
+  const commit = (nextPairs: Array<{ dest: string; src: FieldRefLike }>) => {
     setPairs(nextPairs);
     const map = pairsToMap(nextPairs);
     onChange(Object.keys(map).length ? map : undefined);
   };
 
   const addRow = () => commit([...pairs, { dest: "", src: "" }]);
-  const updateRow = (i: number, patch: Partial<{ dest: string; src: string }>) => {
+  const updateRow = (i: number, patch: Partial<{ dest: string; src: FieldRefLike }>) => {
     const next = pairs.map((p, idx) => (idx === i ? { ...p, ...patch } : p));
     commit(next);
   };
@@ -897,7 +904,7 @@ function FieldMapEditor({
 
       {pairs.map((p, i) => (
         <div
-          key={`${i}-${p.dest}-${p.src}`}
+          key={`${i}-${p.dest}-${JSON.stringify(p.src)}`}
           className={styles.grid}
           style={{
             gridTemplateColumns: "1fr 1fr auto",
@@ -921,7 +928,11 @@ function FieldMapEditor({
 
             <div>
               <label className={styles.label}>{sourceLabel}</label>
-              <select className={styles.input} value={p.src} disabled={readOnly} onChange={(e) => updateRow(i, { src: e.target.value })}>
+              {sourceModuleSlug ? (
+                <RelatedFieldSelector sourceModuleSlug={sourceModuleSlug} value={p.src} disabled={readOnly}
+                  onChange={(src) => updateRow(i, { src })} />
+              ) : (
+              <select className={styles.input} value={typeof p.src === "string" ? p.src : p.src.field} disabled={readOnly} onChange={(e) => updateRow(i, { src: e.target.value })}>
                 <option value="">— Selecciona campo origen —</option>
                 {sourceFields.map((f) => (
                   <option key={f.name} value={f.name}>
@@ -929,6 +940,7 @@ function FieldMapEditor({
                   </option>
                 ))}
               </select>
+              )}
             </div>
 
             <div className={styles.actionsRow} style={{ justifyContent: "flex-start" }}>
@@ -1197,6 +1209,7 @@ function UiFormActionItem({
   updateFormAction,
   removeFormAction,
   sourceFields,
+  sourceModuleSlug,
   getTableFields,
   ensureTableFields,
   workflowCatalog,
@@ -1209,11 +1222,12 @@ function UiFormActionItem({
   updateFormAction: (idx: number, patch: Partial<UiFormAction>) => void;
   removeFormAction: (idx: number) => void;
   sourceFields: SimpleField[];
+  sourceModuleSlug?: string;
   getTableFields: (table: string) => SimpleField[];
   ensureTableFields?: (table: string) => void;
   workflowCatalog?: WorkflowCatalogItem[];
 }) {
-  const targetTable = a.target?.table || "";
+  const targetTable = a.target?.moduleSlug || a.target?.table || "";
   const catalog = WORKFLOW_CATALOG.map((item) => ({
     ...item,
     label: workflowCatalog?.find((custom) => custom.key === item.key)?.label || item.label,
@@ -1242,6 +1256,7 @@ function UiFormActionItem({
             sourceLabel="Origen (registro actual)"
             targetFields={targetFieldsForThisAction}
             sourceFields={sourceFieldsForCurrentModule}
+            sourceModuleSlug={sourceModuleSlug}
           />
 
           <DefaultsEditor
@@ -1410,7 +1425,6 @@ function WorkflowDeriveEditor({
     updateFormAction(idx, { input: nextInput as any });
   };
 
-  const patchSource = (patch: Partial<DeriveWorkflowInput["source"]>) => patchInput({ source: { ...input.source, ...patch } });
   const patchTarget = (patch: Partial<DeriveWorkflowInput["target"]>) => patchInput({ target: { ...input.target, ...patch } });
 
   const upsertFirstChildFromQuick = (patch: Partial<DeriveChildSpec>) => {
@@ -1469,19 +1483,7 @@ function WorkflowDeriveEditor({
             </div>
           </div>
 
-          <div style={{ gridColumn: "1 / -7" }}>
-            <label className={styles.label}>source.parentIdTemplate</label>
-            <input
-              className={styles.input}
-              value={input.source.parentIdTemplate}
-              disabled={readOnly}
-              onChange={(e) => patchSource({ parentIdTemplate: e.target.value })}
-              placeholder="{{id}}"
-            />
-            <div className={styles.hint} style={{ marginTop: 6 }}>
-              Normalmente será <code>{"{{id}}"}</code>.
-            </div>
-          </div>
+
         </div>
       </div>
 
@@ -1539,7 +1541,7 @@ function WorkflowDeriveEditor({
 
           <FieldMapEditor
             value={input.maps.parent}
-            onChange={(next) => patchInput({ maps: { ...input.maps, parent: next || {} } })}
+            onChange={(next) => patchInput({ maps: { ...input.maps, parent: (next || {}) as Record<string, string> } })}
             readOnly={readOnly}
             styles={styles}
             targetLabel={`Destino (${tp || "—"})`}
@@ -1848,7 +1850,7 @@ function DeriveChildrenEditor({
 
               <FieldMapEditor
                 value={c.map}
-                onChange={(next) => updateChild(i, { map: next || {} })}
+                onChange={(next) => updateChild(i, { map: (next || {}) as Record<string, string> })}
                 readOnly={readOnly}
                 styles={styles}
                 targetLabel={`Destino (${c.targetTable || "—"})`}

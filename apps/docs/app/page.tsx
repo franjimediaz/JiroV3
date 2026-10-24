@@ -1,3 +1,6 @@
+/* Static documentation intentionally contains quoted code and prose. */
+/* eslint-disable react/no-unescaped-entities, react/prop-types */
+
 export default function DocsEstadoActual() {
   const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
     <section style={{ marginBottom: 32 }}>
@@ -21,7 +24,7 @@ export default function DocsEstadoActual() {
     </pre>
   );
 
-  const Small = (p: any) => <small style={{ color: "#475569" }} {...p} />;
+  const Small = (p: React.ComponentProps<"small">) => <small style={{ color: "#475569" }} {...p} />;
 
   return (
     <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>

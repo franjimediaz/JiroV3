@@ -1,3 +1,4 @@
+import { buildPersistablePayload } from "@/lib/modules/buildPersistablePayload";
 import { NextResponse } from "next/server";
 import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
 import { ApiError, badRequest, forbidden } from "@/lib/auth/apiError";
@@ -5,26 +6,14 @@ import { handleApiError } from "@/lib/auth/handleApiError";
 import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 import { shouldAuditEvent } from "@/lib/audit/shouldAuditEvent";
 import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
-import { moduleCapabilityEnabled, normalizeEmptyRelations } from "@repo/types";
+import { moduleCapabilityEnabled } from "@repo/types";
 
 type Body = {
   moduleSlug?: string;
   table?: string;
   id?: string;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
 };
-
-const SERVER_CONTROLLED_FIELDS = [
-  "tenant_id",
-  "organization_id",
-  "created_by",
-  "updated_by",
-  "owner_id",
-  "role_id",
-  "is_admin",
-  "created_at",
-  "updated_at",
-];
 
 export async function POST(req: Request) {
   const requestId = crypto.randomUUID();
@@ -73,27 +62,12 @@ export async function POST(req: Request) {
     }
     actorUserId = ctx.user.id;
 
-    const allowedFields = new Set(
-      (resolved.schema.fields || [])
-        .filter((field) => field.virtual !== true)
-        .map((field) => field.name)
-    );
-    auditFieldNames = Object.keys(payload).sort();
-    const unknownFields = auditFieldNames.filter(
-      (key) => !allowedFields.has(key) && key !== resolved.primaryKey && key !== "id"
-    );
-    const controlledFields = auditFieldNames.filter((key) => SERVER_CONTROLLED_FIELDS.includes(key));
-
-    if (unknownFields.length > 0) {
-      throw badRequest(`Campos no declarados en schema: ${unknownFields.join(", ")}`);
-    }
-    if (controlledFields.length > 0) {
-      throw badRequest(`Campos controlados por servidor no permitidos: ${controlledFields.join(", ")}`);
-    }
+    const persistable = buildPersistablePayload(resolved.schema, payload, { operation: "update", primaryKey: resolved.primaryKey });
+    auditFieldNames = Object.keys(persistable).sort();
 
     const { error } = await ctx.supabase
       .from(resolved.table)
-      .update(normalizeEmptyRelations(resolved.schema.fields || [], payload))
+      .update(persistable)
       .eq(resolved.primaryKey, recordId);
 
     if (error) {
@@ -117,7 +91,7 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ ok: true, id: recordId });
-  } catch (e: any) {
+  } catch (e: unknown) {
     if (shouldAudit) await writeAuditEvent({
       actorUserId,
       module: auditModule || moduleSlugForLog || null,

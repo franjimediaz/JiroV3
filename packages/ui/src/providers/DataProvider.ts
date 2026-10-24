@@ -1,6 +1,6 @@
 import type { DataProvider, AggregateInput } from "../engines/computeEngine";
 import type { ModuleSchema } from "@repo/types";
-import { normalizeEmptyRelations } from "@repo/types";
+import { getFieldRefValue, normalizeEmptyRelations } from "@repo/types";
 
 type ModuloRow = {
   id: string;
@@ -9,7 +9,8 @@ type ModuloRow = {
 };
 
 export type CreateInput = {
-  table: string;
+  moduleSlug?: string;
+  table?: string;
   data: Record<string, any>;
 };
 
@@ -103,7 +104,9 @@ export const dataProvider: DataProvider & {
     // 1) Resolver where usando el record actual (placeholders)
     const whereResolved = (input.where || []).map((c: any) => ({
       ...c,
-      value: resolveTpl(c.value, record),
+      value: c.valueFrom === "this" && c.path
+        ? getFieldRefValue(record, c.path)
+        : resolveTpl(c.value, record),
     }));
 
     // 2) Llamar al endpoint
@@ -111,7 +114,8 @@ export const dataProvider: DataProvider & {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        sourceTable: input.sourceTable, // ej: "materialstask"
+        sourceTable: input.sourceTable, // legacy
+        moduleSlug: input.sourceModuleSlug,
         field: input.field,             // ej: "total"
         op: input.op,                   // ej: "sum"
         where: whereResolved.map((c: any) => ({
@@ -143,6 +147,7 @@ export const dataProvider: DataProvider & {
         moduleSlug: input.moduleSlug,
         filters: input.filters,
         sort: input.sort,
+        fieldRefs: input.fieldRefs,
         limit: input.limit,
         offset: input.offset,
         advancedFilters: input.advancedFilters,
@@ -168,11 +173,17 @@ export const dataProvider: DataProvider & {
 
   async create(input: CreateInput): Promise<CreateResult> {
     const schemas = await loadSchemas();
-    const schema = schemas[input.table] || Object.values(schemas).find(item => item.db?.table === input.table);
+    const schema =
+          (input.moduleSlug ? schemas[input.moduleSlug] : undefined) ||
+          (input.table ? schemas[input.table] : undefined) ||
+          Object.values(schemas).find(
+            item => input.table && item.db?.table === input.table
+          );
     const res = await fetch("/api/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        moduleSlug: input.moduleSlug,
         table: input.table,
         data: normalizeEmptyRelations(schema?.fields || [], input.data),
       }),

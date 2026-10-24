@@ -1,4 +1,4 @@
-import type { ReportColumn, ReportDefinition, ReportFilter, ReportSort } from "@repo/types";
+import { MAX_FIELD_REF_DEPTH, normalizeFieldRef, type ReportColumn, type ReportDefinition, type ReportFilter, type ReportSort } from "@repo/types";
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("Configuración de informe no válida");
@@ -14,11 +14,13 @@ function columns(value: unknown, min: number, max: number): ReportColumn[] {
     const column = object(input), ref = object(column.ref);
     const aggregation = text(column.aggregation, 20) as ReportColumn["aggregation"];
     if (!["none", "count", "countDistinct", "sum", "avg", "min", "max"].includes(aggregation)) throw Error("Agregación no válida");
-    const relations = ref.relations === undefined ? undefined : Array.isArray(ref.relations) && ref.relations.length <= 2
+    const relations = ref.relations === undefined ? undefined : Array.isArray(ref.relations) && ref.relations.length <= MAX_FIELD_REF_DEPTH
       ? ref.relations.map(item => text(item, 100)) : (() => { throw Error("Ruta de relación no válida"); })();
+    const normalized = normalizeFieldRef({ field: text(ref.field, 100), ...(relations ? { relations } : {}),
+      ...(ref.relation !== undefined ? { relation: text(ref.relation, 100) } : {}) });
     return {id: text(column.id, 60), label: text(column.label, 120), aggregation,
-      ref: {field: text(ref.field, 100), ...(ref.module !== undefined ? {module: text(ref.module, 100)} : {}),
-        ...(ref.relation !== undefined ? {relation: text(ref.relation, 100)} : {}), ...(relations !== undefined ? {relations} : {}),
+      ref: {field: normalized.field, ...(ref.module !== undefined ? {module: text(ref.module, 100)} : {}),
+        ...(normalized.relations.length ? {relations: normalized.relations} : {}),
         ...(ref.alias !== undefined ? {alias: text(ref.alias, 100)} : {}), ...(ref.label !== undefined ? {label: text(ref.label, 120)} : {})}};
   });
 }

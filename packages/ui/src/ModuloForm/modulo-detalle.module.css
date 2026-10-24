@@ -549,3 +549,24 @@ form.card > .card {
 }
 
 
+.sortableField { border-radius: 8px; }
+.dragHandle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  flex: 0 0 36px;
+  width: 36px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: grab;
+  touch-action: none;
+}
+.dragHandle:active { cursor: grabbing; }
+.dragHandle:focus-visible { outline: 2px solid var(--bs-primary, #0d6efd); outline-offset: 2px; }
+.dragHandle:disabled { cursor: default; opacity: .4; }
+.draggingField { box-shadow: 0 8px 24px #0003; opacity: .85; background: var(--bs-body-bg, white); }
+.dropTarget { outline: 2px dashed var(--bs-primary, #0d6efd); outline-offset: 2px; }

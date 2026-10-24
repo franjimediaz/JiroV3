@@ -1,8 +1,10 @@
 import { ConfigEditor } from "./ConfigEditor";
 import React, { useEffect, useMemo, useState } from "react";
 import styles from "./modulo-detalle.module.css";
+import RelatedFieldSelector from "../components/fields/RelatedFieldSelector";
 import {
   createEmptyModuleDefaultFilterCondition,
+  formatFieldRefPath,
   createEmptyModuleDefaultFilterGroup,
   normalizeModuleDefaultFilters,
   serializeModuleDefaultFilters,
@@ -25,6 +27,7 @@ type Props = {
   value?: ModuleDefaultFiltersInput;
   fields: FieldOption[];
   readOnly?: boolean;
+  sourceModuleSlug?: string;
   onChange: (next: ModuleDefaultFilterGroup) => void;
 };
 
@@ -57,7 +60,7 @@ const FUNCTIONS: Array<{ value: ModuleDefaultFilterFunction; label: string }> = 
 
 type GroupPath = number[];
 
-function ModuleDefaultFiltersBuilderBody({ value, fields, readOnly, onChange }: Props) {
+function ModuleDefaultFiltersBuilderBody({ value, fields, readOnly, sourceModuleSlug, onChange }: Props) {
   const normalizedValue = useMemo(() => normalizeModuleDefaultFilters(value), [value]);
   const [mode, setMode] = useState<"visual" | "advanced">("visual");
   const [rawText, setRawText] = useState(() => JSON.stringify(normalizedValue, null, 2));
@@ -129,6 +132,7 @@ function ModuleDefaultFiltersBuilderBody({ value, fields, readOnly, onChange }: 
           path: [],
           depth: 0,
           fields,
+          sourceModuleSlug,
           readOnly,
           onUpdateGroup: updateGroup,
           onUpdateCondition: updateCondition,
@@ -163,6 +167,7 @@ function renderGroupEditor(args: {
   path: GroupPath;
   depth: number;
   fields: FieldOption[];
+  sourceModuleSlug?: string;
   readOnly?: boolean;
   onUpdateGroup: (path: GroupPath, updater: (group: ModuleDefaultFilterGroup) => ModuleDefaultFilterGroup) => void;
   onUpdateCondition: (
@@ -170,7 +175,7 @@ function renderGroupEditor(args: {
     updater: (condition: ModuleDefaultFilterCondition) => ModuleDefaultFilterCondition
   ) => void;
 }) {
-  const { group, path, depth, fields, readOnly, onUpdateGroup, onUpdateCondition } = args;
+  const { group, path, depth, fields, sourceModuleSlug, readOnly, onUpdateGroup, onUpdateCondition } = args;
 
   return (
     <div
@@ -203,7 +208,7 @@ function renderGroupEditor(args: {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <ConfigEditor title="Añadir condición" value={createEmptyModuleDefaultFilterCondition()} readOnly={readOnly}
             onChange={next => onUpdateGroup(path, current => ({...current, items: [...current.items, next]}))}>
-            {(draft, update) => <ConditionEditorBody condition={draft} path={[]} fields={fields} readOnly={readOnly}
+            {(draft, update) => <ConditionEditorBody condition={draft} path={[]} fields={fields} sourceModuleSlug={sourceModuleSlug} readOnly={readOnly}
               onUpdateCondition={(_, change) => update(change(draft))} canMoveUp={false} canMoveDown={false}
               onMoveUp={() => {}} onMoveDown={() => {}} onRemove={() => {}} />}
           </ConfigEditor>
@@ -257,6 +262,7 @@ function renderGroupEditor(args: {
                     path: itemPath,
                     depth: depth + 1,
                     fields,
+                    sourceModuleSlug,
                     readOnly,
                     onUpdateGroup,
                     onUpdateCondition,
@@ -273,6 +279,7 @@ function renderGroupEditor(args: {
               condition={item}
               path={itemPath}
               fields={fields}
+              sourceModuleSlug={sourceModuleSlug}
               readOnly={readOnly}
               onUpdateCondition={onUpdateCondition}
               {...controls}
@@ -288,6 +295,7 @@ function ConditionEditorBody(props: {
   condition: ModuleDefaultFilterCondition;
   path: number[];
   fields: FieldOption[];
+  sourceModuleSlug?: string;
   readOnly?: boolean;
   onUpdateCondition: (
     path: number[],
@@ -335,21 +343,13 @@ function ConditionEditorBody(props: {
         <div className={styles.grid}>
           <div>
             <label className={styles.label}>Campo</label>
-            <select
-              className={styles.input}
-              value={condition.field}
-              disabled={readOnly}
-              onChange={(event) => {
-                const nextField = fields.find((field) => field.name === event.target.value);
-                update({ field: event.target.value, valueType: inferLiteralType(nextField?.type) });
-              }}
-            >
+            {props.sourceModuleSlug ? <RelatedFieldSelector sourceModuleSlug={props.sourceModuleSlug} value={condition.field}
+              disabled={readOnly} onChange={(field) => update({ field })} /> : null}
+            <select className={styles.input} value={typeof condition.field === "string" ? condition.field : condition.field.field} disabled={readOnly}
+              style={props.sourceModuleSlug ? { display: "none" } : undefined}
+              onChange={(event) => update({ field: event.target.value })}>
               <option value="">Selecciona un campo de la tabla</option>
-              {buildFieldOptions(fields, condition.field).map((field) => (
-                <option key={field.name} value={field.name}>
-                  {field.label || field.name}
-                </option>
-              ))}
+              {fields.map((field) => <option key={field.name} value={field.name}>{field.label || field.name}</option>)}
             </select>
           </div>
 
@@ -639,7 +639,7 @@ export default function ModuleDefaultFiltersBuilder(props: Props) {
 
 function ConditionEditor(props: React.ComponentProps<typeof ConditionEditorBody>) {
  return <div className="d-flex align-items-center gap-2">
- <ConfigEditor title={props.condition.field || "Condición"} summary={props.condition.op + " " + JSON.stringify(props.condition.value ?? "")}
+ <ConfigEditor title={formatFieldRefPath(props.condition.field) || "Condición"} summary={props.condition.op + " " + JSON.stringify(props.condition.value ?? "")}
  value={props.condition} readOnly={props.readOnly} onChange={next => props.onUpdateCondition(props.path, () => next)}>
  {(draft, update) => <ConditionEditorBody {...props} condition={draft} onUpdateCondition={(_, change) => update(change(draft))} />}
  </ConfigEditor>

@@ -17,17 +17,24 @@ export function configuredPermission(envName: string, fallback: string) {
 }
 
 export function hasPermission(ctx: CurrentUserContext, permission: string) {
-  const [moduleName, action = "ver"] = permission.split(".");
+  const { moduleName, action } = splitPermission(permission);
   return permissionGranted(
     ctx.permissions ?? effectivePermissions(ctx.role?.perms),
-    moduleName!,
+    moduleName,
     action,
   );
 }
 
+function splitPermission(permission: string) {
+  const dotIndex = permission.indexOf(".");
+  return dotIndex === -1
+    ? { moduleName: permission, action: "ver" }
+    : { moduleName: permission.slice(0, dotIndex), action: permission.slice(dotIndex + 1) };
+}
+
 export async function requirePermission(permission: string) {
   const ctx = await requireUser();
-  const [moduleName, actionRaw = "ver"] = permission.split(".");
+  const { moduleName, action: actionRaw } = splitPermission(permission);
   const action = normalizePermissionAction(actionRaw);
   const permissionMatched = hasPermission(ctx, permission);
 

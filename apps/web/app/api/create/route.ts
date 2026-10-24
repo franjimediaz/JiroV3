@@ -1,3 +1,4 @@
+import { buildPersistablePayload } from "@/lib/modules/buildPersistablePayload";
 import { NextResponse } from "next/server";
 import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
 import { requireModulePermission } from "@/lib/auth/requireModulePermission";
@@ -5,12 +6,12 @@ import { handleApiError } from "@/lib/auth/handleApiError";
 import { ApiError, badRequest, forbidden } from "@/lib/auth/apiError";
 import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
 import { shouldAuditEvent } from "@/lib/audit/shouldAuditEvent";
-import { moduleCapabilityEnabled, normalizeEmptyRelations } from "@repo/types";
+import { moduleCapabilityEnabled } from "@repo/types";
 
 type Body = {
   moduleSlug?: string;
   table?: string;
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
 };
 
 export async function POST(req: Request) {
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
     if (!moduleSlug && !legacyTable) {
       throw badRequest("Falta 'moduleSlug'");
     }
-    if (!payload || typeof payload !== "object") {
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
       throw badRequest("Falta 'data' (object)");
     }
 
@@ -55,37 +56,12 @@ export async function POST(req: Request) {
     const { supabase } = ctx;
     actorUserId = ctx.user.id;
 
-    const allowedFields = new Set(
-      (resolved.schema.fields || [])
-        .filter((field) => field.virtual !== true)
-        .map((field) => field.name)
-    );
-    const unknownFields = Object.keys(payload).filter(
-      (key) => !allowedFields.has(key) && key !== resolved.primaryKey && key !== "id"
-    );
-    const serverControlledFields = [
-      "tenant_id",
-      "organization_id",
-      "created_by",
-      "updated_by",
-      "owner_id",
-      "role_id",
-      "is_admin",
-      "created_at",
-      "updated_at",
-    ];
-    const controlledFields = Object.keys(payload).filter((key) => serverControlledFields.includes(key));
-    auditFieldNames = Object.keys(payload).sort();
-    if (unknownFields.length > 0) {
-      throw badRequest(`Campos no declarados en schema: ${unknownFields.join(", ")}`);
-    }
-    if (controlledFields.length > 0) {
-      throw badRequest(`Campos controlados por servidor no permitidos: ${controlledFields.join(", ")}`);
-    }
+    const persistable = buildPersistablePayload(resolved.schema, payload, { operation: "create", primaryKey: resolved.primaryKey });
+    auditFieldNames = Object.keys(persistable).sort();
 
     const { data: created, error } = await supabase
       .from(resolved.table)
-      .insert(normalizeEmptyRelations(resolved.schema.fields || [], payload))
+      .insert(persistable)
       .select("*")
       .single();
 
@@ -116,7 +92,7 @@ export async function POST(req: Request) {
       record: created,
       legacyTableAccepted: !!legacyTable && !moduleSlug,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     if (shouldAudit) await writeAuditEvent({
       actorUserId,
       module: auditModule || moduleSlugForLog || null,

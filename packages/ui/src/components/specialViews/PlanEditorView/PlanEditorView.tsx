@@ -569,8 +569,11 @@ export default function PlanEditorView({ config, value, mode, dataProvider, reco
   );
 }
 
-function getExportSubtitle(field: string | undefined, record: Record<string, unknown> | undefined) {
+function getExportSubtitle(field: import("@repo/types").FieldRefLike | undefined, record: Record<string, unknown> | undefined) {
   if (!field || !record) return "";
-  const value = record[field];
+  const ref = typeof field === "string" ? { field, relations: [] as string[] } : { field: field.field, relations: field.relations || [] };
+  let current: unknown = record;
+  for (const relation of ref.relations) current = current && typeof current === "object" ? (current as Record<string, unknown>)[relation] : undefined;
+  const value = current && typeof current === "object" ? (current as Record<string, unknown>)[ref.field] : undefined;
   return value === null || value === undefined ? "" : String(value);
 }

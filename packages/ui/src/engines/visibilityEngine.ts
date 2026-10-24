@@ -1,4 +1,4 @@
-import type { Field, ModuleSchema, VisibilityConfig, VisibilityOperator, VisibilityRule } from "@repo/types";
+import { getFieldRefValue, normalizeFieldRef, type Field, type ModuleSchema, type VisibilityConfig, type VisibilityOperator, type VisibilityRule } from "@repo/types";
 
 type FormValues = Record<string, any>;
 type RelatedRecordsByField = Record<string, any>;
@@ -80,7 +80,14 @@ export function getRuleLeftValue(
   values: FormValues,
   relatedRecordsByField: RelatedRecordsByField
 ): any {
-  if (rule.source === "currentRecord") return values?.[rule.field];
+  const configured = normalizeFieldRef(rule.field);
+  if (configured.relations.length || rule.source !== "relatedRecord") {
+    let hydrated: Record<string, any> = values;
+    if (configured.relations.length) {
+      hydrated = { ...values, [configured.relations[0]!]: relatedRecordsByField?.[configured.relations[0]!] };
+    }
+    return getFieldRefValue(hydrated, configured);
+  }
 
   const relationField = String(rule.relationField || "").trim();
   const relatedField = String(rule.relatedField || "").trim();

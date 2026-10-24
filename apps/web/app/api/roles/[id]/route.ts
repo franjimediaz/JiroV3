@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import type { PermisosPorModulo } from "@repo/types";
+import { isRolePermissions, type RolePermissions } from "@repo/types";
 
 // Helper: sacar el id del pathname directamente
 function getIdFromUrl(req: Request): string | null {
@@ -54,7 +54,7 @@ export async function GET(req: Request) {
     );
   }
 
-  const permisos: PermisosPorModulo = (data.perms as any) ?? {};
+  const permisos: RolePermissions = (data.perms as any) ?? {};
 
   return NextResponse.json({
     ok: true,
@@ -81,10 +81,14 @@ export async function PUT(req: Request) {
     );
   }
 
+  if (!isRolePermissions(body?.perms)) {
+    return NextResponse.json({ ok: false, detail: "Permisos invalidos" }, { status: 400 });
+  }
+
   const { title, slug, perms } = body as {
     title: string;
     slug: string;
-    perms: PermisosPorModulo;
+    perms: RolePermissions;
   };
 
   const { data, error } = await supabase
@@ -118,7 +122,7 @@ export async function PUT(req: Request) {
     );
   }
 
-  const permisosOut: PermisosPorModulo = (data.perms as any) ?? {};
+  const permisosOut: RolePermissions = (data.perms as any) ?? {};
 
   return NextResponse.json({
     ok: true,

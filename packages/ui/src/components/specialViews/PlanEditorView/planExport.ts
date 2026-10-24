@@ -59,12 +59,32 @@ export function getMetadataLines(fields: PlanEditorOptions["export"] extends inf
     .map((item) => {
       if (!item || typeof item !== "object") return "";
       const label = "label" in item ? String(item.label || "").trim() : "";
-      const field = "field" in item ? String(item.field || "").trim() : "";
+      const field = "field" in item ? item.field : undefined;
       if (!label || !field) return "";
-      const value = record[field];
+      const value = readFieldRefValue(record, field);
       return `${label}: ${value === null || value === undefined ? "" : String(value)}`;
     })
     .filter(Boolean);
+}
+
+function readFieldRefValue(record: Record<string, unknown>, ref: unknown): unknown {
+  if (typeof ref === "string") return record[ref];
+  if (!ref || typeof ref !== "object") return undefined;
+  const candidate = ref as { field?: unknown; relation?: unknown; relations?: unknown };
+  if (typeof candidate.field !== "string" || !candidate.field) return undefined;
+  const relations = Array.isArray(candidate.relations)
+    ? candidate.relations.filter((item): item is string => typeof item === "string" && Boolean(item))
+    : typeof candidate.relation === "string" && candidate.relation
+      ? [candidate.relation]
+      : [];
+  let current: unknown = record;
+  for (const relation of relations) {
+    if (!current || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[relation];
+  }
+  return current && typeof current === "object"
+    ? (current as Record<string, unknown>)[candidate.field]
+    : undefined;
 }
 
 function captureStage(stage: Konva.Stage, includeGrid: boolean) {

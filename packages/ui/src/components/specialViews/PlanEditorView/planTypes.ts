@@ -1,4 +1,4 @@
-import type { QueryFilter, QuerySort } from "@repo/types";
+import type { FieldRefLike, QueryFilter, QuerySort } from "@repo/types";
 
 export type PlanTool = "select" | "line" | "rect" | "text" | "symbol" | "block" | "polygon" | "measure" | "pan";
 
@@ -181,15 +181,15 @@ export type PlanDynamicSourceConfig = {
   moduleSlug?: string;
   table?: string;
   valueField?: string;
-  labelField?: string;
-  displayField?: string;
-  iconField?: string;
-  colorField?: string;
-  categoryField?: string;
-  typeField?: string;
-  orderField?: string;
-  lockedField?: string;
-  visibleField?: string;
+  labelField?: FieldRefLike;
+  displayField?: FieldRefLike;
+  iconField?: FieldRefLike;
+  colorField?: FieldRefLike;
+  categoryField?: FieldRefLike;
+  typeField?: FieldRefLike;
+  orderField?: FieldRefLike;
+  lockedField?: FieldRefLike;
+  visibleField?: FieldRefLike;
   filters?: QueryFilter[];
   sort?: QuerySort[];
 };
@@ -199,7 +199,7 @@ export type PlanLinkTargetConfig = {
   moduleSlug: string;
   table?: string;
   valueField?: string;
-  displayField?: string;
+  displayField?: FieldRefLike;
   filters?: QueryFilter[];
   sort?: QuerySort[];
 };
@@ -250,7 +250,7 @@ export type PlanBlockDefinition = {
 
 export type PlanEditorOptions = Partial<Pick<PlanCanvasConfig, "width" | "height" | "unit" | "scale">> & {
   exportTitle?: string;
-  exportSubtitleField?: string;
+  exportSubtitleField?: FieldRefLike;
   grid?: Partial<PlanGridConfig>;
   background?: Partial<PlanBackgroundConfig> & {
     uploader?: PlanBackgroundUploaderConfig;
@@ -259,15 +259,15 @@ export type PlanEditorOptions = Partial<Pick<PlanCanvasConfig, "width" | "height
     includeGrid?: boolean;
     includeLayerLegend?: boolean;
     pageOrientation?: "portrait" | "landscape";
-    metadataFields?: Array<{ label: string; field: string }>;
+    metadataFields?: Array<{ label: string; field: FieldRefLike }>;
   };
   clipboard?: {
     pasteIntoActiveLayer?: boolean;
     pasteOffset?: { x?: number; y?: number };
   };
   templatesSource?: PlanDynamicSourceConfig & {
-    descriptionField?: string;
-    planJsonField?: string;
+    descriptionField?: FieldRefLike;
+    planJsonField?: FieldRefLike;
   };
   templates?: {
     applyMode?: "replace" | "insert";
@@ -275,8 +275,8 @@ export type PlanEditorOptions = Partial<Pick<PlanCanvasConfig, "width" | "height
     mergeLayersByName?: boolean;
   };
   blocksSource?: PlanDynamicSourceConfig & {
-    descriptionField?: string;
-    blockJsonField?: string;
+    descriptionField?: FieldRefLike;
+    blockJsonField?: FieldRefLike;
   };
   blocks?: {
     insertIntoActiveLayer?: boolean;
