@@ -1,0 +1,67 @@
+{
+  "source": {
+    "parentTable": "works"
+  },
+  "target": {
+    "parentTable": "budgets"
+  },
+  "maps": {
+    "parent": {
+      "title": "name"
+    }
+  },
+  "defaults": {
+    "parent": {
+      "status": "draft"
+    }
+  },
+  "sourceUpdates": {
+    "parent": {
+      "budget_generated": true
+    }
+  },
+  "children": [
+    {
+      "sourceTable": "tasks",
+      "sourceFkToParent": "work_id",
+      "targetTable": "budget_tasks",
+      "targetFkToParent": "budget_id",
+      "map": {
+        "title": "title",
+        "serviceName": {
+          "relations": ["service"],
+          "field": "name"
+        }
+      },
+      "defaults": {
+        "status": "pending"
+      },
+      "filters": {
+        "match": "all",
+        "conditions": [
+          {
+            "field": "enabled",
+            "op": "=",
+            "value": true
+          }
+        ]
+      },
+      "sourceUpdates": {
+        "budgeted": true
+      }
+    },
+    {
+      "sourceTable": "materials",
+      "sourceFkToParent": "work_id",
+      "targetTable": "budget_materials",
+      "targetFkToParent": "budget_id",
+      "map": {
+        "description": "description",
+        "quantity": "quantity"
+      }
+    }
+  ],
+  "contractExtension": {
+    "retained": true
+  }
+}

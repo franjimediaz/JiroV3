@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { createSourceLoader } from "./helpers/dashboard-fixtures.mjs";
 
 const load = createSourceLoader();
@@ -74,20 +75,52 @@ test("copyRelated persists only its recursive contract and retains literal defau
   assert.ok(out.disabledWhen);
 });
 
-test("derive converts legacy child aliases and preserves idempotency and source updates", () => {
+test("derive preserves legacy child aliases, extensions, idempotency and source updates", () => {
   const input = { kind: "derive", source: { parentTable: "parents", parentIdTemplate: "{{id}}", children: { table: "children", fkToParent: "parent_id" } },
     target: { parentTable: "copies", children: { table: "child_copies", fkToParent: "copy_id" } },
     maps: { parent: { name: "title" }, child: { name: "name" } }, defaults: { parent: { name: "" }, child: { blank: "" } },
     sourceUpdates: { parent: { processed: true }, child: { copied: true } }, idempotency: { targetField: "source_id", valueTemplate: "{{id}}" },
   };
   const out = serializeFormAction({ type: "workflow", workflowKey: "derive.createFromParent", input }).input;
-  assert.deepEqual(out.source, { parentTable: "parents" });
-  assert.deepEqual(out.maps, { parent: input.maps.parent });
-  assert.deepEqual(out.children[0].sourceUpdates, { copied: true });
-  assert.deepEqual(out.children[0].defaults, { blank: "" });
+  assert.deepEqual(out.source, input.source);
+  assert.deepEqual(out.maps, input.maps);
+  assert.equal(out.kind, "derive");
+  assert.deepEqual(out.sourceUpdates, input.sourceUpdates);
   assert.deepEqual(out.idempotency, input.idempotency);
   const helpers = load("apps/web/lib/workflows/deriveHelpers.ts");
   assert.deepEqual(helpers.normalizeChildren(out), helpers.normalizeChildren(input));
+});
+
+test("golden legacy module survives normalize, unrelated edit, save and reload semantically", () => {
+  const fixture = JSON.parse(readFileSync("scripts/fixtures/legacy-module-before-fieldrefs.golden.json", "utf8"));
+  const runtime = normalize(fixture);
+  const edited = { ...runtime, ui: { ...runtime.ui, color: "#123456" } };
+  const saved = json(serialize(edited));
+  const reloaded = normalize(saved);
+  const customer = saved.fields.find(field => field.name === "customer");
+  assert.equal(customer.ref.displayField, "name");
+  assert.equal(customer.ref.styleColorField, "color");
+  assert.equal(customer.ref.filters.items[0].field, "active");
+  assert.equal(customer.ref.sort[0].field, "name");
+  const formula = saved.fields.find(field => field.name === "computed_total").compute;
+  assert.deepEqual(formula.deps, ["quantity", "price"]);
+  assert.equal(formula.dependencies, undefined);
+  const reverse = saved.fields.find(field => field.name === "children");
+  assert.equal(reverse.ref.foreignKey, "task_id");
+  assert.equal(reverse.ref.parentKey, "id");
+  assert.equal(reverse.ref.filters.items[0].field, "active");
+  const action = saved.ui.formActions[0];
+  assert.equal(action.input.customLegacyFlag, "keep-me");
+  assert.deepEqual(action.input.source.children, fixture.ui.formActions[0].input.source.children);
+  assert.equal(action.input.maps.child.title, "title");
+  const calendar = reloaded.ui.tabs.find(tab => tab.type === "calendar");
+  const tree = reloaded.ui.tabs.find(tab => tab.type === "treeview");
+  assert.equal(calendar.config.titleField, "title");
+  assert.equal(calendar.config.startField, "starts_at");
+  assert.equal(tree.config.grouping.groupByField, "status");
+  assert.equal(tree.config.columns[0].field, "title");
+  assert.equal(tree.config.totals.sumField, "amount");
+  assert.deepEqual(json(serialize(reloaded)), saved);
 });
 
 test("discriminant changes discard old input but keep common presentation and unchanged extensions", () => {

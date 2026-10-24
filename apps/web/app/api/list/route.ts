@@ -11,7 +11,7 @@ import { handleApiError } from "@/lib/auth/handleApiError";
 import { compileAdvancedFilters, defaultFilterExpression, filterIdentifier } from "@/lib/advancedFilters";
 import { badRequest, forbidden } from "@/lib/auth/apiError";
 import { getEffectiveModuleCapabilities } from "@repo/types";
-import { applyFieldRefFilters, applyFieldRefSort, buildFieldRefSelect, collectFieldRefFilterGroupInputs, collectQueryFieldRefInputs, compileFieldRefFilterGroup } from "@/lib/fields/fieldRefQuery";
+import { applyFieldRefFilters, applyFieldRefSort, buildFieldRefSelect, buildModuleDefaultFilterQueryPlan, collectFieldRefFilterGroupInputs, collectQueryFieldRefInputs } from "@/lib/fields/fieldRefQuery";
 import { resolveFieldRefs } from "@/lib/fields/resolveFieldRef";
 
 type ListFilter = QueryFilter;
@@ -131,25 +131,20 @@ export async function POST(req: Request) {
     const filterRefs = queryFilters
       .map(filter => resolvedByKey.get(fieldRefKey(filter.field)))
       .filter(Boolean) as typeof resolvedFieldRefs;
-    const compiledDefaults = defaultFilters.canQueryDirectly
-      ? undefined
-      : compileFieldRefFilterGroup(defaultFilters.group, resolvedFieldRefs);
+    const defaultFilterPlan = buildModuleDefaultFilterQueryPlan(defaultFilters, resolvedFieldRefs);
     const relationSelect = buildFieldRefSelect(projectionRefs, filterRefs);
-    const select = ["*", ...relationSelect, ...(compiled?.embeds.map(embed => embed.select) || []), ...(compiledDefaults?.embeds.map(embed => embed.select) || [])].join(",");
+    const select = ["*", ...relationSelect, ...(compiled?.embeds.map(embed => embed.select) || []), ...defaultFilterPlan.selects].join(",");
     let q = advanced
       ? supabase.from(tableName).select(select, { count: "exact" })
       : supabase.from(tableName).select(select);
     if (compiled) {
       for (const embed of compiled.embeds) q = q.or(embed.expression, { referencedTable: embed.alias });
-      for (const embed of compiledDefaults?.embeds || []) q = q.or(embed.expression, { referencedTable: embed.alias });
-      const defaultExpression = compiledDefaults?.expression || defaultFilterExpression(defaultFilters.group, props);
+      for (const embed of defaultFilterPlan.embeds) q = q.or(embed.expression, { referencedTable: embed.alias });
+      const defaultExpression = defaultFilterPlan.expression || defaultFilterExpression(defaultFilters.group, props);
       const expressions = [compiled.expression, defaultExpression].filter(Boolean);
       if (expressions.length) q = q.or(`and(${expressions.join(",")})`);
-    } else if (compiledDefaults) {
-      for (const embed of compiledDefaults.embeds) q = q.or(embed.expression, { referencedTable: embed.alias });
-      if (compiledDefaults.expression) q = q.or(compiledDefaults.expression);
-    } else if (defaultFilters.canQueryDirectly) {
-      q = applyFieldRefFilters(q, defaultFilters.filters as QueryFilter[], resolvedFieldRefs);
+    } else {
+      q = defaultFilterPlan.apply(q);
     }
 
     if (bodyFilters.length > 0) {

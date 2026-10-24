@@ -607,12 +607,14 @@ export type TreeViewConfig = {
 
 export type TreeViewQuery = {
   table: string;
+  moduleSlug?: string;
   select: string[];
+  fieldRefs?: FieldRefLike[];
   filters?: Array<
-    | { op: "eq"; field: string; value: any }
-    | { op: "in"; field: string; value: any[] }
+    | { op: "eq"; field: FieldRefLike; value: any }
+    | { op: "in"; field: FieldRefLike; value: any[] }
   >;
-  orderBy?: { field: string; ascending?: boolean };
+  orderBy?: { field: FieldRefLike; ascending?: boolean };
 };
 
 export type LookupQuery = {

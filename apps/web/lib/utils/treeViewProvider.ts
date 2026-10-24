@@ -2,7 +2,7 @@
 // ✅ Esto va en tu APP (no en @repo/ui). Aquí sí puedes usar Supabase o fetch.
 
 import { createClient } from "@/lib/supabase/client";
-import type { FieldRefLike } from "@repo/types";
+import { normalizeFieldRef, type FieldRefLike } from "@repo/types";
 
 type TreeViewQuery = {
   table: string;
@@ -40,15 +40,19 @@ function applyFilters(q: any, filters?: TreeViewQuery["filters"]) {
   if (!filters?.length) return q;
 
   for (const f of filters) {
+    const normalized = normalizeFieldRef(f.field);
+    if (normalized.relations.length) {
+      throw new Error("TreeView necesita moduleSlug para filtrar por campos relacionados");
+    }
     if (f.op === "eq") {
       // evita filtrar por undefined
       if (f.value === undefined) continue;
-      q = q.eq(f.field, f.value);
+      q = q.eq(normalized.field, f.value);
     }
 
     if (f.op === "in") {
       if (!Array.isArray(f.value) || f.value.length === 0) continue;
-      q = q.in(f.field, f.value);
+      q = q.in(normalized.field, f.value);
     }
   }
   return q;
@@ -81,8 +85,12 @@ export function createSupabaseTreeViewProvider(): TreeViewDataProvider {
 
       q = applyFilters(q, filters);
 
-      if (orderBy?.field && typeof orderBy.field === "string") {
-        q = q.order(orderBy.field, { ascending: orderBy.ascending ?? true });
+      if (orderBy?.field) {
+        const normalizedOrder = normalizeFieldRef(orderBy.field);
+        if (normalizedOrder.relations.length) {
+          throw new Error("TreeView necesita moduleSlug para ordenar por campos relacionados");
+        }
+        q = q.order(normalizedOrder.field, { ascending: orderBy.ascending ?? true });
       }
 
       const { data, error } = await q;

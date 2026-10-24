@@ -4,7 +4,7 @@ import { ConfigEditor, ConfigSession } from "./ConfigEditor";
 import React, { useMemo, useState, useEffect } from "react";
 import Selector from "../components/fields/Selector";
 import RelatedFieldSelector from "../components/fields/RelatedFieldSelector";
-import { serializeFieldRef, type Field as FieldSchema, type FieldRefLike, type VisibilityConfig } from "@repo/types";
+import { formatFieldRefPath, serializeFieldRef, type Field as FieldSchema, type FieldRefLike, type VisibilityConfig } from "@repo/types";
 import { VisibilityConfigEditor } from "./FieldRow";
 import { WORKFLOW_CATALOG, updateFormActionConfig } from "@repo/types";
 import CopyRelatedWorkflowEditor, { WorkflowJsonEditor } from "./CopyRelatedWorkflowEditor";
@@ -30,14 +30,14 @@ export type DeriveChildSpec = {
   sourceFkToParent: string;
   targetTable: string;
   targetFkToParent: string;
-  map?: Record<string, string>;
+  map?: Record<string, FieldRefLike>;
   defaults?: Record<string, any>;
   filters?: DeriveFiltersGroup;
   sourceUpdates?: Record<string, any>;
 };
 
 export type DeriveFilterCondition = {
-  field: string;
+  field: FieldRefLike;
   op: "=" | "!=" | ">" | ">=" | "<" | "<=" | "in" | "not_in" | "contains" | "is_null" | "not_null";
   value?: any;
 };
@@ -67,9 +67,9 @@ type DeriveWorkflowInput = {
     };
   };
   maps: {
-    parent?: Record<string, string>; // destField -> srcField
+    parent?: Record<string, FieldRefLike>; // destField -> srcField
     // legacy para 1 hijo (se usará como child[0].map si existe)
-    child?: Record<string, string>;
+    child?: Record<string, FieldRefLike>;
   };
   defaults?: {
     parent?: Record<string, any>;
@@ -200,7 +200,7 @@ function normalizeFilterCondition(x: any): DeriveFilterCondition {
   const obj = x && typeof x === "object" ? x : {};
   const op = String(obj.op || "=") as DeriveFilterCondition["op"];
   return {
-    field: String(obj.field || ""),
+    field: typeof obj.field === "string" ? obj.field : serializeFieldRef(obj.field),
     op,
     value: obj.value,
   };
@@ -837,8 +837,8 @@ function pairsToMap(pairs: Array<{ dest: string; src: FieldRefLike }>) {
   const out: Record<string, FieldRefLike> = {};
   for (const p of pairs) {
     const d = p.dest?.trim();
-    const s = serializeFieldRef(p.src);
-    if (!d || !s) continue;
+    const s = typeof p.src === "string" ? p.src.trim() : serializeFieldRef(p.src);
+    if (!d || !(typeof s === "string" ? s : s.field)) continue;
     out[d] = s;
   }
   return out;
@@ -988,7 +988,7 @@ function coerceEditorValue(raw: string) {
   return raw;
 }
 
-function normalizeConditionRows(value: DeriveFiltersGroup | undefined): Array<{ field: string; op: DeriveFilterCondition["op"]; val: string }> {
+function normalizeConditionRows(value: DeriveFiltersGroup | undefined): Array<{ field: FieldRefLike; op: DeriveFilterCondition["op"]; val: string }> {
   const conditions = Array.isArray(value?.conditions) ? value.conditions : [];
   return conditions.map((item) => {
     const cond = normalizeFilterCondition(item);
@@ -1000,11 +1000,11 @@ function normalizeConditionRows(value: DeriveFiltersGroup | undefined): Array<{ 
   });
 }
 
-function conditionRowsToRules(rows: Array<{ field: string; op: DeriveFilterCondition["op"]; val: string }>) {
+function conditionRowsToRules(rows: Array<{ field: FieldRefLike; op: DeriveFilterCondition["op"]; val: string }>) {
   return rows
     .map((row) => {
-      const field = row.field.trim();
-      if (!field) return null;
+      const field = typeof row.field === "string" ? row.field.trim() : serializeFieldRef(row.field);
+      if (!(typeof field === "string" ? field : field.field)) return null;
 
       if (row.op === "is_null" || row.op === "not_null") {
         return { field, op: row.op };
@@ -1142,7 +1142,7 @@ function ConditionsEditor({
   }, [JSON.stringify(value)]);
 
   const commit = (
-    nextRows: Array<{ field: string; op: DeriveFilterCondition["op"]; val: string }>,
+    nextRows: Array<{ field: FieldRefLike; op: DeriveFilterCondition["op"]; val: string }>,
     nextMatch = match
   ) => {
     setRows(nextRows);
@@ -1173,7 +1173,7 @@ function ConditionsEditor({
             <option value="any">O (cualquiera)</option>
           </select>
 
-          <ConfigEditor<{field: string; op: DeriveFilterCondition["op"]; val: string}> title="Añadir condición" value={{field: "", op: "=", val: ""}}
+          <ConfigEditor<{field: FieldRefLike; op: DeriveFilterCondition["op"]; val: string}> title="Añadir condición" value={{field: "", op: "=", val: ""}}
             readOnly={readOnly} onChange={next => commit([...rows, next])}>
             {(draft, update) => <WorkflowConditionEditor r={draft} onChange={update} fields={fields} label={label} styles={styles} readOnly={readOnly} />}
           </ConfigEditor>
@@ -1187,7 +1187,7 @@ function ConditionsEditor({
       )}
 
       {rows.map((r, i) => <div key={i} className="d-flex align-items-center gap-2">
-        <ConfigEditor title={r.field || "Condición"} summary={r.op + ' ' + r.val} value={r} readOnly={readOnly} onChange={next => updateRow(i, next)}>
+        <ConfigEditor title={formatFieldRefPath(r.field) || "Condición"} summary={r.op + ' ' + r.val} value={r} readOnly={readOnly} onChange={next => updateRow(i, next)}>
           {(draft, update) => <WorkflowConditionEditor r={draft} onChange={update} fields={fields} label={label} styles={styles} readOnly={readOnly} />}
         </ConfigEditor>
         <button type="button" className={styles.btnDel} onClick={() => removeRow(i)} disabled={readOnly}>Eliminar</button>
@@ -1541,7 +1541,7 @@ function WorkflowDeriveEditor({
 
           <FieldMapEditor
             value={input.maps.parent}
-            onChange={(next) => patchInput({ maps: { ...input.maps, parent: (next || {}) as Record<string, string> } })}
+            onChange={(next) => patchInput({ maps: { ...input.maps, parent: next || {} } })}
             readOnly={readOnly}
             styles={styles}
             targetLabel={`Destino (${tp || "—"})`}
@@ -1850,7 +1850,7 @@ function DeriveChildrenEditor({
 
               <FieldMapEditor
                 value={c.map}
-                onChange={(next) => updateChild(i, { map: (next || {}) as Record<string, string> })}
+                onChange={(next) => updateChild(i, { map: next || {} })}
                 readOnly={readOnly}
                 styles={styles}
                 targetLabel={`Destino (${c.targetTable || "—"})`}
@@ -2062,8 +2062,8 @@ function WorkflowInputEditor({
 }
 
 function WorkflowConditionEditor({r, onChange, fields, label, styles, readOnly}: {
- r: {field: string; op: DeriveFilterCondition['op']; val: string};
- onChange: (next: {field: string; op: DeriveFilterCondition['op']; val: string}) => void;
+ r: {field: FieldRefLike; op: DeriveFilterCondition['op']; val: string};
+ onChange: (next: {field: FieldRefLike; op: DeriveFilterCondition['op']; val: string}) => void;
  fields: {name: string; label?: string}[]; label: string; styles: Record<string, string>; readOnly?: boolean;
 }) {
  const needsValue = r.op !== 'is_null' && r.op !== 'not_null';
@@ -2080,7 +2080,7 @@ function WorkflowConditionEditor({r, onChange, fields, label, styles, readOnly}:
           >
             <div>
               <label className={styles.label}>{label}</label>
-              <select className={styles.input} value={r.field} disabled={readOnly} onChange={(e) => updateRow(i, { field: e.target.value })}>
+              <select className={styles.input} value={typeof r.field === "string" ? r.field : r.field.field} disabled={readOnly} onChange={(e) => updateRow(i, { field: e.target.value })}>
                 <option value="">— Selecciona campo —</option>
                 {fields.map((f) => (
                   <option key={f.name} value={f.name}>

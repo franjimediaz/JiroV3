@@ -22,6 +22,7 @@ const fieldRefs = load("packages/types/fieldRefs.ts");
 const moduleDefaultFilters = load("packages/types/moduleDefaultFilters.ts", { "./fieldRefs": fieldRefs });
 const selectorTableFilters = load("packages/types/selectorTableFilters.ts", { "./fieldRefs": fieldRefs });
 const metadata = {
+  ...fieldRefs,
   ...load("packages/types/workflows.ts"),
   ...load("packages/types/serializeModuleSchema.ts", {
     "./normalizeModuleSchema": {},
@@ -30,6 +31,83 @@ const metadata = {
     "./selectorTableFilters": selectorTableFilters,
   }),
 };
+
+function budgetBackend({ tasks, materials = [] } = {}) {
+  const fixture = JSON.parse(read("scripts/fixtures/budget-workflow.golden.json"));
+  const sourceTasks = tasks || Array.from({ length: 5 }, (_, index) => ({
+    id: `task-${index + 1}`,
+    work_id: "work-1",
+    title: `Task ${index + 1}`,
+    enabled: true,
+    service: { name: `Service ${index + 1}` },
+  }));
+  const tables = {
+    works_table: [{ id: "work-1", name: "Real work", budget_generated: false }],
+    budgets_table: [],
+    tasks_table: structuredClone(sourceTasks),
+    budget_tasks_table: [],
+    materials_table: structuredClone(materials),
+    budget_materials_table: [],
+  };
+  const tableByModule = Object.fromEntries(Object.keys(tables).map(table => [table.replace(/_table$/, ""), table]));
+  const inserts = [], selects = [], resolutions = [], updates = [];
+  const client = { from(table) {
+    let filters = [];
+    const matching = () => tables[table].filter(row => filters.every(([field, value]) => row[field] === value));
+    const query = {
+      select(columns) { selects.push({ table, columns }); return query; },
+      eq(field, value) { filters.push([field, value]); return query; },
+      maybeSingle: async () => ({ data: matching()[0] || null, error: null }),
+      then(success, failure) { return Promise.resolve({ data: matching(), error: null }).then(success, failure); },
+      insert(payload) {
+        const rows = (Array.isArray(payload) ? payload : [payload]).map((row, index) => ({
+          id: row.id || `${table}-${tables[table].length + index + 1}`,
+          ...row,
+        }));
+        inserts.push({ table, rows: structuredClone(rows) });
+        tables[table].push(...rows);
+        const response = { data: rows, error: null };
+        return {
+          then(success, failure) { return Promise.resolve(response).then(success, failure); },
+          select() { return { single: async () => ({ data: rows[0], error: null }) }; },
+        };
+      },
+      update(patch) {
+        return { in: async (field, ids) => {
+          const rows = tables[table].filter(row => ids.includes(row[field]));
+          rows.forEach(row => Object.assign(row, patch));
+          updates.push({ table, ids: [...ids], patch: structuredClone(patch) });
+          return { error: null };
+        } };
+      },
+    };
+    return query;
+  } };
+  const helpers = load("apps/web/lib/workflows/deriveHelpers.ts", { "@repo/types": metadata });
+  const executor = load("apps/web/lib/workflows/executeDeriveWorkflow.ts", {
+    "@repo/types": metadata,
+    "@/lib/supabase/server": { createClient: async () => client },
+    "@/lib/fields/fieldRefQuery": { buildFieldRefSelect: () => ["service:services!service(name)"] },
+    "@/lib/fields/resolveFieldRef": { resolveFieldRefs: async (moduleSlug, refs) => {
+      resolutions.push({ moduleSlug, refs });
+      return refs.map(ref => ({ key: fieldRefs.fieldRefKey(ref), ref: fieldRefs.normalizeFieldRef(ref) }));
+    } },
+    "./deriveHelpers": helpers,
+  });
+  const { budgetGenerateFromTasks } = load("apps/web/lib/workflows/budget.generateFromTasks.ts", {
+    "./slugs": { resolveDbTableFromSlug: async slug => tableByModule[slug] || (() => { throw new Error(`Unknown module ${slug}`); })() },
+    "./executeDeriveWorkflow": executor,
+  });
+  return {
+    fixture,
+    run: (input = fixture) => budgetGenerateFromTasks({ context: { recordId: "work-1" }, input }),
+    tables,
+    inserts,
+    selects,
+    resolutions,
+    updates,
+  };
+}
 const errors = load("apps/web/lib/auth/apiError.ts");
 const common = load("apps/web/lib/validation/common.ts", { "@/lib/auth/apiError": errors });
 const validation = load("apps/web/lib/validation/workflows.ts", { "./common": common, "@/lib/auth/apiError": errors });
@@ -108,6 +186,68 @@ function treeBackend(options = {}) {
     }, ...Object.fromEntries(Object.entries(options).filter(([key]) => key !== "extraTables")),
   });
 }
+
+describe("budget.generateFromTasks regression contract", () => {
+  it("creates one budget and all five source tasks, including a batched related FieldRef map", async () => {
+    const api = budgetBackend({
+      materials: [
+        { id: "material-1", work_id: "work-1", description: "Wood", quantity: 2 },
+        { id: "material-2", work_id: "work-1", description: "Steel", quantity: 3 },
+      ],
+    });
+    const output = await api.run();
+    assert.equal(api.tables.budgets_table.length, 1);
+    assert.equal(api.tables.budget_tasks_table.length, 5);
+    assert.equal(api.tables.budget_materials_table.length, 2);
+    assert.equal(output.meta.createdChildren, 7);
+    assert.deepEqual(output.meta.children.map(({ sourceTable, targetTable, matched, created }) => ({ sourceTable, targetTable, matched, created })), [
+      { sourceTable: "tasks", targetTable: "budget_tasks", matched: 5, created: 5 },
+      { sourceTable: "materials", targetTable: "budget_materials", matched: 2, created: 2 },
+    ]);
+    assert.deepEqual(api.tables.budget_tasks_table.map(row => row.serviceName), [
+      "Service 1", "Service 2", "Service 3", "Service 4", "Service 5",
+    ]);
+    assert.equal(api.selects.filter(call => call.table === "tasks_table").length, 1);
+    assert.match(api.selects.find(call => call.table === "tasks_table").columns, /service/);
+    assert.equal(api.resolutions.length, 1);
+    assert.equal(api.tables.works_table[0].budget_generated, true);
+    assert.ok(api.tables.tasks_table.every(row => row.budgeted === true));
+  });
+
+  it("reports matched and created after applying child filters", async () => {
+    const tasks = Array.from({ length: 5 }, (_, index) => ({
+      id: `task-${index + 1}`,
+      work_id: "work-1",
+      title: `Task ${index + 1}`,
+      enabled: index < 3,
+      service: { name: `Service ${index + 1}` },
+    }));
+    const api = budgetBackend({ tasks });
+    const output = await api.run();
+    assert.deepEqual(output.meta.children.map(({ matched, created }) => ({ matched, created })), [
+      { matched: 3, created: 3 },
+      { matched: 0, created: 0 },
+    ]);
+    assert.equal(api.tables.budget_tasks_table.length, 3);
+  });
+
+  it("keeps the legacy single-child contract and legacy string mappings", async () => {
+    const api = budgetBackend();
+    const legacy = {
+      source: { parentTable: "works", children: { table: "tasks", fkToParent: "work_id" } },
+      target: { parentTable: "budgets", children: { table: "budget_tasks", fkToParent: "budget_id" } },
+      maps: { parent: { title: "name" }, child: { title: "title" } },
+      defaults: { child: { status: "pending" } },
+    };
+    const output = await api.run(legacy);
+    assert.equal(api.tables.budget_tasks_table.length, 5);
+    assert.equal(output.meta.createdChildren, 5);
+    assert.deepEqual(output.meta.children.map(({ matched, created }) => ({ matched, created })), [
+      { matched: 5, created: 5 },
+    ]);
+    assert.equal(api.tables.budget_tasks_table[0].title, "Task 1");
+  });
+});
 
 describe("records.copyRelated children", () => {
   const treeConfig = () => ({ ...config(), children: [childConfig()] });
@@ -483,6 +623,52 @@ describe("workflow actions and editor behavior", () => {
       assert.notEqual(requests[0].headers["Idempotency-Key"], requests[1].headers["Idempotency-Key"]);
       assert.equal("Idempotency-Key" in action, false);
     } finally { globalThis.fetch = originalFetch; }
+  });
+  it("createRelated sends legacy and related FieldRef mappings through the real action payload", async () => {
+    const h = hooks(); const menu = () => {};
+    const creates = [];
+    const { default: Bar } = load("packages/ui/src/ModuloForm/FormActionsBar.tsx", {
+      react: h.react,
+      "../ActionMenu": { ActionMenu: menu },
+      "../engines/computeEngine": {},
+      "../providers/DataProvider": { dataProvider: { create: async (input) => { creates.push(input); return { id: "contact-1" }; } } },
+      "../pdf": {},
+      "../engines/visibilityEngine": { evaluateActionVisibility: () => true },
+      "../utils/createRelatedPayload": load("packages/ui/src/utils/createRelatedPayload.ts"),
+    });
+    const action = {
+      id: "create-contact", label: "Create contact", type: "createRelated",
+      target: { moduleSlug: "contacts" },
+      fieldMap: { legacyTitle: "title", customerName: { relations: ["customer"], field: "name" } },
+      defaults: { active: true }, afterCreate: { navigateTo: "none" },
+    };
+    const props = {
+      schema: { slug: "orders", fields: [] }, mode: "view", values: { id: "order-1", title: "Order A", customer: "customer-1" },
+      relatedRecordsByField: { customer: { name: "ACME" } }, actions: [action],
+    };
+    await findAll(h.render(Bar, props), (node) => node.type === menu)[0].props.items[0].onClick();
+    assert.deepEqual(creates, [{
+      moduleSlug: "contacts", table: undefined,
+      data: { legacyTitle: "Order A", customerName: "ACME", active: true },
+    }]);
+  });
+  it("derive visual helpers preserve legacy strings and related FieldRefs", () => {
+    const h = hooks();
+    const editor = load("packages/ui/src/ModuloForm/UiFormActionsEditor.tsx", {
+      react: h.react, "@repo/types": metadata,
+      "./ConfigEditor": { ConfigSession: () => {}, ConfigEditor: () => {} },
+      "../components/fields/Selector": {}, "./FieldRow": {},
+      "./CopyRelatedWorkflowEditor": {},
+      "../components/fields/RelatedFieldSelector": {},
+    }, "\nexport { pairsToMap, normalizeConditionRows, conditionRowsToRules };\n");
+    const related = { relations: ["service"], field: "name" };
+    assert.deepEqual(editor.pairsToMap([
+      { dest: "title", src: "name" },
+      { dest: "service_name", src: related },
+    ]), { title: "name", service_name: related });
+    const rows = editor.normalizeConditionRows({ match: "all", conditions: [{ field: related, op: "=", value: "A" }] });
+    assert.deepEqual(rows[0].field, related);
+    assert.deepEqual(editor.conditionRowsToRules(rows), [{ field: related, op: "=", value: "A" }]);
   });
   it("unknown legacy workflows keep their selected key and nested input when editing and saving another property", () => {
     const h = hooks(); const raw = () => {};

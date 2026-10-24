@@ -1,6 +1,12 @@
 // lib/workflows/deriveHelpers.ts
+import {
+  getFieldRefValue,
+  normalizeFieldRef,
+  type FieldRefLike,
+} from "@repo/types";
+
 export type DeriveFilterCondition = {
-  field: string;
+  field: FieldRefLike;
   op: "=" | "!=" | ">" | ">=" | "<" | "<=" | "in" | "not_in" | "contains" | "is_null" | "not_null";
   value?: any;
 };
@@ -10,7 +16,7 @@ export type DeriveChildSpec = {
   sourceFkToParent: string;
   targetTable: string;
   targetFkToParent: string;
-  map?: Record<string, string>;
+  map?: Record<string, FieldRefLike>;
   defaults?: Record<string, any>;
   filters?: DeriveFiltersGroup;
   sourceUpdates?: Record<string, any>;
@@ -38,8 +44,8 @@ export type DeriveInput = {
     };
   };
   maps?: {
-    parent?: Record<string, string>;
-    child?: Record<string, string>;
+    parent?: Record<string, FieldRefLike>;
+    child?: Record<string, FieldRefLike>;
   };
   defaults?: {
     parent?: Record<string, any>;
@@ -135,7 +141,9 @@ export function normalizeChildSpec(child: any): DeriveChildSpec {
 
 export function normalizeFilterCondition(condition: any): DeriveFilterCondition {
   return {
-    field: String(condition?.field || ""),
+    field: typeof condition?.field === "string"
+      ? condition.field.trim()
+      : normalizeFieldRef(condition?.field),
     op: String(condition?.op || "=") as DeriveFilterCondition["op"],
     value: condition?.value,
   };
@@ -163,14 +171,18 @@ export function applyMapAndDefaults({
   defaults,
 }: {
   sourceRow: any;
-  map?: Record<string, string>;
+  map?: Record<string, FieldRefLike>;
   defaults?: Record<string, any>;
 }) {
   const out: any = { ...(defaults || {}) };
   for (const [dest, src] of Object.entries(map || {})) {
-    out[dest] = sourceRow?.[src];
+    out[dest] = resolveMappingSourceValue(sourceRow, src);
   }
   return out;
+}
+
+export function resolveMappingSourceValue(sourceRow: unknown, source: FieldRefLike) {
+  return getFieldRefValue(sourceRow, source);
 }
 
 export function rowMatchesFilters(row: any, filters?: DeriveFiltersGroup | DeriveFilterCondition[]) {
@@ -185,10 +197,10 @@ export function rowMatchesFilters(row: any, filters?: DeriveFiltersGroup | Deriv
 }
 
 function matchesCondition(row: any, filter: DeriveFilterCondition) {
-  const field = String(filter?.field || "").trim();
-  if (!field) return true;
+  const field = normalizeFieldRef(filter?.field);
+  if (!field.field) return true;
 
-  const left = row?.[field];
+  const left: any = getFieldRefValue(row, field);
   const op = filter.op || "=";
   const right = filter.value;
 

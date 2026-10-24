@@ -5,12 +5,11 @@ import ListPageClient from "@/lib/ListPageClient";
 import { fetchAllModulesIndex, fetchModuleRowBySlug } from "@/lib/modules.server";
 import { createClient } from "@/lib/supabase/server";
 import {
-  applyQueryFilters,
   buildModuleDefaultFilterRuntimeContext,
-  filterRowsWithDefaultFilters,
   resolveDefaultFiltersForQuery,
 } from "@/lib/moduleDefaultFilters";
-import type { QueryFilter } from "@repo/types";
+import { collectFieldRefFilterGroupInputs, buildModuleDefaultFilterQueryPlan } from "@/lib/fields/fieldRefQuery";
+import { resolveFieldRefs } from "@/lib/fields/resolveFieldRef";
 
 export const dynamic = "force-dynamic";
 
@@ -50,18 +49,21 @@ export default async function ListPage({
   const supabase = await createClient();
   const runtimeContext = await buildModuleDefaultFilterRuntimeContext(supabase);
   const defaultFilters = resolveDefaultFiltersForQuery(schema?.db?.defaultFilters, runtimeContext);
+  const defaultFilterInputs = defaultFilters.canQueryDirectly
+    ? (defaultFilters.filters || []).map(filter => filter.field)
+    : collectFieldRefFilterGroupInputs(defaultFilters.group);
+  const resolvedDefaultFields = defaultFilterInputs.length
+    ? await resolveFieldRefs(slug, defaultFilterInputs)
+    : [];
+  const defaultFilterPlan = buildModuleDefaultFilterQueryPlan(defaultFilters, resolvedDefaultFields);
 
-  let query = supabase.from(table).select("*");
-  if (defaultFilters.canQueryDirectly) {
-    query = applyQueryFilters(query, defaultFilters.filters as QueryFilter[]);
-  }
+  let query = supabase.from(table).select(["*", ...defaultFilterPlan.selects].join(","));
+  query = defaultFilterPlan.apply(query);
   query = query.limit(200);
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  const rows = defaultFilters.canQueryDirectly
-    ? data || []
-    : filterRowsWithDefaultFilters(data || [], defaultFilters.group);
+  const rows = data || [];
 
   return (
       <ListPageClient

@@ -153,6 +153,53 @@ test("nested default filter groups compile related predicates for one server que
   assert.equal(compiled.expression, 'or(jiro_default_0.not.is.null,title.ilike."%urgent%")');
 });
 
+test("SSR and API lists share the same related default-filter query plan", async () => {
+  const pageSource = readFileSync(resolve("apps/web/app/(main)/m/[slug]/page.tsx"), "utf8");
+  const apiSource = readFileSync(resolve("apps/web/app/api/list/route.ts"), "utf8");
+  assert.match(pageSource, /buildModuleDefaultFilterQueryPlan/);
+  assert.match(apiSource, /buildModuleDefaultFilterQueryPlan/);
+  assert.doesNotMatch(pageSource, /filterRowsWithDefaultFilters|applyQueryFilters/);
+
+  const field = { relations: ["service", "category"], field: "color" };
+  const resolved = await resolver.resolveFieldRefs("tasks", [field], dependencies);
+  const defaults = { canQueryDirectly: false, filters: null, group: { logic: "AND", items: [{ field, op: "=", value: "red" }] } };
+  const plan = planner.buildModuleDefaultFilterQueryPlan(defaults, resolved);
+  const executeCaller = () => {
+    const calls = [];
+    const query = new Proxy({}, { get: (_, method) => (...args) => { calls.push([method, ...args]); return query; } });
+    plan.apply(query);
+    return { selects: plan.selects, calls };
+  };
+  assert.deepEqual(executeCaller(), executeCaller());
+  assert.match(plan.selects[0], /jiro_default_0:services/);
+});
+
+test("TreeView direct queries normalize object refs and reject unresolved related refs", async () => {
+  const calls = [];
+  const query = {
+    select(value) { calls.push(["select", value]); return query; },
+    eq(...args) { calls.push(["eq", ...args]); return query; },
+    in(...args) { calls.push(["in", ...args]); return query; },
+    order(...args) { calls.push(["order", ...args]); return query; },
+    then(resolve) { return Promise.resolve({ data: [{ id: "1" }], error: null }).then(resolve); },
+  };
+  const treeProvider = loader({
+    "@/lib/supabase/client": { createClient: () => ({ from: (table) => { calls.push(["from", table]); return query; } }) },
+  })("apps/web/lib/utils/treeViewProvider.ts").createSupabaseTreeViewProvider();
+  assert.deepEqual(await treeProvider.list({
+    table: "tasks", select: ["id"],
+    filters: [{ op: "eq", field: { field: "status" }, value: "open" }],
+    orderBy: { field: { field: "title" }, ascending: false },
+  }), [{ id: "1" }]);
+  assert.deepEqual(calls, [
+    ["from", "tasks"], ["select", "id"], ["eq", "status", "open"], ["order", "title", { ascending: false }],
+  ]);
+  await assert.rejects(treeProvider.list({
+    table: "tasks", select: ["id"],
+    filters: [{ op: "eq", field: { relations: ["service"], field: "name" }, value: "A" }],
+  }), /necesita moduleSlug/);
+});
+
 test("formula dependencies sharing a relation are hydrated in one batch", async () => {
   const compute = load("packages/ui/src/engines/computeEngine.ts");
   const fields = [

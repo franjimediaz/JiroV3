@@ -169,8 +169,10 @@ function canonicalizeSelectorFilterGroup(group: SelectorTableFilterGroup): Selec
       ? canonicalizeSelectorFilterGroup(item)
       : {
           ...item,
-          field: serializeFieldRef(item.field),
-          ...(item.valueSource === "recordField" ? { valueField: serializeFieldRef(item.valueField) } : {}),
+          field: typeof item.field === "string" ? item.field : serializeFieldRef(item.field),
+          ...(item.valueSource === "recordField" ? {
+            valueField: typeof item.valueField === "string" ? item.valueField : serializeFieldRef(item.valueField),
+          } : {}),
         }),
   };
 }

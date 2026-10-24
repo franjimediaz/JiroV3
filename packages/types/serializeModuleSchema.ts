@@ -16,7 +16,11 @@ const record = (value: unknown): Config => value && typeof value === "object" &&
 const pick = (value: unknown, keys: string[]): Config => Object.fromEntries(
   Object.entries(record(value)).filter(([key, val]) => keys.includes(key) && val !== undefined),
 );
-const canonicalRef = (value: unknown) => value === undefined || value === "" ? value : serializeFieldRef(value as any);
+const canonicalRef = (value: unknown) => value === undefined || value === ""
+  ? value
+  : typeof value === "string"
+    ? value.trim()
+    : serializeFieldRef(value as any);
 const READ_REF_KEYS = ["titleField", "startField", "endField", "allDayField", "colorField", "descriptionField", "resourceField",
   "labelField", "displayField", "iconField", "categoryField", "typeField", "orderField", "lockedField", "visibleField", "planJsonField", "blockJsonField"];
 const canonicalizeReadRefs = (value: Config, keys = READ_REF_KEYS) => {
@@ -59,20 +63,24 @@ function copyInput(value: unknown, child = false): Config {
 
 function deriveInput(value: unknown): Config {
   const input = record(value);
-  const out = pick(input, ["source", "target", "maps", "defaults", "sourceUpdates", "children", "idempotency"]);
-  let children = Array.isArray(input.children) && input.children.length ? input.children : undefined;
-  if (!children && input.source?.children?.table && input.target?.children?.table) {
-    children = [{
-      sourceTable: input.source.children.table, sourceFkToParent: input.source.children.fkToParent,
-      targetTable: input.target.children.table, targetFkToParent: input.target.children.fkToParent,
-      map: input.maps?.child, defaults: input.defaults?.child, sourceUpdates: input.sourceUpdates?.child,
-    }];
+  const out = { ...input };
+  if (input.source) out.source = { ...record(input.source) };
+  if (input.target) out.target = { ...record(input.target) };
+  if (input.maps) {
+    out.maps = { ...record(input.maps) };
+    for (const key of ["parent", "child"]) if (record(input.maps)[key]) {
+      out.maps[key] = Object.fromEntries(Object.entries(record(record(input.maps)[key]))
+        .map(([destination, source]) => [destination, canonicalRef(source)]));
+    }
   }
-  if (children) out.children = children.map((item: unknown) => pick(item, ["sourceTable", "sourceFkToParent", "targetTable", "targetFkToParent", "map", "defaults", "filters", "sourceUpdates"]));
-  // The runtime uses context.recordId; parentIdTemplate and kind are not consumed.
-  for (const key of ["source", "target"]) if (input[key]) out[key] = omitEmptyOptionalValues(pick(input[key], ["parentTable"]), ["parentTable"]);
-  for (const key of ["maps", "defaults", "sourceUpdates"]) if (input[key]) out[key] = pick(input[key], ["parent"]);
-  if (input.idempotency) out.idempotency = pick(input.idempotency, ["targetField", "valueTemplate"]);
+  if (Array.isArray(input.children)) out.children = input.children.map((item: unknown) => {
+    const child = { ...record(item) };
+    if (child.map) child.map = Object.fromEntries(Object.entries(record(child.map))
+      .map(([destination, source]) => [destination, canonicalRef(source)]));
+    if (child.filters?.conditions) child.filters = { ...child.filters,
+      conditions: child.filters.conditions.map((condition: Config) => ({ ...condition, field: canonicalRef(condition.field) })) };
+    return child;
+  });
   return out;
 }
 
@@ -97,7 +105,7 @@ export function serializeFormAction(value: Config): Config {
     Object.entries(out.fieldMap).map(([destination, source]) => [destination, canonicalRef(source)]));
   if (type === "workflow" && value.input) {
     if (value.workflowKey === "records.copyRelated") out.input = copyInput(value.input);
-    if (value.workflowKey === "derive.createFromParent") out.input = deriveInput(value.input);
+    if (value.workflowKey === "derive.createFromParent" || value.workflowKey === "budget.generateFromTasks") out.input = deriveInput(value.input);
     // Other workflows retain their own contracts, including unknown extensions.
   }
   if (type === "createRelated" && value.target) {

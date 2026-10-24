@@ -9,7 +9,7 @@ import  Selector from "../components/fields/Selector";
 import RelatedFieldSelector from "../components/fields/RelatedFieldSelector";
 import {IconPicker} from "@repo/ui";
 import type { CalendarSpecialViewConfig, CalendarViewMode, ConfigurableAuditEvent, Field as FieldSchema, FieldRefLike, ModuleCapabilityKey, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
-import { serializeFieldRef, serializeModuleSchema, applyModuleAuditConfigToProps, applyModuleCapabilitiesToProps, getEffectiveModuleAuditConfig, getEffectiveModuleCapabilities, MODULE_AUDIT_EVENT_OPTIONS, MODULE_CAPABILITY_OPTIONS, normalizeModuleDefaultFilters, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
+import { normalizeFieldRef, serializeFieldRef, serializeModuleSchema, applyModuleAuditConfigToProps, applyModuleCapabilitiesToProps, getEffectiveModuleAuditConfig, getEffectiveModuleCapabilities, MODULE_AUDIT_EVENT_OPTIONS, MODULE_CAPABILITY_OPTIONS, normalizeModuleDefaultFilters, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
 import { FieldConfigEditor, VisibilityConfigEditor } from "./FieldRow"
 import ModuleDefaultFiltersBuilder from "./ModuleDefaultFiltersBuilder";
@@ -216,19 +216,12 @@ function getSectionFieldSet(sections: Array<{ fields: string[] }>) {
   return set;
 }
 function extractColumnFields(columns: any): string[] {
-  if (!columns) return [];
-
-  // Formato nuevo: [{field,label,...}]
-  if (Array.isArray(columns) && columns[0] && typeof columns[0] === "object") {
-    return columns.map((c: any) => String(c.field)).filter(Boolean);
-  }
-
-  // Legacy: string[]
-  if (Array.isArray(columns)) {
-    return columns.map((x: any) => String(x)).filter(Boolean);
-  }
-
-  return [];
+  if (!Array.isArray(columns)) return [];
+  return columns.flatMap((column: any) => {
+    const rawField = column && typeof column === "object" ? column.field : column;
+    const ref = normalizeFieldRef(rawField);
+    return ref.field && ref.relations.length === 0 ? [ref.field] : [];
+  });
 }
 
 function buildColumnsObjects(selectedNames: string[], availableFields: TableField[]) {
@@ -237,6 +230,34 @@ function buildColumnsObjects(selectedNames: string[], availableFields: TableFiel
     field: name,
     label: byName.get(name)?.label || name,
   }));
+}
+
+function mergePickedColumns(columns: any, selectedNames: string[], availableFields: TableField[]) {
+  const pending = new Set(selectedNames);
+  const selected = new Set(selectedNames);
+  const byName = new Map(availableFields.map((field) => [field.name, field]));
+  const next: any[] = [];
+
+  for (const column of Array.isArray(columns) ? columns : []) {
+    const rawField = column && typeof column === "object" ? column.field : column;
+    const ref = normalizeFieldRef(rawField);
+    if (!ref.field) continue;
+    if (ref.relations.length) {
+      next.push(column);
+      continue;
+    }
+    if (!selected.has(ref.field) || !pending.has(ref.field)) continue;
+    const existing = column && typeof column === "object" ? column : {};
+    next.push({
+      ...existing,
+      field: typeof rawField === "string" ? ref.field : serializeFieldRef(rawField),
+      label: byName.get(ref.field)?.label || existing.label || ref.field,
+    });
+    pending.delete(ref.field);
+  }
+
+  next.push(...buildColumnsObjects(selectedNames.filter((name) => pending.has(name)), availableFields));
+  return next;
 }
 
 function mapPreviewTabsToSpecialViews(previewTabs: FormPreviewTab[]): SpecialViewConfig[] {
@@ -2901,7 +2922,7 @@ const editorTabs = [
                               ...prev,
                               config: {
                                 ...(prev.config || {}),
-                                columns: buildColumnsObjects(selectedNames, availableFields),
+                                columns: mergePickedColumns(prev.config?.columns, selectedNames, availableFields),
                               },
                             };
                           }

@@ -5,6 +5,7 @@ import RelatedFieldSelector from "../components/fields/RelatedFieldSelector";
 import {
   createEmptySelectorTableFilterCondition,
   formatFieldRefPath,
+  normalizeFieldRef,
   createEmptySelectorTableFilterGroup,
   normalizeSelectorTableFilters,
   serializeSelectorTableFilters,
@@ -379,7 +380,10 @@ function ConditionEditorBody(props: {
     onRemove,
   } = props;
 
-  const targetField = targetFields.find((field) => field.name === condition.field);
+  const normalizedTargetField = normalizeFieldRef(condition.field);
+  const targetField = normalizedTargetField.relations.length === 0
+    ? targetFields.find((field) => field.name === normalizedTargetField.field)
+    : undefined;
   const hideValue = condition.op === "isNull" || condition.op === "isNotNull";
   const literalType = condition.valueType || inferLiteralTypeFromField(targetField?.type);
 

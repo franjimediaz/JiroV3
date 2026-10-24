@@ -175,7 +175,7 @@ function canonicalizeModuleDefaultFilterGroup(group: ModuleDefaultFilterGroup): 
     ...group,
     items: group.items.map(item => item.kind === "group"
       ? canonicalizeModuleDefaultFilterGroup(item)
-      : { ...item, field: serializeFieldRef(item.field) }),
+      : { ...item, field: typeof item.field === "string" ? item.field : serializeFieldRef(item.field) }),
   };
 }
 

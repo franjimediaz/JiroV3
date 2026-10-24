@@ -1,4 +1,4 @@
-import type { FieldRefInput, ModuleDefaultResolvedFilterGroup, QueryFilter, QuerySort } from "@repo/types";
+import type { FieldRefInput, ModuleDefaultQueryFilterLike, ModuleDefaultResolvedFilterGroup, QueryFilter, QuerySort } from "@repo/types";
 import { fieldRefKey, normalizeFieldRef } from "@repo/types";
 import { filterConditionExpression, filterIdentifier } from "../advancedFilters";
 import { badRequest } from "../auth/apiError";
@@ -140,6 +140,47 @@ export function collectFieldRefFilterGroupInputs(group: ModuleDefaultResolvedFil
   return group.items.flatMap(item => "items" in item
     ? collectFieldRefFilterGroupInputs(item)
     : [item.field]);
+}
+
+export function buildModuleDefaultFilterQueryPlan(
+  defaults: {
+    canQueryDirectly: boolean;
+    filters: readonly ModuleDefaultQueryFilterLike[] | null;
+    group: ModuleDefaultResolvedFilterGroup;
+  },
+  resolved: readonly ResolvedFieldRef[],
+) {
+  if (defaults.canQueryDirectly) {
+    const filters = defaults.filters || [];
+    const filterRefs = filters
+      .map(filter => resolved.find(ref => ref.key === fieldRefKey(filter.field)))
+      .filter(Boolean) as ResolvedFieldRef[];
+    return {
+      selects: buildFieldRefSelect([], filterRefs),
+      embeds: [] as Array<{ alias: string; select: string; expression: string }>,
+      expression: undefined as string | undefined,
+      apply<TQuery extends FieldRefQueryBuilder<TQuery>>(query: TQuery) {
+        return applyFieldRefFilters(query, filters as readonly QueryFilter[], resolved);
+      },
+    };
+  }
+
+  const compiled = compileFieldRefFilterGroup(defaults.group, resolved);
+  return {
+    selects: compiled.embeds.map(embed => embed.select),
+    embeds: compiled.embeds,
+    expression: compiled.expression,
+    apply<TQuery extends FieldRefQueryBuilder<TQuery> & {
+      or(expression: string, options?: { referencedTable: string }): TQuery;
+    }>(query: TQuery) {
+      let next = query;
+      for (const embed of compiled.embeds) {
+        next = next.or(embed.expression, { referencedTable: embed.alias });
+      }
+      if (compiled.expression) next = next.or(compiled.expression);
+      return next;
+    },
+  };
 }
 
 export function compileFieldRefFilterGroup(

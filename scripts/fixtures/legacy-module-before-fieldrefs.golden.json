@@ -1,0 +1,131 @@
+{
+  "db": {
+    "table": "tasks",
+    "primaryKey": "id",
+    "defaultFilters": [
+      {
+        "field": "status",
+        "op": "=",
+        "value": "open"
+      }
+    ]
+  },
+  "fields": [
+    {
+      "name": "title",
+      "label": "Title",
+      "type": "text",
+      "visible": true
+    },
+    {
+      "name": "customer",
+      "label": "Customer",
+      "type": "selectorTabla",
+      "visible": true,
+      "ref": {
+        "moduleSlug": "customers",
+        "valueField": "id",
+        "displayField": "name",
+        "styleColorField": "color",
+        "filters": [
+          {
+            "field": "active",
+            "op": "=",
+            "value": true
+          }
+        ],
+        "sort": [
+          {
+            "field": "name",
+            "direction": "asc"
+          }
+        ]
+      }
+    },
+    {
+      "name": "computed_total",
+      "label": "Total",
+      "type": "number",
+      "visible": true,
+      "compute": {
+        "type": "formula",
+        "expr": "quantity * price",
+        "deps": ["quantity", "price"]
+      }
+    },
+    {
+      "name": "children",
+      "label": "Children",
+      "type": "ReverseLink",
+      "virtual": true,
+      "visible": true,
+      "ref": {
+        "foreignKey": "task_id",
+        "parentKey": "id",
+        "filters": [
+          {
+            "field": "active",
+            "op": "=",
+            "value": true
+          }
+        ],
+        "sort": [
+          {
+            "field": "position",
+            "direction": "asc"
+          }
+        ]
+      }
+    }
+  ],
+  "ui": {
+    "calendar": {
+      "sourceTable": "tasks",
+      "titleField": "title",
+      "startField": "starts_at",
+      "endField": "ends_at"
+    },
+    "treeView": {
+      "sourceTable": "tasks",
+      "columns": ["title"],
+      "groupBy": ["status"],
+      "totals": {
+        "enabled": true,
+        "sumField": "amount"
+      }
+    },
+    "formActions": [
+      {
+        "id": "budget",
+        "label": "Generate budget",
+        "type": "workflow",
+        "workflowKey": "budget.generateFromTasks",
+        "input": {
+          "source": {
+            "parentTable": "works",
+            "children": {
+              "table": "tasks",
+              "fkToParent": "work_id"
+            }
+          },
+          "target": {
+            "parentTable": "budgets",
+            "children": {
+              "table": "budget_tasks",
+              "fkToParent": "budget_id"
+            }
+          },
+          "maps": {
+            "parent": {
+              "title": "name"
+            },
+            "child": {
+              "title": "title"
+            }
+          },
+          "customLegacyFlag": "keep-me"
+        }
+      }
+    ]
+  }
+}
