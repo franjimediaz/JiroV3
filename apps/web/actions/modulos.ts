@@ -5,10 +5,10 @@ import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { isUUID } from "@/lib/utils/isUUID";
-import { serializeModuleSchema, normalizeModuleDefaultFilters, normalizeSelectorTableFilters, VALID_FIELD_TYPES, validateRecordNameFields } from "@repo/types";
+import { MODULOS_SYSTEM_FIELD_NAMES, serializeModuleSchema, normalizeModuleDefaultFilters, normalizeSelectorTableFilters, VALID_FIELD_TYPES, validateRecordNameFields } from "@repo/types";
 
 const TABLE = "modulos";
-const FIELD_NAMES = ["parent_id", "nombre", "slug", "route", "tipo", "orden", "activo", "props"];
+const FIELD_NAMES = MODULOS_SYSTEM_FIELD_NAMES.filter(name => name !== "id");
 
 const FIELD_TYPES = VALID_FIELD_TYPES.reduce((set, type) => (set.add(type), set), new Set<string>());
 

@@ -45,7 +45,7 @@ export function createSourceLoader(overrides = {}) {
           },
         };
       if (id === "@repo/types")
-        return { ...loadSource("packages/types/normalizeModuleSchema.ts"), ...loadSource("packages/types/recordName.ts") };
+        return { ...loadSource("packages/types/normalizeModuleSchema.ts"), ...loadSource("packages/types/recordName.ts"), ...loadSource("packages/types/systemModuleSchemas.ts") };
       if (id.startsWith(".") || id.startsWith("@/")) {
         const target = id.startsWith("@/")
           ? resolve("apps/web", id.slice(2))

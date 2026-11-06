@@ -12,6 +12,7 @@ import { compileAdvancedFilters, defaultFilterExpression, filterIdentifier } fro
 import { badRequest, forbidden } from "@/lib/auth/apiError";
 import { getEffectiveModuleCapabilities } from "@repo/types";
 import { applyFieldRefFilters, applyFieldRefSort, buildFieldRefSelect, buildModuleDefaultFilterQueryPlan, collectFieldRefFilterGroupInputs, collectQueryFieldRefInputs } from "@/lib/fields/fieldRefQuery";
+import { resolveModuleConfig } from "@/lib/modules/resolveModuleConfig";
 import { resolveFieldRefs } from "@/lib/fields/resolveFieldRef";
 
 type ListFilter = QueryFilter;
@@ -27,18 +28,6 @@ type ListBody = {
   advancedFilters?: unknown;
   purpose?: "export";
 };
-
-function parseProps(props: any) {
-  if (!props) return null;
-  if (typeof props === "string") {
-    try {
-      return JSON.parse(props);
-    } catch {
-      return null;
-    }
-  }
-  return props;
-}
 
 export async function POST(req: Request) {
   const requestId = crypto.randomUUID();
@@ -58,35 +47,12 @@ export async function POST(req: Request) {
 
     await requireModulePermission(moduleSlug, "ver");
 
-    const { data: modRow, error: modErr } = await supabase
-      .from("modulos")
-      .select("id, slug, props")
-      .eq("slug", moduleSlug)
-      .maybeSingle();
-
-    if (modErr) {
-      console.error("POST /api/list modulos error", modErr);
-      return NextResponse.json(
-        { ok: false, detail: "Error resolviendo módulo", code: modErr.code },
-        { status: 500 }
-      );
-    }
-
-    if (!modRow) {
-      return NextResponse.json(
-        { ok: false, detail: `No existe módulo con slug "${moduleSlug}"` },
-        { status: 404 }
-      );
-    }
-
-    const props = parseProps((modRow as any).props);
-    const tableName = String(props?.db?.table || "").trim() || moduleSlug;
-    if (!tableName) {
-      return NextResponse.json(
-        { ok: false, detail: `El módulo "${moduleSlug}" no tiene props.db.table` },
-        { status: 400 }
-      );
-    }
+    const resolved = await resolveModuleConfig(moduleSlug);
+    if (resolved.permissionsKey !== moduleSlug) await requireModulePermission(resolved.permissionsKey, "ver");
+    moduleSlug = resolved.slug;
+    const props = resolved.schema;
+    const tableName = resolved.table;
+    if (!tableName) throw badRequest("El modulo no tiene db.table");
 
     const runtimeContext = await buildModuleDefaultFilterRuntimeContext(supabase);
     const defaultFilters = resolveDefaultFiltersForQuery(props?.db?.defaultFilters, runtimeContext);
@@ -94,7 +60,7 @@ export async function POST(req: Request) {
     const advanced = body.advancedFilters !== undefined;
     if (advanced && (!props?.db?.table || !Array.isArray(props.fields))) throw badRequest("El módulo no tiene un schema de datos válido");
     if (body.purpose === "export") {
-      await requireModulePermission(moduleSlug, "exportar");
+      await requireModulePermission(resolved.permissionsKey, "exportar");
       if (!getEffectiveModuleCapabilities(props).allowExport) throw forbidden("La exportación está deshabilitada en este módulo");
     }
     const compiled = advanced ? await compileAdvancedFilters(body.advancedFilters, props, runtimeContext) : undefined;
@@ -119,7 +85,7 @@ export async function POST(req: Request) {
     const directResolved = fieldRefInputs.filter(ref => !normalizeFieldRef(ref).relations.length).map(ref => {
       const normalized = normalizeFieldRef(ref);
       const fieldSchema = props.fields?.find((field: any) => field.name === normalized.field && !field.virtual && field.visible !== false);
-      const primaryKey = String(props.db?.primaryKey || "id");
+      const primaryKey = resolved.primaryKey;
       if (!fieldSchema && normalized.field !== primaryKey) throw badRequest(`Campo no declarado o no disponible: ${normalized.field}`);
       return { key: fieldRefKey(ref), ref: normalized, field: normalized.field, fieldSchema: fieldSchema || { name: primaryKey, label: primaryKey, type: "text" }, relations: [] };
     });

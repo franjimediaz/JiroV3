@@ -690,8 +690,8 @@ if (type === "number" || type === "money" || type === "percent") {
     const filters = ref && "filters" in ref ? (ref as any).filters : [];
     const sort = ref && "sort" in ref ? (ref as any).sort : [];
     const hasStyle = ref && "hasStyle" in ref ? (ref as any).hasStyle : false;
-    const styleIconField = ref && "styleIconField" in ref ? (ref as any).styleIconField : "icon";
-    const styleColorField = ref && "styleColorField" in ref ? (ref as any).styleColorField : "color";
+    const styleIconField = ref && "styleIconField" in ref ? (ref as any).styleIconField : undefined;
+    const styleColorField = ref && "styleColorField" in ref ? (ref as any).styleColorField : undefined;
 
     return (
       <Selector

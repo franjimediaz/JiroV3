@@ -182,7 +182,7 @@ test("server module save serializes raw legacy JSON before sending it to the dat
   };
   const exports = {
     serializeModuleSchema: serialize,
-    ...load("packages/types/fields.ts"), ...load("packages/types/recordName.ts"),
+    ...load("packages/types/fields.ts"), ...load("packages/types/systemModuleSchemas.ts"), ...load("packages/types/recordName.ts"),
     ...load("packages/types/moduleDefaultFilters.ts"), ...load("packages/types/selectorTableFilters.ts"),
   };
   const { upsertModuloAction } = createSourceLoader({

@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { getRecordName, getRecordNameFieldName, type Field, type ModuleSchema } from "@repo/types";
+import { getRecordName, getRecordNameFieldName, fieldRefKey, isDirectFieldRef, normalizeFieldRef, type FieldRefLike, type Field, type ModuleSchema } from "@repo/types";
+import { resolveSelectorStyle, selectorFieldRefs, readSelectorStyle } from "./selectorStyle";
 import { getRecordNameSchema } from "./recordNameSchema";
 
 export type RelationDisplayEntry = {
@@ -20,8 +21,8 @@ export type RelationDisplayConfig = {
   displayField: string;
   multiple: boolean;
   hasStyle: boolean;
-  styleIconField: string;
-  styleColorField: string;
+  styleIconField?: FieldRefLike;
+  styleColorField?: FieldRefLike;
 };
 
 type RelationBucket = {
@@ -51,8 +52,8 @@ export function getRelationDisplayConfig(field: Field): RelationDisplayConfig | 
     displayField: ref?.displayField ? String(ref.displayField) : "id",
     multiple: !!ref?.multiple,
     hasStyle: !!((field as any).hasStyle ?? ref?.hasStyle),
-    styleIconField: String((field as any).styleIconField ?? ref?.styleIconField ?? "icon"),
-    styleColorField: String((field as any).styleColorField ?? ref?.styleColorField ?? "color"),
+    styleIconField: (field as any).styleIconField ?? ref?.styleIconField,
+    styleColorField: (field as any).styleColorField ?? ref?.styleColorField,
   };
 }
 
@@ -62,8 +63,8 @@ export function getRelationBucketKey(config: RelationDisplayConfig) {
     config.valueField,
     config.displayField,
     config.hasStyle ? 1 : 0,
-    config.styleIconField,
-    config.styleColorField,
+    fieldRefKey(config.styleIconField),
+    fieldRefKey(config.styleColorField),
   ].join("|");
 }
 
@@ -138,8 +139,7 @@ export function buildRelationDisplayEntry(config: RelationDisplayConfig, row: an
 
   return {
     label,
-    icon: config.hasStyle ? row?.[config.styleIconField] : undefined,
-    color: config.hasStyle ? row?.[config.styleColorField] : undefined,
+    ...readSelectorStyle(row, resolveSelectorStyle(config, schema)),
   };
 }
 
@@ -285,14 +285,12 @@ export async function preloadRelationDisplayCache(params: {
 
     try {
       const schema = await getRecordNameSchema(dataProvider, bucket.config.moduleSlug);
-      const select = [
-        bucket.config.valueField,
-        getRecordNameFieldName(schema, bucket.config.displayField),
-        ...(bucket.config.hasStyle ? [bucket.config.styleIconField, bucket.config.styleColorField] : []),
-      ].filter((value, index, arr) => !!value && arr.indexOf(value) === index);
+      const style = resolveSelectorStyle(bucket.config, schema);
+      const fieldRefs = selectorFieldRefs([getRecordNameFieldName(schema, bucket.config.displayField)], style);
+      const select = [...new Set([bucket.config.valueField, ...fieldRefs.filter(isDirectFieldRef).map(ref => normalizeFieldRef(ref).field)])];
 
       const result =
-        typeof dataProvider.lookup === "function"
+        typeof dataProvider.lookup === "function" && fieldRefs.every(isDirectFieldRef)
           ? await dataProvider.lookup({
               moduleSlug: bucket.config.moduleSlug,
               table: bucket.config.moduleSlug,
@@ -305,8 +303,8 @@ export async function preloadRelationDisplayCache(params: {
               filters: [{ field: bucket.config.valueField, op: "in", value: ids }],
               limit: Math.min(ids.length, 500),
               hasStyle: bucket.config.hasStyle,
-              styleIconField: bucket.config.styleIconField,
-              styleColorField: bucket.config.styleColorField,
+              ...style,
+              fieldRefs,
             });
 
       const rowsResult = Array.isArray(result) ? result : Array.isArray((result as any)?.data) ? (result as any).data : [];

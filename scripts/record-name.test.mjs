@@ -13,7 +13,7 @@ function load(file) {
   const js = ts.transpileModule(readFileSync(path, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true, target: ts.ScriptTarget.ES2022 } }).outputText;
   new Function("require", "module", "exports", js)(id => {
     if (id.startsWith("@dnd-kit/")) return createRequire(resolve("packages/ui/package.json"))(id);
-    if (id === "@repo/types") return { ...load("packages/types/recordName.ts"), ...load("packages/types/fieldRefs.ts"), ...load("packages/types/normalizeModuleSchema.ts"), ...load("packages/types/serializeModuleSchema.ts") };
+    if (id === "@repo/types") return { ...load("packages/types/systemModuleSchemas.ts"), ...load("packages/types/recordName.ts"), ...load("packages/types/fieldRefs.ts"), ...load("packages/types/normalizeModuleSchema.ts"), ...load("packages/types/serializeModuleSchema.ts") };
     if (id.startsWith(".")) { const p = resolve(dirname(path), id); return load(p + (existsSync(p + ".ts") ? ".ts" : ".tsx")); }
     return require(id);
   }, result, result.exports);
@@ -62,7 +62,7 @@ test("bulk relation resolution selects the configured column, preserves ids/icon
   const field = { name: "client", type: "selectorTabla", ref: { moduleSlug: "clients", displayField: "old", valueField: "key", hasStyle: true } };
   let calls = 0;
   const result = await preloadRelationDisplayCache({ rows: [{ client: "k" }, { client: "j" }], fields: [field], getValue: (row, f) => row[f.name], cache: {}, dataProvider: {
-    getSchema: async () => schema,
+    getSchema: async () => ({ ...schema, fields: [...schema.fields, { name: "icon", type: "text" }, { name: "color", type: "text" }] }),
     lookup: async input => { calls++; assert.ok(input.select.includes("legal")); assert.ok(!input.select.includes("old")); return [{ key: "k", legal: "ACME", icon: "bi-building", color: "#fff" }, { key: "j", legal: "Other" }]; },
   } });
   assert.equal(calls, 1);

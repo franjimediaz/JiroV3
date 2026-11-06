@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { notFound } from "@/lib/auth/apiError";
 import { cache } from "react";
-import { getRecordNameFieldName, normalizeModuleSchema, type NormalizedModuleSchema } from "@repo/types";
+import { getSystemModuleSchema, MODULOS_SYSTEM_FIELD_NAMES, getRecordNameFieldName, normalizeModuleSchema, type NormalizedModuleSchema } from "@repo/types";
 
 export type ResolvedModuleConfig = {
   id?: string;
@@ -34,9 +35,10 @@ export const fetchModuleRows = cache(async (): Promise<ModuleRow[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("modulos")
-    .select("id,parent_id,slug,nombre,route,tipo,orden,activo,props")
+    .select(MODULOS_SYSTEM_FIELD_NAMES.join(","))
     .order("orden", { ascending: true })
-    .order("nombre", { ascending: true });
+    .order("nombre", { ascending: true })
+    .returns<ModuleRow[]>();
   if (error) throw new Error("No se pudieron cargar los módulos");
   return (data ?? []) as ModuleRow[];
 });
@@ -80,7 +82,10 @@ export function resolveModuleConfigFromRow(row: any): ResolvedModuleConfig {
   if (!slug) throw new Error("Modulo sin slug");
 
   const props = parseProps(row?.props);
-  const schema = normalizeModuleSchema(props);
+  const systemSchema = getSystemModuleSchema(slug);
+  const schema = normalizeModuleSchema(systemSchema
+    ? { ...props, db: { ...(props as any)?.db, ...systemSchema.db }, fields: systemSchema.fields }
+    : props);
   const table = String(schema?.db?.table || row?.table || "").trim();
   const requiresTable = moduleRequiresTable(row, schema);
   if (requiresTable && !table) {
@@ -114,12 +119,14 @@ export async function resolveModuleConfig(slugOrAlias: string): Promise<Resolved
   const supabase = await createClient();
   const { data: bySlug, error } = await supabase
     .from("modulos")
-    .select("id,slug,props,activo,tipo,orden,route,nombre")
+    .select(MODULOS_SYSTEM_FIELD_NAMES.join(","))
     .eq("slug", slug)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
   if (bySlug) return resolveModuleConfigFromRow(bySlug);
+
+  if (getSystemModuleSchema(slug)) return resolveModuleConfigFromRow({ slug });
 
   // Compatibilidad temporal: aceptar db.table/table solo si coincide con un modulo real.
   const rows = await fetchModuleRows();
@@ -129,7 +136,7 @@ export async function resolveModuleConfig(slugOrAlias: string): Promise<Resolved
     if (resolved.table && resolved.table === slug) return resolved;
   }
 
-  throw new Error(`Modulo '${slug}' no encontrado`);
+  throw notFound(`Modulo '${slug}' no encontrado`);
 }
 
 export async function resolveModuleIndex() {

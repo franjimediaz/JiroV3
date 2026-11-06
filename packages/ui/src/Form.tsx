@@ -1,4 +1,5 @@
 "use client";
+import { resolveSelectorStyle, selectorFieldRefs } from "./utils/selectorStyle";
 
 import { orderedSectionFields } from "./utils/formFieldOrder";
 
@@ -611,6 +612,7 @@ export default function Form({
 
       try {
         const relationSchema = await getRecordNameSchema(dataProvider, config.moduleSlug);
+        const style = resolveSelectorStyle(config, relationSchema);
         const missingIds = ids.filter((id) => !displayCacheRef.current[getRelationCacheKey(config, id)]);
         let rows: any[] = [];
 
@@ -626,8 +628,8 @@ export default function Form({
             ],
             limit: Math.min(missingIds.length, 500),
             hasStyle: config.hasStyle,
-            styleIconField: config.styleIconField,
-            styleColorField: config.styleColorField,
+            ...style,
+            fieldRefs: selectorFieldRefs([config.displayField], style),
           });
 
           rows = Array.isArray(result?.data) ? result.data : [];

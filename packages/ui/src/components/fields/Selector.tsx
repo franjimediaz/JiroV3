@@ -17,8 +17,9 @@ import {
   type FieldRefLike,
 } from "@repo/types";
 import { getRecordNameSchema } from "../../utils/recordNameSchema";
+import { resolveSelectorStyle, selectorFieldRefs, readSelectorStyle } from "../../utils/selectorStyle";
 
-type PopupItem = { value: string; label: string; raw?: any };
+type PopupItem = { value: string; label: string; raw?: any; icon?: string; color?: string };
 type CacheEntry = { label: string; icon?: string; color?: string };
 
 function collectResolvedFilterFieldRefs(group: any): FieldRefLike[] {
@@ -99,8 +100,8 @@ export default function SelectorTabla({
   placeholder = "Seleccionar",
   limit = 50,
   hasStyle = false,
-  styleIconField = "icon",
-  styleColorField = "color",
+  styleIconField,
+  styleColorField,
   displayValue,
   isDisplayLoading = false,
   displayIcon,
@@ -134,8 +135,8 @@ export default function SelectorTabla({
         ...prev,
         [id]: {
           label: displayValue,
-          icon: displayIcon ?? prev[id]?.icon,
-          color: displayColor ?? prev[id]?.color,
+          icon: hasStyle ? displayIcon ?? prev[id]?.icon : undefined,
+          color: hasStyle ? displayColor ?? prev[id]?.color : undefined,
         },
       }));
       return;
@@ -148,11 +149,11 @@ export default function SelectorTabla({
       ...prev,
       [id]: {
         label: displayValue,
-        icon: displayIcon ?? prev[id]?.icon,
-        color: displayColor ?? prev[id]?.color,
+        icon: hasStyle ? displayIcon ?? prev[id]?.icon : undefined,
+        color: hasStyle ? displayColor ?? prev[id]?.color : undefined,
       },
     }));
-  }, [multiple, normalizedValue, displayValue, displayIcon, displayColor, isDisplayLoading]);
+  }, [multiple, normalizedValue, displayValue, displayIcon, displayColor, isDisplayLoading, hasStyle]);
 
   const effectiveSelectedEntries = useMemo(() => {
     const ids = multiple ? (normalizedValue as string[]) : [normalizedValue as string];
@@ -202,6 +203,7 @@ export default function SelectorTabla({
 
       try {
         const schema = await getRecordNameSchema(dataProvider, moduleSlug);
+        const style = resolveSelectorStyle({ hasStyle, styleIconField, styleColorField }, schema);
         const nextFilters: QueryFilter[] = (resolvedFilters.filters || []).map((filter) => ({
           field: filter.field,
           op: filter.op as QueryFilter["op"],
@@ -226,9 +228,8 @@ export default function SelectorTabla({
           sort,
           limit: requestedLimit,
           hasStyle,
-          styleIconField,
-          styleColorField,
-          fieldRefs: [displayField, styleIconField, styleColorField, ...collectResolvedFilterFieldRefs(resolvedFilters.group)],
+          ...style,
+          fieldRefs: selectorFieldRefs([displayField, ...collectResolvedFilterFieldRefs(resolvedFilters.group), ...sort.map(item => item.field)], style),
         } as any);
 
         const rawRows = Array.isArray(res?.data) ? res.data : [];
@@ -239,17 +240,17 @@ export default function SelectorTabla({
           value: toStr(row[valueField]),
           label: selectorLabel(row, schema, displayField, valueField),
           raw: row,
+          ...readSelectorStyle(row, style),
         }));
 
         setPopupItems(items);
 
         const newCache: Record<string, CacheEntry> = {};
         items.forEach((item) => {
-          const raw = item.raw || {};
           newCache[item.value] = {
             label: item.label,
-            icon: toStr(getFieldRefValue(raw, styleIconField)),
-            color: toStr(getFieldRefValue(raw, styleColorField)),
+            icon: item.icon,
+            color: item.color,
           };
         });
         setLabelCache((prev) => ({ ...prev, ...newCache }));
@@ -290,14 +291,14 @@ export default function SelectorTabla({
 
       try {
         const schema = await getRecordNameSchema(dataProvider, moduleSlug);
+        const style = resolveSelectorStyle({ hasStyle, styleIconField, styleColorField }, schema);
         const res = await list({
           moduleSlug,
           filters: [{ field: valueField, op: "in", value: needResolve }],
           limit: needResolve.length,
           hasStyle,
-          styleIconField,
-          styleColorField,
-          fieldRefs: [displayField, styleIconField, styleColorField],
+          ...style,
+          fieldRefs: selectorFieldRefs([displayField], style),
         } as any);
         const rows = Array.isArray(res?.data) ? res.data : [];
         const rowsById = new Map(rows.map((row: any) => [toStr(row?.[valueField]), row]));
@@ -306,14 +307,13 @@ export default function SelectorTabla({
           const row = rowsById.get(id);
           const nextEntry: CacheEntry = {
             label: row ? selectorLabel(row, schema, displayField, valueField, id) : id,
-            icon: toStr(getFieldRefValue(row, styleIconField)),
-            color: toStr(getFieldRefValue(row, styleColorField)),
+            ...readSelectorStyle(row, style),
           };
           resolved[id] = nextEntry;
         }
         setLabelCache((prev) => ({ ...prev, ...resolved }));
-      } catch {
-        // Fallback silencioso: el resumen ya cae al id.
+      } catch (error) {
+        console.error("SelectorTabla: no se pudo resolver la seleccion", error);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -336,8 +336,8 @@ export default function SelectorTabla({
         if (next.includes(item.value)) {
           newCache[item.value] = {
             label: item.label,
-            icon: toStr(getFieldRefValue(item.raw, styleIconField)),
-            color: toStr(getFieldRefValue(item.raw, styleColorField)),
+            icon: hasStyle ? item.icon : undefined,
+            color: hasStyle ? item.color : undefined,
           };
         }
       });
@@ -351,8 +351,8 @@ export default function SelectorTabla({
           ...prev,
           [id]: {
             label: found.label,
-            icon: toStr(getFieldRefValue(found.raw, styleIconField)),
-            color: toStr(getFieldRefValue(found.raw, styleColorField)),
+            icon: hasStyle ? found.icon : undefined,
+            color: hasStyle ? found.color : undefined,
           },
         }));
       }

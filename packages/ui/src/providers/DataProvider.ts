@@ -1,6 +1,6 @@
 import type { DataProvider, AggregateInput } from "../engines/computeEngine";
 import type { ModuleSchema } from "@repo/types";
-import { getFieldRefValue, normalizeEmptyRelations } from "@repo/types";
+import { getSystemModuleSchema, getFieldRefValue, normalizeEmptyRelations } from "@repo/types";
 
 type ModuloRow = {
   id: string;
@@ -207,6 +207,8 @@ export const dataProvider: DataProvider & {
   },
 
   async getSchema(moduleSlug: string): Promise<ModuleSchema> {
+    const systemSchema = getSystemModuleSchema(moduleSlug);
+    if (systemSchema) return systemSchema;
     const map = await loadSchemas();
     const schema = map[moduleSlug];
     if (!schema) throw new Error(`getSchema: no existe módulo con slug "${moduleSlug}"`);
