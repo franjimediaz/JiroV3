@@ -96,7 +96,7 @@ const COMMON_KEYS = ["id", "label", "type", "icon", "showIn", "variant", "visibi
 
 export function serializeFormAction(value: Config): Config {
   const type = value.type || "external";
-  if (!Object.hasOwn(ACTION_KEYS, type)) return { ...value };
+  if (!Object.prototype.hasOwnProperty.call(ACTION_KEYS, type)) return { ...value };
   const out = pick(value, [...COMMON_KEYS, ...ACTION_KEYS[type]!]);
   if (out.visibility) out.visibility = canonicalVisibility(out.visibility);
   if (out.disabledWhen?.type === "missingFields") out.disabledWhen = { ...out.disabledWhen,

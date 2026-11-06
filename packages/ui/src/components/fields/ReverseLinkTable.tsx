@@ -110,9 +110,13 @@ export default function ReverseLinkTable({ field, parentRecord, mode, moduleColo
     JSON.stringify(ref?.sort || []),
   ]);
 
-  const columns = (targetSchema?.fields || []).filter((item) =>
-    ["List", "Always"].includes((item as any).appareance || "Zoom")
-  );
+  const columns = (targetSchema?.fields || []).filter((item) => {
+    const appearance =
+      (item as any).appearance ??
+      (item as any).appareance ??
+      "Zoom";
+    return ["List", "Always"].includes(appearance);
+  });
 
   const columnsFull = useMemo(() => {
     const byName = new Map((targetSchema?.fields || []).map((item) => [item.name, item] as const));

@@ -31,7 +31,7 @@ export const SYSTEM_MODULE_SCHEMAS = {
 } satisfies Record<string, ModuleSchema>;
 
 export function getSystemModuleSchema(slug: string): ModuleSchema | undefined {
-  return Object.hasOwn(SYSTEM_MODULE_SCHEMAS, slug)
+  return Object.prototype.hasOwnProperty.call(SYSTEM_MODULE_SCHEMAS, slug)
     ? SYSTEM_MODULE_SCHEMAS[slug as keyof typeof SYSTEM_MODULE_SCHEMAS]
     : undefined;
 }
