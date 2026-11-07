@@ -37,8 +37,10 @@ const nextConfig = {
     "/api/pdf/generate": [
       "./node_modules/**/@sparticuz/chromium/bin/**",
       "./node_modules/**/@sparticuz/chromium/build/**",
+      "../../node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/*.br",
     ],
   },
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
   async redirects() {
     return [];
   },
