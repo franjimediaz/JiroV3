@@ -3,13 +3,14 @@
 import { ConfigEditor } from "./ConfigEditor";
 
 import { useState, useTransition, useEffect, useRef, useCallback} from "react";
+import { createPortal } from "react-dom";
 import styles from "./modulo-detalle.module.css";
 import { applyModuleUiPatch, WORKFLOW_CATALOG, updateRecordNameField } from "@repo/types";
 import  Selector from "../components/fields/Selector";
 import RelatedFieldSelector from "../components/fields/RelatedFieldSelector";
 import {IconPicker} from "@repo/ui";
 import type { CalendarSpecialViewConfig, CalendarViewMode, ConfigurableAuditEvent, Field as FieldSchema, FieldRefLike, ModuleCapabilityKey, ModuleSchema, Field, FormPreviewTab, FormSection, PlanDynamicSourceConfig, PlanEditorSpecialViewConfig, PlanLinkTargetConfig, SpecialViewConfig, UiTab} from "@repo/types";
-import { normalizeFieldRef, serializeFieldRef, serializeModuleSchema, applyModuleAuditConfigToProps, applyModuleCapabilitiesToProps, getEffectiveModuleAuditConfig, getEffectiveModuleCapabilities, MODULE_AUDIT_EVENT_OPTIONS, MODULE_CAPABILITY_OPTIONS, normalizeModuleDefaultFilters, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
+import { formatFieldRefPath, normalizeFieldRef, serializeFieldRef, serializeModuleSchema, applyModuleAuditConfigToProps, applyModuleCapabilitiesToProps, getEffectiveModuleAuditConfig, getEffectiveModuleCapabilities, MODULE_AUDIT_EVENT_OPTIONS, MODULE_CAPABILITY_OPTIONS, normalizeModuleDefaultFilters, normalizeModuleSchema, normalizePlanEditorConfig, normalizeSelectorTableFilters, VALID_FIELD_TYPES } from "@repo/types";
 import { FieldPickerModal, type TableField } from "../modals/FieldPickerModal";
 import { FieldConfigEditor, VisibilityConfigEditor } from "./FieldRow"
 import ModuleDefaultFiltersBuilder from "./ModuleDefaultFiltersBuilder";
@@ -251,13 +252,78 @@ function mergePickedColumns(columns: any, selectedNames: string[], availableFiel
     next.push({
       ...existing,
       field: typeof rawField === "string" ? ref.field : serializeFieldRef(rawField),
-      label: byName.get(ref.field)?.label || existing.label || ref.field,
+      label: existing.label || byName.get(ref.field)?.label || ref.field,
     });
     pending.delete(ref.field);
   }
 
   next.push(...buildColumnsObjects(selectedNames.filter((name) => pending.has(name)), availableFields));
   return next;
+}
+
+function TreeViewColumnPicker({ open, fields, value, loading, onClose, onApply }: {
+  open: boolean;
+  fields: ModuleFieldOption[];
+  value: string[];
+  loading?: boolean;
+  onClose: () => void;
+  onApply: (value: string[]) => void;
+}) {
+  const [draft, setDraft] = useState<Set<string>>(new Set(value));
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setDraft(new Set(value));
+    setQuery("");
+  }, [open, value]);
+
+  if (!open) return null;
+  const normalizedQuery = query.trim().toLocaleLowerCase("es");
+  const visibleFields = fields.filter((field) =>
+    !normalizedQuery || `${field.label || ""} ${field.name} ${field.type || ""}`.toLocaleLowerCase("es").includes(normalizedQuery)
+  );
+
+  return createPortal(
+    <div className="selModal" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className="selModal__dialog" role="dialog" aria-modal="true" aria-label="Seleccionar columnas" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="selModal__header">
+          <div className="selModal__title">Seleccionar columnas</div>
+          <div className="selModal__searchRow">
+            <input className="form-control selModal__search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar campos…" />
+            <button type="button" className="btn btn-outline-light selBtnClear" onClick={() => setDraft(new Set())}>Limpiar</button>
+          </div>
+        </div>
+        <div className="selModal__body">
+          {loading ? <div className="selModal__empty">Cargando…</div> : null}
+          {!loading && visibleFields.length === 0 ? <div className="selModal__empty">No hay campos.</div> : null}
+          <div className="selModal__list">
+            {visibleFields.map((field) => {
+              const checked = draft.has(field.name);
+              return <button key={field.name} type="button" className={`btn btn-outline-light selItem ${checked ? "selItem--checked" : ""}`}
+                aria-pressed={checked} onClick={() => setDraft((current) => {
+                  const next = new Set(current);
+                  next.has(field.name) ? next.delete(field.name) : next.add(field.name);
+                  return next;
+                })}>
+                <span className="selItem__mark" aria-hidden="true">{checked ? "☑" : "☐"}</span>
+                <span className="selItem__main text-start">
+                  <span className="d-block fw-semibold">{field.label || field.name}</span>
+                  <small className="text-muted">{field.name}</small>
+                </span>
+                <span className="badge text-bg-secondary">{field.type || "text"}</span>
+              </button>;
+            })}
+          </div>
+        </div>
+        <div className="selModal__footer">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+          <button type="button" className="btn btn-primary" onClick={() => { onApply(Array.from(draft)); onClose(); }}>Aplicar</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
 }
 
 function mapPreviewTabsToSpecialViews(previewTabs: FormPreviewTab[]): SpecialViewConfig[] {
@@ -2876,37 +2942,7 @@ const editorTabs = [
                     />
                   </div>
 
-                  <div>
-                    <label className={styles.label}>columns</label>
-
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <input
-                        className={styles.input}
-                        value={extractColumnFields(t.config?.columns).join(", ")}
-                        readOnly
-                        disabled={readOnly}
-                        placeholder="Sin columnas seleccionadas"
-                      />
-
-                      <button
-                        type="button"
-                        className="btn btn-outline-light"
-                        onClick={() => {
-                          const table = t.config?.source?.moduleSlug || t.config?.source?.table || t.config?.sourceTable || "";
-                          if (table) ensureFieldsLoaded(table);
-                          setPickTarget("columns");
-                          setPickOpen(true);
-                        }}
-                        disabled={readOnly}
-                      >
-                        Elegir…
-                      </button>
-                    </div>
-
-                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-                      Se guardará como <code>columns: [{"{ field, label }"}]</code>
-                    </div>
-
+                  <div style={{ gridColumn: "1 / -1" }}>
                     {(() => {
                       const sourceTable = t.config?.source?.moduleSlug || t.config?.source?.table || t.config?.sourceTable || "";
                       const availableFields = fieldsByTable[sourceTable] || [];
@@ -2988,21 +3024,52 @@ const editorTabs = [
                           <div style={{ gridColumn: "1 / -1" }}>
                             <div className={styles.actionsRow} style={{ justifyContent: "space-between" }}>
                               <label className={styles.label}>Columnas de lectura</label>
-                              <button type="button" className={styles.btn} disabled={readOnly}
-                                onClick={() => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), columns: [...(prev.config?.columns || []), { field: "", label: "Nueva columna" }] } } : prev)}>
-                                + Añadir columna
-                              </button>
+                              <div className={styles.actionsRow}>
+                                <button type="button" className="btn btn-primary" disabled={readOnly}
+                                  onClick={() => { ensureFieldsLoaded(sourceTable); setPickTarget("columns"); setPickOpen(true); }}>
+                                  Seleccionar columnas
+                                </button>
+                                <button type="button" className={styles.btn} disabled={readOnly}
+                                  onClick={() => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), columns: [...(prev.config?.columns || []), { field: { field: "" }, label: "" }] } } : prev)}>
+                                  + Campo relacionado
+                                </button>
+                              </div>
                             </div>
                             {(t.config?.columns || []).map((column: any, columnIndex: number) => (
-                              <div key={columnIndex} className={styles.grid} style={{ marginTop: 8 }}>
-                                <RelatedFieldSelector sourceModuleSlug={sourceTable} value={column.field || ""} disabled={readOnly}
-                                  onChange={(field) => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), columns: (prev.config?.columns || []).map((item: any, index: number) => index === columnIndex ? { ...item, field } : item) } } : prev)} />
-                                <input className={styles.input} value={column.label || ""} disabled={readOnly} placeholder="Etiqueta"
-                                  onChange={(event) => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), columns: (prev.config?.columns || []).map((item: any, index: number) => index === columnIndex ? { ...item, label: event.target.value } : item) } } : prev)} />
-                                <button type="button" className={styles.btn} disabled={readOnly}
-                                  onClick={() => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), columns: (prev.config?.columns || []).filter((_: any, index: number) => index !== columnIndex) } } : prev)}>
-                                  Eliminar
-                                </button>
+                              <div key={columnIndex} className={styles.card} style={{ marginTop: 8 }}>
+                                {(() => {
+                                  const ref = normalizeFieldRef(column?.field ?? column);
+                                  return <>
+                                    <div className="fw-semibold">{ref.field ? formatFieldRefPath(column?.field ?? column) : "Selecciona un campo relacionado"}</div>
+                                    {ref.field ? <div className={styles.help}>Campo: {ref.field}</div> :
+                                      <RelatedFieldSelector sourceModuleSlug={sourceTable} value={column?.field || ""} disabled={readOnly}
+                                        onChange={(field) => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), columns: (prev.config?.columns || []).map((item: any, index: number) => index === columnIndex ? { ...item, field } : item) } } : prev)} />}
+                                  </>;
+                                })()}
+                                <div className={styles.grid} style={{ marginTop: 8 }}>
+                                  <input className={styles.input} value={column?.label || ""} disabled={readOnly} placeholder="Etiqueta"
+                                    onChange={(event) => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), columns: (prev.config?.columns || []).map((item: any, index: number) => index === columnIndex ? { ...item, label: event.target.value } : item) } } : prev)} />
+                                  <div className={styles.actionsRow} style={{ justifyContent: "flex-end" }}>
+                                    <button type="button" className={styles.btn} disabled={readOnly || columnIndex === 0}
+                                      onClick={() => updateTab((prev) => {
+                                        if (prev.type !== "treeview") return prev;
+                                        const columns = [...(prev.config?.columns || [])];
+                                        [columns[columnIndex - 1], columns[columnIndex]] = [columns[columnIndex], columns[columnIndex - 1]];
+                                        return { ...prev, config: { ...(prev.config || {}), columns } };
+                                      })}>Subir</button>
+                                    <button type="button" className={styles.btn} disabled={readOnly || columnIndex === (t.config?.columns || []).length - 1}
+                                      onClick={() => updateTab((prev) => {
+                                        if (prev.type !== "treeview") return prev;
+                                        const columns = [...(prev.config?.columns || [])];
+                                        [columns[columnIndex], columns[columnIndex + 1]] = [columns[columnIndex + 1], columns[columnIndex]];
+                                        return { ...prev, config: { ...(prev.config || {}), columns } };
+                                      })}>Bajar</button>
+                                    <button type="button" className={styles.btn} disabled={readOnly}
+                                      onClick={() => updateTab((prev) => prev.type === "treeview" ? { ...prev, config: { ...(prev.config || {}), columns: (prev.config?.columns || []).filter((_: any, index: number) => index !== columnIndex) } } : prev)}>
+                                      Eliminar
+                                    </button>
+                                  </div>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -3101,12 +3168,18 @@ const editorTabs = [
                             </div>
                           </div>
 
+                          <TreeViewColumnPicker
+                            open={pickOpen && pickTarget === "columns"}
+                            value={extractColumnFields(t.config?.columns)}
+                            fields={availableFields}
+                            loading={fieldsLoading}
+                            onClose={() => setPickOpen(false)}
+                            onApply={(next) => applyPick("columns", next, availableFields)}
+                          />
                           <FieldPickerModal
-                            open={pickOpen}
+                            open={pickOpen && pickTarget !== "columns"}
                             title={
-                              pickTarget === "columns"
-                                ? "Seleccionar columnas"
-                                : pickTarget === "groupByField"
+                              pickTarget === "groupByField"
                                 ? "Seleccionar campo groupBy"
                                 : pickTarget === "parentFilterField"
                                 ? "Seleccionar campo FK (filtro padre)"

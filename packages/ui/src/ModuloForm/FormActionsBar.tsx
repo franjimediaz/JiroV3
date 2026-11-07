@@ -5,7 +5,7 @@ import { getFieldRefValue, type ModuleSchema } from "@repo/types";
 import { ActionMenu } from "../ActionMenu";
 import { applyCompute } from "../engines/computeEngine"; // ajusta ruta real si difiere
 import { dataProvider } from "../providers/DataProvider"; // ajusta ruta real si difiere
-import { downloadPdf, openPdfInNewTab, openPdfInSameTab } from "../pdf";
+import { downloadPdf } from "../pdf";
 import { evaluateActionVisibility } from "../engines/visibilityEngine";
 import { buildCreateRelatedPayload } from "../utils/createRelatedPayload";
 import type { FormAction, ActionDisabledWhen as DisabledWhen } from "@repo/types";
@@ -32,16 +32,6 @@ function deepTpl(obj: any, ctx: any): any {
     return out;
   }
   return tplString(obj, ctx);
-}
-
-function isTruthyValue(value: unknown) {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value === 1;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    return normalized === "1" || normalized === "true" || normalized === "yes";
-  }
-  return false;
 }
 
 /** ---------------- Component Props ---------------- */
@@ -287,7 +277,6 @@ export default function FormActionsBar(props: {
         const paramsObj = (a as any).params ?? ext.params ?? {};
         const endpoint =
           ext.endpoint || (a as any).endpoint || "/api/pdf/generate";
-        const open = ext.open || (a as any).open || "tab";
 
         if (kind === "pdf") {
           const ctx = { ...values, id: values?.id };
@@ -308,17 +297,7 @@ export default function FormActionsBar(props: {
             );
           }
 
-          if (isTruthyValue(params.download)) {
-            downloadPdf(template, recordId, endpoint, params);
-            return;
-          }
-
-          if (open === "same") {
-            openPdfInSameTab(template, recordId, endpoint, params);
-            return;
-          }
-
-          openPdfInNewTab(template, recordId, endpoint, params);
+          await downloadPdf(template, recordId, endpoint, params);
           return;
         }
 

@@ -66,7 +66,6 @@ export async function GET(req: Request) {
     const slug = searchParams.get("template");
     const recordId = searchParams.get("id");
     const cacheBust = searchParams.get("t") || Date.now().toString();
-    const shouldDownload = searchParams.get("download") === "1";
 
     if (!slug || !recordId) {
       return NextResponse.json(
@@ -206,13 +205,13 @@ export async function GET(req: Request) {
       }
     }
 
-    // 7) Respuesta inline (abre en navegador)
+    // 7) Respuesta como descarga
     return new NextResponse(
       new Blob([new Uint8Array(body)], { type: "application/pdf" }),
       {
         headers: {
           "content-type": "application/pdf",
-          "content-disposition": `${shouldDownload ? "attachment" : "inline"}; filename="${filename}"`,
+          "content-disposition": `attachment; filename="${filename}"`,
           "cache-control": "no-store",
           "x-pdf-generator": generator,
           "x-pdf-upstream-status": upstreamStatus

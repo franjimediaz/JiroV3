@@ -40,15 +40,10 @@ export function openPdfInSameTab(
   endpoint = DEFAULT_PDF_ENDPOINT,
   params: PdfActionParams = {},
 ) {
-  assertBrowser();
-  const url = buildPdfUrl({
-    endpoint,
-    params: { ...params, template, id },
-  });
-  window.location.assign(url);
+  return downloadPdf(template, id, endpoint, params);
 }
 
-export function downloadPdf(
+export async function downloadPdf(
   template: string,
   id: string,
   endpoint = DEFAULT_PDF_ENDPOINT,
@@ -60,13 +55,25 @@ export function downloadPdf(
     params: { ...params, template, id, download: 1 },
   });
 
+  const response = await fetch(url, { credentials: "same-origin" });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error || payload?.message || "No se pudo generar el PDF");
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") || "";
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || `${template}-${id}.pdf`;
+  const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
-  anchor.href = url;
+  anchor.href = objectUrl;
+  anchor.download = filename;
   anchor.rel = "noopener";
   anchor.style.display = "none";
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 }
 
 export function openPdfInNewTab(
@@ -75,32 +82,5 @@ export function openPdfInNewTab(
   endpoint = DEFAULT_PDF_ENDPOINT,
   params: PdfActionParams = {},
 ) {
-  assertBrowser();
-
-  const previewWindow = window.open("", "_blank");
-  if (!previewWindow) {
-    throw new Error(
-      "El navegador bloqueó la nueva pestaña del PDF. Permite ventanas emergentes para continuar.",
-    );
-  }
-
-  try {
-    previewWindow.opener = null;
-    previewWindow.document.title = "Generando PDF...";
-    previewWindow.document.body.innerHTML = `
-      <div style="font-family: Arial, sans-serif; padding: 24px; color: #111827;">
-        <h1 style="font-size: 18px; margin: 0 0 12px;">Generando PDF...</h1>
-        <p style="margin: 0; line-height: 1.5;">La vista se abrirá en esta pestaña en unos segundos.</p>
-      </div>
-    `;
-  } catch {
-    // Si el navegador no permite escribir el contenido temporal, seguimos con la redirección.
-  }
-
-  const url = buildPdfUrl({
-    endpoint,
-    params: { ...params, template, id },
-  });
-
-  previewWindow.location.replace(url);
+  return downloadPdf(template, id, endpoint, params);
 }

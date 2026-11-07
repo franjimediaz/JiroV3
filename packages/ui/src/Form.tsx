@@ -1195,10 +1195,7 @@ export default function Form({
     <div className="card">
       <div className="card-header jiro-form-section-header">
         <div className="fw-semibold">{treeViewConfig?.ui?.title || ""}</div>
-        <div className="small text-muted">
-          {treeViewConfig?.source?.table ? `Tabla: ${treeViewConfig.source.table}` : ""}
-          {treeViewConfig?.grouping?.groupByField ? ` | groupBy: ${formatFieldRefPath(treeViewConfig.grouping.groupByField)}` : ""}
-        </div>
+        
       </div>
 
       <div className="card-body">

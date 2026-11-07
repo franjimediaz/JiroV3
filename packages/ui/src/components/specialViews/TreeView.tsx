@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import {ActionMenu} from "../../ActionMenu";
-import { fieldRefKey, getFieldRefValue, isDirectFieldRef, normalizeFieldRef, normalizeTreeViewConfig, type FieldRefLike } from "@repo/types";
+import { fieldRefKey, getFieldRefValue, isDirectFieldRef, normalizeFieldRef, normalizeTreeViewConfig, serializeFieldRef, type FieldRefLike } from "@repo/types";
 import { getModuleColorVariables } from "../../utils/colorContrast";
 import { dataProvider as schemaProvider } from "../../providers/DataProvider";
 import {
@@ -212,27 +212,21 @@ function normalizeColumns(input: any): NormalizedColumn[] {
   const out: NormalizedColumn[] = [];
 
   for (const c of cols) {
-    if (typeof c === "string") {
-      out.push({ field: c, label: "", type: "text" });
-      continue;
-    }
-    if (c && typeof c === "object") {
-      const field =
-        typeof c.field === "string"
-          ? c.field
-          : typeof c.name === "string"
-          ? c.name
-          : null;
-      if (!field) continue;
+    const rawField = c && typeof c === "object" && "field" in c
+      ? c.field
+      : c && typeof c === "object" && typeof c.name === "string"
+      ? c.name
+      : c;
+    const ref = normalizeFieldRef(rawField);
+    if (!ref.field) continue;
 
-      out.push({
-        field,
-        label: typeof c.label === "string" ? c.label : normalizeFieldRef(field).field,
-        type: (c.type as ColumnType) || undefined,
-        width: typeof c.width === "string" ? c.width : undefined,
-        options: Array.isArray(c.options) ? c.options : undefined,
-      });
-    }
+    out.push({
+      field: typeof rawField === "string" ? rawField : serializeFieldRef(rawField),
+      label: typeof c?.label === "string" ? c.label : ref.field,
+      type: (c?.type as ColumnType) || undefined,
+      width: typeof c?.width === "string" ? c.width : undefined,
+      options: Array.isArray(c?.options) ? c.options : undefined,
+    });
   }
 
   // dedupe por field
