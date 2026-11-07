@@ -43,7 +43,7 @@
 .authPanel { display: grid; place-items: center; min-width: 0; min-height: 100dvh; padding: 3rem clamp(2rem, 7vw, 7rem); background: #fbfcfe; }
 .authContainer { width: min(100%, 420px); }
 .mobileBrand { display: none; margin-bottom: 3.5rem; }
-.mobileLogo { width: min(15rem, 70vw); aspect-ratio: 3 / 2; margin: 0 auto; background-image: url("/mylogo2.png"); background-size: contain; background-repeat: no-repeat; background-position: center; }
+.mobileLogo { width: min(15rem, 70vw); aspect-ratio: 3 / 2; margin: 0 auto; background-image: url("../../../public/Orimexa_color_logo.png"); background-size: contain; background-repeat: no-repeat; background-position: center; }
 .header { margin-bottom: 2.25rem; }
 .welcome { display: block; margin-bottom: .7rem; color: var(--login-blue); font-size: .76rem; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
 .header h1 { margin: 0; color: var(--login-ink); font-size: clamp(2.2rem, 3vw, 2.75rem); font-weight: 680; line-height: 1.1; letter-spacing: -.045em; }
@@ -81,6 +81,7 @@
 }
 
 @media (max-width: 720px) {
+  
   .page { display: block; min-height: 100dvh; }
   .visualPanel { display: none; }
   .authPanel { min-height: 100dvh; padding: 2rem 1.25rem; }
