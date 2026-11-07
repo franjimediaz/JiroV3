@@ -103,7 +103,7 @@ export default function MainShell({
           <nav className="main-shell-topbar navbar navbar-dark bg-background py-0">
             <div className="container-fluid flex-nowrap gap-2">
               <button
-                className="btn btn-outline-light main-shell-menu-toggle"
+                className="btn btn-outline-dark main-shell-menu-toggle"
                 type="button"
                 aria-label="Abrir menu"
                 aria-expanded={sidebarOpen}
