@@ -51,16 +51,10 @@ export default async function ModulosAdminPage() {
   return (
     <RequirePerms modulo="modulos" accion="ver">
       <main className="container-fluid p-4">
-        <header className="header mb-4 d-flex align-items-center justify-content-between">
-          <div>
-            <h1 className="titlem">Editor de Módulos</h1>
-            <p className="subtitle">Configuración de módulos y tablas</p>
-          </div>
-        </header>
+       
 
-        <section className="treeSection">
-          <PageClient nodes={tree} />
-        </section>
+        
+        <PageClient nodes={tree} />
       </main>
     </RequirePerms>
   );

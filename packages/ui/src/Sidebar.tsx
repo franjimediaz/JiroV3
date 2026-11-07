@@ -393,11 +393,7 @@ function SidebarUser({ miniMode = false, onNavigate }: { miniMode?: boolean; onN
 
   return (
     <div className={`border-top p-3 sidebar-user ${miniMode ? "is-mini" : ""}`}>
-      <a href="/informes" title="Informes" onClick={onNavigate}
-        className={`btn w-100 d-flex align-items-center gap-2 sidebar-user-btn mb-2 ${miniMode ? "is-mini" : ""}`}>
-        <i className="bi bi-table fs-5" aria-hidden="true" />
-        {!miniMode && <span className="small sidebar-item-label">Informes</span>}
-      </a>
+      
       <form ref={signoutForm} action="/api/auth/signout" method="post" hidden />
       <ActionMenu
         align="start"

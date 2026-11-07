@@ -21,18 +21,16 @@ export function filterSidebarTree(items: SidebarItem[], canView?: (slug: string)
 }
 
 export function getSelectableModules(items: SidebarItem[]) {
-  const modules: Array<SidebarItem & { moduleLabel: string }> = [];
-  const visit = (nodes: SidebarItem[], parents: string[]) => {
-    for (const node of nodes) {
-      const path = node.tipo === "carpeta" ? [...parents, node.nombre] : parents;
-      if (node.tipo === "carpeta" && node.hijos?.some(navigable)) {
-        modules.push({ ...node, moduleLabel: path.join(" / ") });
-      }
-      visit(node.hijos || [], path);
-    }
-  };
-  visit(items, []);
-  return modules;
+  return items
+    .filter(
+      (node) =>
+        node.tipo === "carpeta" &&
+        node.hijos?.some(navigable)
+    )
+    .map((node) => ({
+      ...node,
+      moduleLabel: node.nombre,
+    }));
 }
 
 /** Longest route wins; a nested folder owns its own descendants. */
