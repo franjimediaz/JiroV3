@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { SidebarItem, SidebarModuleSelection } from "@repo/ui";
 import { SidebarWithPerms } from "./SidebarWithPerms";
 
-import { RecordBreadcrumbProvider, RecordBreadcrumbTrail } from "@/lib/RecordBreadcrumb";
+import {
+  RecordBreadcrumbProvider,
+  RecordBreadcrumbTrail,
+} from "@/lib/RecordBreadcrumb";
 
 const SIDEBAR_MINI_STORAGE_KEY = "Orymexa.sidebar.mini";
 const SIDEBAR_MODULE_STORAGE_KEY = "Orymexa.sidebar.module";
@@ -19,7 +22,8 @@ export default function MainShell({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarMini, setSidebarMini] = useState(false);
   const [desktopReady, setDesktopReady] = useState(false);
-  const [moduleSelection, setModuleSelection] = useState<SidebarModuleSelection | null>(null);
+  const [moduleSelection, setModuleSelection] =
+    useState<SidebarModuleSelection | null>(null);
 
   useEffect(() => {
     try {
@@ -38,13 +42,24 @@ export default function MainShell({
     setModuleSelection(selection);
     try {
       window.localStorage.setItem(SIDEBAR_MODULE_STORAGE_KEY, selection.id);
-    } catch { /* Navigation still works when storage is unavailable. */ }
+    } catch {
+      /* Navigation still works when storage is unavailable. */
+    }
   }, []);
 
   useEffect(() => {
     document.body.classList.toggle("sidebar-drawer-open", sidebarOpen);
     return () => document.body.classList.remove("sidebar-drawer-open");
   }, [sidebarOpen]);
+
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 769px)");
+    const closeOnDesktop = () => {
+      if (desktop.matches) setSidebarOpen(false);
+    };
+    desktop.addEventListener("change", closeOnDesktop);
+    return () => desktop.removeEventListener("change", closeOnDesktop);
+  }, []);
 
   const toggleSidebarMini = () => {
     setSidebarMini((current) => {
@@ -60,56 +75,50 @@ export default function MainShell({
 
   return (
     <RecordBreadcrumbProvider>
-      <nav className="navbar navbar-dark bg-background py-0">
-        <div className="container-fluid flex-nowrap gap-2">
-          <button
-            className="btn btn-outline-light d-lg-none"
-            type="button"
-            aria-label="Abrir menu"
-            aria-expanded={sidebarOpen}
-            aria-controls="mobile-sidebar-drawer"
-            onClick={(event) => {
-              event.stopPropagation();
-              setSidebarOpen(true);
-            }}
-          >
-            ☰
-          </button>
-
-          <a className="navbar-brand ms-lg-2 d-flex align-items-center" href="/">
-            <img
-              src="/Orimexa_color_logo.png"
-              alt="Orymexa v3"
-              height="100"
-              style={{ objectFit: "contain", width: "auto" }}
-              className="d-inline-block align-text-top"
-            />
-          </a>
-          <RecordBreadcrumbTrail />
-        </div>
-      </nav>
-
-        <div className="main-shell-layout layout-min-vh">
-          <div className={`main-shell-sidebar d-none d-lg-block ${desktopReady && sidebarMini ? "is-mini" : ""}`}>
-            <SidebarWithPerms
-              items={items}
-              variant="fixed"
-              moduleSelection={moduleSelection}
-              onModuleChange={selectModule}
-              miniMode={desktopReady && sidebarMini}
-              onToggleMini={toggleSidebarMini}
-            />
-          </div>
-
+      <div className="main-shell-layout">
+        <div
+          className={`main-shell-sidebar ${desktopReady && sidebarMini ? "is-mini" : ""}`}
+        >
           <SidebarWithPerms
             items={items}
-            variant="drawer"
+            variant="fixed"
             moduleSelection={moduleSelection}
             onModuleChange={selectModule}
-            isOpen={sidebarOpen}
-            onClose={() => setSidebarOpen(false)}
-            title=""
+            miniMode={desktopReady && sidebarMini}
+            onToggleMini={toggleSidebarMini}
           />
+        </div>
+
+        <SidebarWithPerms
+          items={items}
+          variant="drawer"
+          moduleSelection={moduleSelection}
+          onModuleChange={selectModule}
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+          title=""
+        />
+
+        <div className="main-shell-right">
+          <nav className="main-shell-topbar navbar navbar-dark bg-background py-0">
+            <div className="container-fluid flex-nowrap gap-2">
+              <button
+                className="btn btn-outline-light main-shell-menu-toggle"
+                type="button"
+                aria-label="Abrir menu"
+                aria-expanded={sidebarOpen}
+                aria-controls="mobile-sidebar-drawer"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setSidebarOpen(true);
+                }}
+              >
+                ☰
+              </button>
+
+              <RecordBreadcrumbTrail />
+            </div>
+          </nav>
 
           <main className="main-shell-content flex-grow-1">
             {children}
@@ -118,6 +127,7 @@ export default function MainShell({
             </footer>
           </main>
         </div>
+      </div>
     </RecordBreadcrumbProvider>
   );
 }

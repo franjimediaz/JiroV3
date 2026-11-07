@@ -337,7 +337,7 @@ test("form headers use schema color through scoped variables; two wrapper levels
   assert.match(css, /\.Orymexa-list-view,\s*\.Orymexa-record-form\s*\{\s*width: 100%;/);
   const shell = readFileSync("apps/web/app/(main)/MainShell.tsx", "utf8");
   assert.doesNotMatch(shell, /container-fluid px-0 layout-min-vh/);
-  assert.match(shell, /className="main-shell-layout layout-min-vh"/);
+  assert.match(shell, /className="main-shell-layout"/);
   assert.doesNotMatch(shell, /main-shell-content[^"\n]*shadow/);
   for (const suffix of ["page.tsx", "[id]/page.tsx", "new/page.tsx"]) {
     const page = readFileSync(`apps/web/app/(main)/m/[slug]/${suffix}`, "utf8");

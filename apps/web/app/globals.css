@@ -29,8 +29,6 @@
     --foreground: #ededed;
   }
 }
-.layout-min-vh { min-height: calc(100vh - 90px); }
-.sidebar-sticky { position: sticky; top: 12px; }
 html,
 body {
   max-width: 100vw;
@@ -804,15 +802,19 @@ a {
 }
 .sidebar-desktop {
   background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-right: 1px solid #dbe3ee;
   box-shadow: 4px 0 18px rgba(15, 23, 42, 0.04);
   transition: width 0.22s ease, box-shadow 0.22s ease;
 }
 
 .sidebar-sticky {
-  position: sticky;
-  top: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   transition: padding 0.22s ease;
 }
 
@@ -830,7 +832,7 @@ a {
 .main-shell-layout {
   display: flex;
   align-items: stretch;
-  min-height: calc(100vh - 90px);
+  min-height: 100dvh;
 }
 
 .record-breadcrumb {
@@ -1011,8 +1013,11 @@ a {
 .Orymexa-report-matrix td { text-align: right; }
 
 .main-shell-sidebar {
-  width: 16.6667%;
-  min-width: 264px;
+  width: clamp(220px, 20vw, 280px);
+  min-width: 0;
+  height: 100dvh;
+  position: sticky;
+  top: 0;
   flex: 0 0 auto;
   transition: width 0.22s ease, min-width 0.22s ease, flex-basis 0.22s ease;
 }
@@ -1205,8 +1210,8 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: 44px;
+  height: 44px;
   border: 1px solid rgba(148, 163, 184, 0.45);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.72);
@@ -1383,4 +1388,33 @@ input[type="number"] {
   pointer-events: none;
   display: flex;
   align-items: center;
+}
+
+/* Sidebar and page column share the viewport from Y=0. */
+.main-shell-right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.main-shell-topbar { min-height: 64px; flex-shrink: 0; }
+.main-shell-topbar > .container-fluid { min-width: 0; }
+.main-shell-menu-toggle { display: none; min-width: 44px; min-height: 44px; flex-shrink: 0; }
+.sidebar-brand-header { padding: 12px; }
+.sidebar-brand { display: flex; align-items: center; justify-content: center; min-width: 0; }
+.sidebar-brand img { display: block; width: 100%; max-width: 220px; height: 76px; object-fit: contain; }
+.sidebar-desktop.is-mini .sidebar-brand-header { padding: 8px; }
+.sidebar-desktop.is-mini .sidebar-brand img { height: 48px; }
+.sidebar-desktop > .sidebar-user, .sidebar-topbar, .sidebar-brand-header,
+.sidebarDrawerHeader, .sidebarDrawerFooter { flex-shrink: 0; }
+.sidebar-topbar { padding: 8px 12px; margin: 0; }
+.sidebar-topbar .sidebar-title { margin: 0; }
+.sidebar-desktop.is-mini .sidebar-topbar { justify-content: center; gap: 0; }
+.sidebarDrawerHeader { gap: 8px; }
+.sidebarDrawerHeader .sidebar-brand { flex: 1; }
+.sidebarDrawerBody { min-height: 0; overscroll-behavior: contain; }
+.sidebarDrawer .btnClose { min-width: 44px; min-height: 44px; flex-shrink: 0; }
+.sidebarDrawer :is(.sidebar-nav-link, .sidebar-folder-btn, .sidebar-module-trigger, .sidebar-user-btn) { min-height: 44px; }
+@media (min-width: 769px) {
+  .sidebarDrawer, .sidebarOverlay { display: none; }
+}
+@media (max-width: 768px) {
+  .main-shell-sidebar { display: none; }
+  .main-shell-menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
+  .main-shell-topbar > .container-fluid { padding-inline: 8px; }
 }

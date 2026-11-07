@@ -142,12 +142,14 @@ export function Sidebar({
           className={`sidebarDrawer ${isOpen ? "open" : ""}`}
           role="dialog"
           aria-modal="true"
-          aria-label={title}
+          aria-label={title || "Navegación principal"}
           aria-hidden={!isOpen}
+          inert={!isOpen}
           onClick={(event) => event.stopPropagation()}
         >
           <div className="sidebarDrawerHeader">
-            <h5 className="m-0">{title}</h5>
+            <SidebarBrand onNavigate={onClose} />
+            {title && <h5 className="m-0">{title}</h5>}
             <button type="button" className="btnClose" onClick={() => onClose?.()} aria-label="Cerrar">
               ✕
             </button>
@@ -164,6 +166,7 @@ export function Sidebar({
 
   return (
     <aside className={`sidebar-desktop border-end h-100 ${miniMode ? "is-mini" : ""}`}>
+      <div className="sidebar-brand-header"><SidebarBrand /></div>
       <div className={`p-4 sidebar-sticky ${miniMode ? "is-mini" : ""}`}>
         
         {tree}
@@ -184,6 +187,14 @@ export function Sidebar({
           ) : null}
         </div>
     </aside>
+  );
+}
+
+function SidebarBrand({ onNavigate }: { onNavigate?: () => void }) {
+  return (
+    <a className="sidebar-brand" href="/" onClick={onNavigate}>
+      <img src="/Orimexa_color_logo.png" alt="Orymexa v3" height="100" />
+    </a>
   );
 }
 
