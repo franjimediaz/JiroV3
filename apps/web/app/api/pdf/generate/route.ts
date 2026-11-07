@@ -27,31 +27,6 @@ function logPdfTiming(label: string, startedAt: number, benchmarkId: string | nu
   if (benchmarkId) console.info("[pdf-benchmark] " + JSON.stringify({ id: benchmarkId, scope: "web", stage: label, ms: performance.now() - startedAt }));
 }
 
-async function readErrorPayload(response: Response) {
-  const contentType = response.headers.get("content-type") || "";
-
-  try {
-    if (contentType.includes("application/json")) {
-      const json = await response.json();
-      return {
-        error: json?.error || json?.message || JSON.stringify(json),
-        details: json?.details ?? null,
-      };
-    }
-
-    const text = await response.text();
-    return {
-      error: text || `${response.status} ${response.statusText}`,
-      details: null,
-    };
-  } catch {
-    return {
-      error: `${response.status} ${response.statusText}`,
-      details: null,
-    };
-  }
-}
-
 export async function GET(req: Request) {
   const totalStartedAt = performance.now();
   const requestId = getRequestId(req);
@@ -122,87 +97,22 @@ export async function GET(req: Request) {
     logTiming("renderTemplateToHtml", renderStartedAt);
 
     // 6) PDF
-    const serviceUrl = process.env.PDF_SERVICE_URL;
-    const serviceSecret = process.env.PDF_SERVICE_SECRET;
     const filename = `${slug}-${recordId}-${cacheBust}.pdf`;
-
-    let body: Buffer | null = null;
-    let generator = "local";
-    let upstreamError = "";
-    let upstreamStatus: number | null = null;
-    let upstreamStatusText = "";
-    let upstreamDetails: any = null;
-
-    if (serviceUrl && serviceSecret) {
-      const serviceStartedAt = performance.now();
-      try {
-        const r = await fetch(`${serviceUrl.replace(/\/$/, "")}/generate`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            authorization: `Bearer ${serviceSecret}`,
-            ...(benchmarkId ? { "x-pdf-benchmark-id": benchmarkId } : {}),
-          },
-          body: JSON.stringify({
-            html,
-            filename,
-            disposition: "inline",
-          }),
-        });
-
-        if (!r.ok) {
-          upstreamStatus = r.status;
-          upstreamStatusText = r.statusText;
-          const payload = await readErrorPayload(r);
-          upstreamError = payload.error;
-          upstreamDetails = payload.details;
-          console.error("PDF upstream service responded with error", {
-            upstreamStatus,
-            upstreamStatusText,
-            upstreamError,
-            upstreamDetails,
-            template: slug,
-            recordId,
-            sourceTable: tplRow.source_table,
-          });
-        } else {
-          const pdfArrayBuffer = await r.arrayBuffer();
-          body = Buffer.from(pdfArrayBuffer);
-          generator = "service";
-        }
-      } catch (error: any) {
-        upstreamError =
-          error?.cause?.message || error?.message || "PDF service fetch failed";
-        console.error("PDF upstream service fetch failed", {
-          upstreamError,
-          template: slug,
-          recordId,
-          sourceTable: tplRow.source_table,
-        });
-      } finally {
-        logTiming("pdfService", serviceStartedAt);
-      }
-    } else {
-      upstreamError = "PDF service no configurado; usando generador local";
-    }
-
-    if (!body) {
-      const localStartedAt = performance.now();
-      try {
-        body = await htmlToPdfBuffer(html);
-        generator = "local";
-      } catch (localError: any) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: localError?.message || "No se pudo generar el PDF",
-            details: { upstreamStatus, upstreamStatusText, template: slug },
-          },
-          { status: 500 },
-        );
-      } finally {
-        logTiming("pdfLocal", localStartedAt);
-      }
+    const localStartedAt = performance.now();
+    let body: Buffer;
+    try {
+      body = await htmlToPdfBuffer(html);
+    } catch (localError: any) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: localError?.message || "No se pudo generar el PDF",
+          details: { template: slug },
+        },
+        { status: 500 },
+      );
+    } finally {
+      logTiming("pdfLocal", localStartedAt);
     }
 
     // 7) Respuesta como descarga
@@ -213,10 +123,7 @@ export async function GET(req: Request) {
           "content-type": "application/pdf",
           "content-disposition": `attachment; filename="${filename}"`,
           "cache-control": "no-store",
-          "x-pdf-generator": generator,
-          "x-pdf-upstream-status": upstreamStatus
-            ? String(upstreamStatus)
-            : "none",
+          "x-pdf-generator": "local",
         },
       },
     );

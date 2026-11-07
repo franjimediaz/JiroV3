@@ -57,6 +57,9 @@ test("PDF generation defaults to attachment and form actions use the blob downlo
   const route = readFileSync("apps/web/app/api/pdf/generate/route.ts", "utf8");
   const actions = readFileSync("packages/ui/src/ModuloForm/FormActionsBar.tsx", "utf8");
   assert.match(route, /"content-disposition": `attachment; filename="\$\{filename\}"`/);
+  assert.match(route, /body = await htmlToPdfBuffer\(html\)/);
+  assert.match(route, /"x-pdf-generator": "local"/);
+  assert.doesNotMatch(route, /PDF_SERVICE_URL|PDF_SERVICE_SECRET|pdfService/);
   assert.doesNotMatch(route, /shouldDownload/);
   assert.match(actions, /await downloadPdf\(template, recordId, endpoint, params\)/);
   assert.doesNotMatch(actions, /openPdfInNewTab|openPdfInSameTab|window\.open/);

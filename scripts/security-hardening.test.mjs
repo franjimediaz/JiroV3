@@ -212,7 +212,8 @@ describe("security hardening regression checks", () => {
     assert.match(pdfService, /isPrivateIp/);
     assert.match(pdfService, /\["https:"\]\.includes\(parsed\.protocol\)/);
     assert.match(pdfService, /javaScriptEnabled: process\.env\.PDF_ENABLE_JAVASCRIPT === "1"/);
-    assert.match(pdfRoute, /PDF_SERVICE_SECRET/);
+    assert.match(pdfRoute, /await htmlToPdfBuffer\(html\)/);
+    assert.doesNotMatch(pdfRoute, /PDF_SERVICE_URL|PDF_SERVICE_SECRET/);
     assert.match(pdfRoute, /requireModulePermission\("pdf_templates", "exportar"\)/);
     assert.match(pdfRoute, /enforceRateLimit/);
   });
