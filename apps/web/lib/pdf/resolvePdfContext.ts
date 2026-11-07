@@ -51,6 +51,17 @@ type InverseRef = {
   alias: string;
 };
 
+async function timeResolveStage<T>(label: string, action: () => Promise<T>) {
+  const startedAt = Date.now();
+  try {
+    return await action();
+  } finally {
+    if (process.env.PDF_TIMING_LOGS === "1") {
+      console.info(`[pdf-context] ${label}: ${Date.now() - startedAt}ms`);
+    }
+  }
+}
+
 function createResolveRunCache(): ResolveRunCache {
   return {
     recordNames: new WeakMap(),
@@ -916,6 +927,7 @@ async function hydrateBelongsToTree(opts: {
 
 let allSchemasCache: Record<string, ModuleSchema> | null = null;
 let allSchemasCacheAt = 0;
+let allSchemasLoadPromise: Promise<Record<string, ModuleSchema>> | null = null;
 
 async function loadAllSchemasFromDb(params: { supabase: any }) {
   const now = Date.now();
@@ -923,27 +935,37 @@ async function loadAllSchemasFromDb(params: { supabase: any }) {
     return allSchemasCache;
   }
 
+  if (allSchemasLoadPromise) return allSchemasLoadPromise;
+
   const { supabase } = params;
-  const { data, error } = await supabase.from("modulos").select("slug,props");
+  allSchemasLoadPromise = (async () => {
+    const { data, error } = await supabase.from("modulos").select("slug,props");
 
-  if (error) {
-    throw new Error(
-      `resolvePdfContext: error cargando modulos: ${error.message}`,
-    );
-  }
-
-  const map: Record<string, ModuleSchema> = {};
-  for (const row of data || []) {
-    const slug = (row as any)?.slug;
-    const props = (row as any)?.props;
-    if (slug && props && typeof props === "object") {
-      map[String(slug)] = props as ModuleSchema;
+    if (error) {
+      throw new Error(
+        `resolvePdfContext: error cargando modulos: ${error.message}`,
+      );
     }
-  }
 
-  allSchemasCache = map;
-  allSchemasCacheAt = now;
-  return map;
+    const map: Record<string, ModuleSchema> = {};
+    for (const row of data || []) {
+      const slug = (row as any)?.slug;
+      const props = (row as any)?.props;
+      if (slug && props && typeof props === "object") {
+        map[String(slug)] = props as ModuleSchema;
+      }
+    }
+
+    allSchemasCache = map;
+    allSchemasCacheAt = Date.now();
+    return map;
+  })();
+
+  try {
+    return await allSchemasLoadPromise;
+  } finally {
+    allSchemasLoadPromise = null;
+  }
 }
 
 function buildInverseRefs(all: Record<string, ModuleSchema>) {
@@ -979,10 +1001,11 @@ async function hydrateHasManyCollections(opts: {
   rootModuleSlug: string;
   parentId: string;
   py: AnyObj;
+  allSchemas?: Promise<Record<string, ModuleSchema>>;
 }) {
   const { supabase, cache, rootModuleSlug, parentId, py } = opts;
 
-  const allSchemas = await loadAllSchemasFromDb({ supabase });
+  const allSchemas = await (opts.allSchemas || loadAllSchemasFromDb({ supabase }));
   const inverse = buildInverseRefs(allSchemas);
   const refs = inverse.get(rootModuleSlug) || [];
   if (!refs.length) return py;
@@ -1016,26 +1039,29 @@ async function hydrateHasManyCollections(opts: {
   return py;
 }
 
-export async function resolvePdfContext(args: ResolveArgs) {
+async function resolvePdfContextInternal(args: ResolveArgs) {
   const supabase = await createClient();
   const cache = createResolveRunCache();
 
-  const [recordResult, relatedResults, brandingResult] = await Promise.all([
-    supabase.from(args.sourceTable).select("*").eq("id", args.recordId).maybeSingle(),
-    Promise.all(
-      (args.related || []).map(async (relation) => {
-        const rows = await fetchChildrenByFk({
-          supabase,
-          cache,
-          table: relation.table,
-          fkField: relation.fkField,
-          parentId: args.recordId,
-        });
-        return [relation.key, rows] as const;
-      }),
-    ),
-    supabase.from("branding").select("*").limit(1).maybeSingle(),
-  ]);
+  const [recordResult, relatedResults, brandingResult] = await timeResolveStage(
+    "initialQueries",
+    () => Promise.all([
+      supabase.from(args.sourceTable).select("*").eq("id", args.recordId).maybeSingle(),
+      Promise.all(
+        (args.related || []).map(async (relation) => {
+          const rows = await fetchChildrenByFk({
+            supabase,
+            cache,
+            table: relation.table,
+            fkField: relation.fkField,
+            parentId: args.recordId,
+          });
+          return [relation.key, rows] as const;
+        }),
+      ),
+      supabase.from("branding").select("*").limit(1).maybeSingle(),
+    ]),
+  );
 
   if (recordResult.error) {
     throw new Error(`resolvePdfContext: error record: ${recordResult.error.message}`);
@@ -1054,6 +1080,9 @@ export async function resolvePdfContext(args: ResolveArgs) {
   };
 
   const related = Object.fromEntries(relatedResults) as Record<string, any[]>;
+  const allSchemasPromise = timeResolveStage("allSchemas", () =>
+    loadAllSchemasFromDb({ supabase }),
+  );
 
   const recordResolvers = (args.labelResolvers || []).filter(
     (resolver) => resolver?.in === "record",
@@ -1068,7 +1097,7 @@ export async function resolvePdfContext(args: ResolveArgs) {
   }
 
   // Record and related label lookups are independent; hydration needs both.
-  await Promise.all([
+  await timeResolveStage("labelResolvers", () => Promise.all([
     (async () => {
       if (!recordResolvers.length) return;
       const [enrichedRecord] = await applyLabelResolversToRows({
@@ -1087,27 +1116,28 @@ export async function resolvePdfContext(args: ResolveArgs) {
         resolvers,
       });
     }),
-  ]);
+  ]));
 
-  const py = await hydrateBelongsToTree({
+  const py = await timeResolveStage("belongsTo", () => hydrateBelongsToTree({
     supabase,
     cache,
     rootModuleSlug: args.sourceTable,
     record,
     depth: 3,
-  });
+  }));
 
-  await hydrateHasManyCollections({
+  await timeResolveStage("hasMany", () => hydrateHasManyCollections({
     supabase,
     cache,
     rootModuleSlug: args.sourceTable,
     parentId: args.recordId,
     py,
-  });
+    allSchemas: allSchemasPromise,
+  }));
 
   const normalizedBranding = normalizeBranding(brandingResult.data);
   const recordWithClientFields = applyClientCardFields(record, py, cache.recordNames);
-  const allSchemas = await loadAllSchemasFromDb({ supabase });
+  const allSchemas = await allSchemasPromise;
   const rootSchema = allSchemas[args.sourceTable] || await getSchemaCached({ supabase, cache, moduleSlug: args.sourceTable });
   const relatedPlanFields: Record<string, string[]> = {};
   for (const relation of args.related || []) {
@@ -1130,15 +1160,19 @@ export async function resolvePdfContext(args: ResolveArgs) {
   };
 
   const datasets = args.template
-    ? await resolvePdfDatasets({
+    ? await timeResolveStage("datasets", () => resolvePdfDatasets({
         supabase,
         template: args.template,
         ctx: baseCtx,
-      })
+      }))
     : {};
 
   return {
     ...baseCtx,
     datasets,
   };
+}
+
+export async function resolvePdfContext(args: ResolveArgs) {
+  return timeResolveStage("total", () => resolvePdfContextInternal(args));
 }

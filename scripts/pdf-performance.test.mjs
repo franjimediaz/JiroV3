@@ -159,6 +159,7 @@ test("service stage timings are opt-in and include failed operations", async () 
 test("context loads independent record and related labels concurrently with unchanged data", async () => {
   const pending = [];
   const calls = [];
+  const timingMessages = [];
   const supabase = { from(table) {
     const query = { table, columns: "*", filters: [], single: false,
       select(columns) { this.columns = columns; return this; },
@@ -168,7 +169,9 @@ test("context loads independent record and related labels concurrently with unch
       maybeSingle() { this.single = true; return this; },
       then(resolve) {
         calls.push([table, this.columns, this.filters]);
-        if (table === "owners" || table === "states") { pending.push({ table, resolve }); return; }
+        if (table === "owners" || table === "states" || (table === "modulos" && this.columns === "slug,props")) {
+          pending.push({ table: table === "modulos" ? "allSchemas" : table, resolve }); return;
+        }
         const data = table === "projects" ? { id: "p1", ownerId: "u1" }
           : table === "items" ? [{ id: "i1", projectId: "p1", stateId: "s1" }]
           : table === "branding" ? { nombre: "Company" }
@@ -184,7 +187,7 @@ test("context loads independent record and related labels concurrently with unch
   const recordNameCode = ts.transpileModule(readFileSync("packages/types/recordName.ts", "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   new Function("exports", recordNameCode)(recordNameModule.exports);
   const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  const sandbox = { exports: {}, process, console, require(name) {
+  const sandbox = { exports: {}, process: { env: { PDF_TIMING_LOGS: "1" } }, console: { ...console, info: message => timingMessages.push(message) }, require(name) {
     if (name === "@/lib/supabase/server") return { createClient: async () => supabase };
     if (name === "./resolvePdfDatasets") return { resolvePdfDatasets: async () => ({}) };
     if (name === "@repo/types") return recordNameModule.exports;
@@ -200,7 +203,11 @@ test("context loads independent record and related labels concurrently with unch
     ],
   });
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(pending.map(({ table }) => table).sort(), ["owners", "states"]);
+  assert.deepEqual(pending.map(({ table }) => table).sort(), ["allSchemas", "owners", "states"]);
+  pending.find(({ table }) => table === "allSchemas").resolve({ data: [
+    { slug: "projects", props: { fields: [] } },
+    { slug: "items", props: { fields: [] } },
+  ], error: null });
   pending.find(({ table }) => table === "states").resolve({ data: [{ id: "s1", name: "Ready" }] });
   pending.find(({ table }) => table === "owners").resolve({ data: [{ id: "u1", name: "Owner" }] });
   const ctx = await resultPromise;
@@ -210,5 +217,9 @@ test("context loads independent record and related labels concurrently with unch
   assert.equal(ctx.branding.nombre, "Company");
   assert.equal(calls.filter(([table]) => table === "owners").length, 1);
   assert.equal(calls.filter(([table]) => table === "states").length, 1);
+  assert.equal(calls.filter(([table, columns]) => table === "modulos" && columns === "slug,props").length, 1);
   assert.deepEqual(JSON.parse(JSON.stringify(calls.find(([table]) => table === "owners")[2])), [["id", ["u1"]]]);
+  assert.ok(timingMessages.some(message => /^\[pdf-context\] allSchemas: \d+ms$/.test(message)));
+  assert.ok(timingMessages.some(message => /^\[pdf-context\] total: \d+ms$/.test(message)));
+  assert.doesNotMatch(timingMessages.join("\n"), /p1|u1|s1/);
 });
