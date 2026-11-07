@@ -18,7 +18,7 @@ export default function AuthLayout({
   return (
     <div className={`${geistSans.variable} ${geistMono.variable}`}>
       <Providers>
-        <main className="container py-4">{children}</main>
+        {children}
       </Providers>
     </div>
   );
