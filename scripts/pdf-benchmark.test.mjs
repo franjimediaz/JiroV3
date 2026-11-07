@@ -19,6 +19,8 @@ test("benchmark reports nearest-rank percentiles and leaves missing timings unkn
 test("stage logs correlate requests, expose duplicate stages and discard sensitive fields", () => {
   const logs = [
     "https://private.example/object?token=secret",
+    line({ scope: "web", stage: "rateLimit", ms: 12 }),
+    line({ scope: "web", stage: "unmeasured", ms: 8 }),
     line({ scope: "web", stage: "pdfService", ms: 100, token: "secret" }),
     line({ scope: "service", stage: "responseReady", ms: 70 }),
     line({ scope: "service", stage: "cleanup", ms: 5 }),
@@ -32,6 +34,8 @@ test("stage logs correlate requests, expose duplicate stages and discard sensiti
   assert.equal(parsed.size, 1);
   const report = summarize({ samples: [{ id, ok: true, elapsedMs: 110 }] }, logs);
   assert.equal(report.samples[0].serviceRoundTripResidualMs, 30);
+  assert.equal(report.samples[0].stages["web.rateLimit"], 12);
+  assert.equal(report.samples[0].stages["web.unmeasured"], 8);
   assert.deepEqual(report.samples[0].duplicateStages, ["service.cleanup"]);
   assert.doesNotMatch(JSON.stringify(report), /secret|https:|token/);
 });

@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { performance } from "node:perf_hooks";
 
 const stageNames = {
-  web: new Set(["total", "templateQuery", "resolvePdfContext", "renderTemplateToHtml", "pdfService", "pdfLocal"]),
+  web: new Set(["total", "unmeasured", "requestSetup", "rateLimit", "requestParsing", "authAndPermissions", "supabaseClient", "templateQuery", "templatePreparation", "resolvePdfContext", "renderTemplateToHtml", "pdfService", "pdfLocal", "responsePreparation"]),
   service: new Set(["total", "responseReady", "browser", "context", "page", "setContent", "renderDelay", "images", "page.pdf", "page.close", "context.close", "browser.release", "cleanup"]),
 };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

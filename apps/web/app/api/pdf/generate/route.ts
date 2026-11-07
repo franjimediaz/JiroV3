@@ -21,26 +21,37 @@ function shouldLogPdfTimings() {
   return process.env.PDF_TIMING_LOGS === "1";
 }
 
-function logPdfTiming(label: string, startedAt: number, benchmarkId: string | null = null) {
+function logPdfTiming(label: string, elapsedMs: number, benchmarkId: string | null = null) {
   if (!shouldLogPdfTimings()) return;
-  console.info(`[pdf] ${label}: ${Math.round(performance.now() - startedAt)}ms`);
-  if (benchmarkId) console.info("[pdf-benchmark] " + JSON.stringify({ id: benchmarkId, scope: "web", stage: label, ms: performance.now() - startedAt }));
+  console.info(`[pdf] ${label}: ${Math.round(elapsedMs)}ms`);
+  if (benchmarkId) console.info("[pdf-benchmark] " + JSON.stringify({ id: benchmarkId, scope: "web", stage: label, ms: elapsedMs }));
 }
 
 export async function GET(req: Request) {
   const totalStartedAt = performance.now();
+  const requestSetupStartedAt = performance.now();
   const requestId = getRequestId(req);
   const candidateId = req.headers.get("x-pdf-benchmark-id") || "";
   const benchmarkId = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidateId) ? candidateId : null;
-  const logTiming = (label: string, startedAt: number) => logPdfTiming(label, startedAt, benchmarkId);
+  let measuredMs = 0;
+  const logTiming = (label: string, startedAt: number) => {
+    const elapsedMs = performance.now() - startedAt;
+    measuredMs += elapsedMs;
+    logPdfTiming(label, elapsedMs, benchmarkId);
+  };
+  logTiming("requestSetup", requestSetupStartedAt);
   try {
+    const rateLimitStartedAt = performance.now();
     const ip = getClientIp(req);
     await enforceRateLimit({ key: `pdf-generate:${ip}`, limit: 30, windowMs: 60_000 });
+    logTiming("rateLimit", rateLimitStartedAt);
 
+    const requestParsingStartedAt = performance.now();
     const { searchParams } = new URL(req.url);
     const slug = searchParams.get("template");
     const recordId = searchParams.get("id");
     const cacheBust = searchParams.get("t") || Date.now().toString();
+    logTiming("requestParsing", requestParsingStartedAt);
 
     if (!slug || !recordId) {
       return NextResponse.json(
@@ -49,8 +60,13 @@ export async function GET(req: Request) {
       );
     }
 
+    const authStartedAt = performance.now();
     await requireModulePermission("pdf_templates", "exportar");
+    logTiming("authAndPermissions", authStartedAt);
+
+    const supabaseStartedAt = performance.now();
     const supabase = await createClient();
+    logTiming("supabaseClient", supabaseStartedAt);
 
     // 1) Cargar plantilla activa
     const templateStartedAt = performance.now();
@@ -75,10 +91,12 @@ export async function GET(req: Request) {
     }
 
     // 2) Parsear/normalizar template + related (igual que preview)
+    const templatePreparationStartedAt = performance.now();
     const { related, template } = parseTemplateRow(tplRow);
 
     // 3) Derivar resolvers desde el template (GUID -> label, etc.)
     const labelResolvers = deriveLabelResolversFromTemplate(template);
+    logTiming("templatePreparation", templatePreparationStartedAt);
 
     // 4) Resolver contexto completo (record + related + lookups/labels)
     const resolveStartedAt = performance.now();
@@ -116,7 +134,8 @@ export async function GET(req: Request) {
     }
 
     // 7) Respuesta como descarga
-    return new NextResponse(
+    const responseStartedAt = performance.now();
+    const response = new NextResponse(
       new Blob([new Uint8Array(body)], { type: "application/pdf" }),
       {
         headers: {
@@ -127,9 +146,13 @@ export async function GET(req: Request) {
         },
       },
     );
+    logTiming("responsePreparation", responseStartedAt);
+    return response;
   } catch (error) {
     return handleApiError(error, requestId, { route: "/api/pdf/generate", method: "GET" });
   } finally {
-    logTiming("total", totalStartedAt);
+    const totalMs = performance.now() - totalStartedAt;
+    logPdfTiming("unmeasured", Math.max(0, totalMs - measuredMs), benchmarkId);
+    logPdfTiming("total", totalMs, benchmarkId);
   }
 }
