@@ -1,8 +1,24 @@
 "use client";
 
 import React from "react";
-import { getRecordName, getRecordNameFieldName, fieldRefKey, isDirectFieldRef, normalizeFieldRef, type FieldRefLike, type Field, type ModuleSchema } from "@repo/types";
-import { resolveSelectorStyle, selectorFieldRefs, readSelectorStyle } from "./selectorStyle";
+import {
+  getFieldRefValue,
+  getRecordName,
+  getRecordNameFieldName,
+  fieldRefKey,
+  isDirectFieldRef,
+  normalizeFieldRef,
+  type FieldRefLike,
+  type Field,
+  type ModuleSchema,
+} from "@repo/types";
+
+import {
+  resolveSelectorStyle,
+  selectorFieldRefs,
+  readSelectorStyle,
+} from "./selectorStyle";
+
 import { getRecordNameSchema } from "./recordNameSchema";
 
 export type RelationDisplayEntry = {
@@ -12,13 +28,15 @@ export type RelationDisplayEntry = {
 };
 
 export type RelationDisplayStatus = "resolved" | "failed";
-export type RelationDisplayStatusMap = Record<string, RelationDisplayStatus>;
+
+export type RelationDisplayStatusMap =
+  Record<string, RelationDisplayStatus>;
 
 export type RelationDisplayConfig = {
   fieldName: string;
   moduleSlug: string;
   valueField: string;
-  displayField: string;
+  displayField: FieldRefLike;
   multiple: boolean;
   hasStyle: boolean;
   styleIconField?: FieldRefLike;
@@ -30,99 +48,188 @@ type RelationBucket = {
   ids: Set<string>;
 };
 
-export function getRelationDisplayConfig(field: Field): RelationDisplayConfig | null {
+export function getRelationDisplayConfig(
+  field: Field
+): RelationDisplayConfig | null {
   if (field.type !== "selectorTabla") return null;
 
   const ref = (field as any).ref;
+
   const moduleSlug = ref?.moduleSlug
     ? String(ref.moduleSlug)
     : ref?.slug
-    ? String(ref.slug)
-    : ref?.table
-    ? String(ref.table)
-    : ref?.module
-    ? String(ref.module)
-    : "";
+      ? String(ref.slug)
+      : ref?.table
+        ? String(ref.table)
+        : ref?.module
+          ? String(ref.module)
+          : "";
+
   if (!moduleSlug) return null;
 
   return {
     fieldName: field.name,
     moduleSlug,
-    valueField: ref?.valueField ? String(ref.valueField) : "id",
-    displayField: ref?.displayField ? String(ref.displayField) : "id",
+    valueField: ref?.valueField
+      ? String(ref.valueField)
+      : "id",
+
+    displayField:
+      ref?.displayField || "id",
+
     multiple: !!ref?.multiple,
-    hasStyle: !!((field as any).hasStyle ?? ref?.hasStyle),
-    styleIconField: (field as any).styleIconField ?? ref?.styleIconField,
-    styleColorField: (field as any).styleColorField ?? ref?.styleColorField,
+
+    hasStyle: !!(
+      (field as any).hasStyle ??
+      ref?.hasStyle
+    ),
+
+    styleIconField:
+      (field as any).styleIconField ??
+      ref?.styleIconField,
+
+    styleColorField:
+      (field as any).styleColorField ??
+      ref?.styleColorField,
   };
 }
 
-export function getRelationBucketKey(config: RelationDisplayConfig) {
+export function getRelationBucketKey(
+  config: RelationDisplayConfig
+) {
   return [
     config.moduleSlug,
     config.valueField,
-    config.displayField,
+    fieldRefKey(config.displayField),
     config.hasStyle ? 1 : 0,
     fieldRefKey(config.styleIconField),
     fieldRefKey(config.styleColorField),
   ].join("|");
 }
 
-export function getRelationCacheKey(config: RelationDisplayConfig, value: string) {
+export function getRelationCacheKey(
+  config: RelationDisplayConfig,
+  value: string
+) {
   return `${getRelationBucketKey(config)}|${value}`;
 }
 
-export function normalizeRelationId(value: any): string | null {
-  if (value === null || value === undefined) return null;
+export function normalizeRelationId(
+  value: any
+): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
   if (typeof value === "string") {
     const trimmed = value.trim();
     return trimmed || null;
   }
-  if (typeof value === "number") return String(value);
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
   if (typeof value === "object") {
-    const nested = (value as any).id ?? (value as any).value ?? null;
+    const nested =
+      (value as any).id ??
+      (value as any).value ??
+      null;
+
     return normalizeRelationId(nested);
   }
+
   return null;
 }
 
-export function normalizeRelationIds(value: any, multiple: boolean) {
+export function normalizeRelationIds(
+  value: any,
+  multiple: boolean
+) {
   if (multiple) {
     if (!Array.isArray(value)) return [];
+
     return value
-      .map((item) => normalizeRelationId(item))
-      .filter((item): item is string => !!item);
+      .map(item => normalizeRelationId(item))
+      .filter(
+        (item): item is string => !!item
+      );
   }
 
   const id = normalizeRelationId(value);
+
   return id ? [id] : [];
 }
 
-export function getRelationDisplayFallback(value: any, multiple: boolean) {
-  const ids = normalizeRelationIds(value, multiple);
+export function getRelationDisplayFallback(
+  value: any,
+  multiple: boolean
+) {
+  const ids = normalizeRelationIds(
+    value,
+    multiple
+  );
+
   return ids.join(", ");
 }
 
-export function collectRelationPendingKeys(params: {
-  rows: any[];
-  fields: Field[];
-  getValue: (row: any, field: Field) => any;
-  cache: Record<string, RelationDisplayEntry>;
-  statusByKey?: RelationDisplayStatusMap;
-}) {
-  const { rows, fields, getValue, cache, statusByKey } = params;
-  const pendingKeys: Record<string, boolean> = {};
+export function collectRelationPendingKeys(
+  params: {
+    rows: any[];
+    fields: Field[];
+    getValue: (
+      row: any,
+      field: Field
+    ) => any;
+    cache: Record<
+      string,
+      RelationDisplayEntry
+    >;
+    statusByKey?: RelationDisplayStatusMap;
+  }
+) {
+  const {
+    rows,
+    fields,
+    getValue,
+    cache,
+    statusByKey,
+  } = params;
+
+  const pendingKeys:
+    Record<string, boolean> = {};
 
   for (const field of fields) {
-    const config = getRelationDisplayConfig(field);
+    const config =
+      getRelationDisplayConfig(field);
+
     if (!config) continue;
 
     for (const row of rows) {
-      const ids = normalizeRelationIds(getValue(row, field), config.multiple);
+      const ids =
+        normalizeRelationIds(
+          getValue(row, field),
+          config.multiple
+        );
+
       for (const id of ids) {
-        const cacheKey = getRelationCacheKey(config, id);
-        if (cache[cacheKey]?.label) continue;
-        if (statusByKey?.[cacheKey] === "failed") continue;
+        const cacheKey =
+          getRelationCacheKey(
+            config,
+            id
+          );
+
+        if (cache[cacheKey]?.label) {
+          continue;
+        }
+
+        if (
+          statusByKey?.[cacheKey] ===
+          "failed"
+        ) {
+          continue;
+        }
+
         pendingKeys[cacheKey] = true;
       }
     }
@@ -131,216 +238,759 @@ export function collectRelationPendingKeys(params: {
   return pendingKeys;
 }
 
-export function buildRelationDisplayEntry(config: RelationDisplayConfig, row: any, schema?: ModuleSchema): RelationDisplayEntry | null {
-  if (!row || typeof row !== "object") return null;
+function resolveRelationLabel(
+  config: RelationDisplayConfig,
+  row: any,
+  schema?: ModuleSchema
+): string {
+  if (
+    isDirectFieldRef(
+      config.displayField
+    )
+  ) {
+    const directField =
+      normalizeFieldRef(
+        config.displayField
+      ).field;
 
-  const label = getRecordName(row, schema, { legacyField: config.displayField, valueField: config.valueField });
+    return getRecordName(
+      row,
+      schema,
+      {
+        legacyField: directField,
+        valueField:
+          config.valueField,
+      }
+    );
+  }
+
+  const value =
+    getFieldRefValue(
+      row,
+      config.displayField
+    );
+
+  if (
+    value !== null &&
+    value !== undefined &&
+    value !== ""
+  ) {
+    return String(value);
+  }
+
+  const fallback =
+    row?.[config.valueField];
+
+  return fallback === null ||
+    fallback === undefined
+    ? ""
+    : String(fallback);
+}
+
+export function buildRelationDisplayEntry(
+  config: RelationDisplayConfig,
+  row: any,
+  schema?: ModuleSchema
+): RelationDisplayEntry | null {
+  if (
+    !row ||
+    typeof row !== "object"
+  ) {
+    return null;
+  }
+
+  const label =
+    resolveRelationLabel(
+      config,
+      row,
+      schema
+    );
+
   if (!label) return null;
 
   return {
     label,
-    ...readSelectorStyle(row, resolveSelectorStyle(config, schema)),
+
+    ...readSelectorStyle(
+      row,
+      resolveSelectorStyle(
+        config,
+        schema
+      )
+    ),
   };
 }
 
-export function getRelationObjectDisplayEntry(config: RelationDisplayConfig, value: any): RelationDisplayEntry | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return buildRelationDisplayEntry(config, value);
+export function getRelationObjectDisplayEntry(
+  config: RelationDisplayConfig,
+  value: any
+): RelationDisplayEntry | null {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return null;
+  }
+
+  return buildRelationDisplayEntry(
+    config,
+    value
+  );
 }
 
-export function getRelationArrayObjectDisplayEntry(config: RelationDisplayConfig, value: any): RelationDisplayEntry | null {
-  if (!Array.isArray(value)) return null;
+export function getRelationArrayObjectDisplayEntry(
+  config: RelationDisplayConfig,
+  value: any
+): RelationDisplayEntry | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
 
   const entries = value
-    .map((item) => getRelationObjectDisplayEntry(config, item))
-    .filter((item): item is RelationDisplayEntry => !!item);
+    .map(item =>
+      getRelationObjectDisplayEntry(
+        config,
+        item
+      )
+    )
+    .filter(
+      (
+        item
+      ): item is RelationDisplayEntry =>
+        !!item
+    );
 
-  if (!entries.length) return null;
+  if (!entries.length) {
+    return null;
+  }
 
   return {
-    label: entries.map((item) => item.label).join(", "),
+    label: entries
+      .map(item => item.label)
+      .join(", "),
   };
 }
 
-export function renderRelationDisplay(label: string, icon?: string, color?: string) {
-  const isBootstrapIcon = !!icon && (icon.includes("bi-") || icon.startsWith("bi "));
+export function renderRelationDisplay(
+  label: string,
+  icon?: string,
+  color?: string
+) {
+  const isBootstrapIcon =
+    !!icon &&
+    (
+      icon.includes("bi-") ||
+      icon.startsWith("bi ")
+    );
 
   return (
     <span className="d-inline-flex align-items-center gap-2">
       {icon ? (
         isBootstrapIcon ? (
           <i
-            className={icon.includes(" ") ? icon : `bi ${icon}`}
-            style={{ color: color || "inherit" }}
+            className={
+              icon.includes(" ")
+                ? icon
+                : `bi ${icon}`
+            }
+            style={{
+              color:
+                color || "inherit",
+            }}
             aria-hidden="true"
           />
         ) : (
-          <span style={{ color: color || "inherit" }}>{icon}</span>
+          <span
+            style={{
+              color:
+                color || "inherit",
+            }}
+          >
+            {icon}
+          </span>
         )
       ) : null}
+
       <span>{label}</span>
     </span>
   );
 }
 
-export function getRelationDisplayResult(params: {
-  config: RelationDisplayConfig;
-  rawValue: any;
-  cache: Record<string, RelationDisplayEntry>;
-  pendingKeys?: Record<string, boolean>;
-  statusByKey?: RelationDisplayStatusMap;
-}) {
-  const { config, rawValue, cache, pendingKeys, statusByKey } = params;
-  const rawIds = normalizeRelationIds(rawValue, config.multiple);
-  const hasCachedName = rawIds.length > 0 && rawIds.every(id => cache[getRelationCacheKey(config, id)]);
-  const arrayObjectEntry = !hasCachedName && getRelationArrayObjectDisplayEntry(config, rawValue);
-  if (arrayObjectEntry) return { kind: "resolved" as const, entry: arrayObjectEntry };
+export function getRelationDisplayResult(
+  params: {
+    config: RelationDisplayConfig;
+    rawValue: any;
 
-  const objectEntry = !hasCachedName && getRelationObjectDisplayEntry(config, rawValue);
-  if (objectEntry) return { kind: "resolved" as const, entry: objectEntry };
+    cache: Record<
+      string,
+      RelationDisplayEntry
+    >;
 
-  const ids = normalizeRelationIds(rawValue, config.multiple);
-  if (!ids.length) return { kind: "empty" as const, text: "�" };
+    pendingKeys?: Record<
+      string,
+      boolean
+    >;
 
-  const entries = ids.map((id) => {
-    const key = getRelationCacheKey(config, id);
-    return { id, key, entry: cache[key], status: statusByKey?.[key] };
+    statusByKey?:
+      RelationDisplayStatusMap;
+  }
+) {
+  const {
+    config,
+    rawValue,
+    cache,
+    pendingKeys,
+    statusByKey,
+  } = params;
+
+  const rawIds =
+    normalizeRelationIds(
+      rawValue,
+      config.multiple
+    );
+
+  const hasCachedName =
+    rawIds.length > 0 &&
+    rawIds.every(
+      id =>
+        cache[
+          getRelationCacheKey(
+            config,
+            id
+          )
+        ]
+    );
+
+  const arrayObjectEntry =
+    !hasCachedName &&
+    getRelationArrayObjectDisplayEntry(
+      config,
+      rawValue
+    );
+
+  if (arrayObjectEntry) {
+    return {
+      kind:
+        "resolved" as const,
+      entry:
+        arrayObjectEntry,
+    };
+  }
+
+  const objectEntry =
+    !hasCachedName &&
+    getRelationObjectDisplayEntry(
+      config,
+      rawValue
+    );
+
+  if (objectEntry) {
+    return {
+      kind:
+        "resolved" as const,
+      entry: objectEntry,
+    };
+  }
+
+  const ids =
+    normalizeRelationIds(
+      rawValue,
+      config.multiple
+    );
+
+  if (!ids.length) {
+    return {
+      kind: "empty" as const,
+      text: "—",
+    };
+  }
+
+  const entries = ids.map(id => {
+    const key =
+      getRelationCacheKey(
+        config,
+        id
+      );
+
+    return {
+      id,
+      key,
+      entry: cache[key],
+      status:
+        statusByKey?.[key],
+    };
   });
-  const isLoading = entries.some(({ key, entry, status }) => !entry && status !== "failed" && !!pendingKeys?.[key]);
-  if (isLoading) return { kind: "loading" as const, text: "Cargando..." };
 
-  const resolvedEntries = entries.filter((item) => !!item.entry) as Array<{
-    id: string;
-    key: string;
-    entry: RelationDisplayEntry;
-    status?: RelationDisplayStatus;
-  }>;
+  const isLoading =
+    entries.some(
+      ({
+        key,
+        entry,
+        status,
+      }) =>
+        !entry &&
+        status !== "failed" &&
+        !!pendingKeys?.[key]
+    );
 
-  if (resolvedEntries.length) {
-    const text = entries.map((item) => item.entry?.label ?? item.id).join(", ");
-    const first = resolvedEntries[0]?.entry;
-    const result = {
-      kind: "resolved" as const,
+  if (isLoading) {
+    return {
+      kind:
+        "loading" as const,
+      text: "Cargando...",
+    };
+  }
+
+  const resolvedEntries =
+    entries.filter(
+      item => !!item.entry
+    ) as Array<{
+      id: string;
+      key: string;
+      entry:
+        RelationDisplayEntry;
+      status?:
+        RelationDisplayStatus;
+    }>;
+
+  if (
+    resolvedEntries.length
+  ) {
+    const text = entries
+      .map(
+        item =>
+          item.entry?.label ??
+          item.id
+      )
+      .join(", ");
+
+    const first =
+      resolvedEntries[0]?.entry;
+
+    return {
+      kind:
+        "resolved" as const,
+
       entry: {
         label: text,
-        icon: ids.length === 1 ? first?.icon : undefined,
-        color: ids.length === 1 ? first?.color : undefined,
+
+        icon:
+          ids.length === 1
+            ? first?.icon
+            : undefined,
+
+        color:
+          ids.length === 1
+            ? first?.color
+            : undefined,
       },
     };
-    return result;
   }
 
   return {
-    kind: "fallback" as const,
-    text: getRelationDisplayFallback(rawValue, config.multiple) || "�",
+    kind:
+      "fallback" as const,
+
+    text:
+      getRelationDisplayFallback(
+        rawValue,
+        config.multiple
+      ) || "—",
   };
 }
 
-export async function preloadRelationDisplayCache(params: {
-  rows: any[];
-  fields: Field[];
-  getValue: (row: any, field: Field) => any;
-  dataProvider: { list?: (input: any) => Promise<any>; lookup?: (input: any) => Promise<any>; getSchema?: (slug: string) => Promise<ModuleSchema> };
-  cache: Record<string, RelationDisplayEntry>;
-  statusByKey?: RelationDisplayStatusMap;
-}) {
-  const { rows, fields, getValue, dataProvider, cache, statusByKey } = params;
-  const buckets = new Map<string, RelationBucket>();
-  const pendingKeys: Record<string, boolean> = {};
-  const statusPatch: RelationDisplayStatusMap = {};
+export async function preloadRelationDisplayCache(
+  params: {
+    rows: any[];
+
+    fields: Field[];
+
+    getValue: (
+      row: any,
+      field: Field
+    ) => any;
+
+    dataProvider: {
+      list?: (
+        input: any
+      ) => Promise<any>;
+
+      lookup?: (
+        input: any
+      ) => Promise<any>;
+
+      getSchema?: (
+        slug: string
+      ) => Promise<ModuleSchema>;
+    };
+
+    cache: Record<
+      string,
+      RelationDisplayEntry
+    >;
+
+    statusByKey?:
+      RelationDisplayStatusMap;
+  }
+) {
+  const {
+    rows,
+    fields,
+    getValue,
+    dataProvider,
+    cache,
+    statusByKey,
+  } = params;
+
+  const buckets =
+    new Map<
+      string,
+      RelationBucket
+    >();
+
+  const pendingKeys:
+    Record<string, boolean> = {};
+
+  const statusPatch:
+    RelationDisplayStatusMap =
+      {};
 
   for (const field of fields) {
-    const config = getRelationDisplayConfig(field);
+    const config =
+      getRelationDisplayConfig(field);
+
     if (!config) continue;
 
-    const bucketKey = getRelationBucketKey(config);
-    if (!buckets.has(bucketKey)) {
-      buckets.set(bucketKey, { config, ids: new Set<string>() });
+    const bucketKey =
+      getRelationBucketKey(
+        config
+      );
+
+    if (
+      !buckets.has(bucketKey)
+    ) {
+      buckets.set(
+        bucketKey,
+        {
+          config,
+          ids: new Set<string>(),
+        }
+      );
     }
 
-    const bucket = buckets.get(bucketKey)!;
+    const bucket =
+      buckets.get(bucketKey)!;
+
     for (const row of rows) {
-      const ids = normalizeRelationIds(getValue(row, field), config.multiple);
+      const ids =
+        normalizeRelationIds(
+          getValue(row, field),
+          config.multiple
+        );
+
       for (const id of ids) {
-        const cacheKey = getRelationCacheKey(config, id);
-        if (cache[cacheKey]?.label) continue;
-        if (statusByKey?.[cacheKey] === "failed") continue;
+        const cacheKey =
+          getRelationCacheKey(
+            config,
+            id
+          );
+
+        if (
+          cache[cacheKey]?.label
+        ) {
+          continue;
+        }
+
+        if (
+          statusByKey?.[
+            cacheKey
+          ] === "failed"
+        ) {
+          continue;
+        }
+
         bucket.ids.add(id);
-        pendingKeys[cacheKey] = true;
+
+        pendingKeys[
+          cacheKey
+        ] = true;
       }
     }
   }
 
-  const patch: Record<string, RelationDisplayEntry> = {};
-  if (typeof dataProvider?.lookup !== "function" && typeof dataProvider?.list !== "function") {
-    for (const cacheKey of Object.keys(pendingKeys)) {
-      statusPatch[cacheKey] = "failed";
+  const patch: Record<
+    string,
+    RelationDisplayEntry
+  > = {};
+
+  if (
+    typeof dataProvider?.lookup !==
+      "function" &&
+    typeof dataProvider?.list !==
+      "function"
+  ) {
+    for (
+      const cacheKey of
+      Object.keys(pendingKeys)
+    ) {
+      statusPatch[
+        cacheKey
+      ] = "failed";
     }
-    return { patch, pendingKeys, statusPatch };
+
+    return {
+      patch,
+      pendingKeys,
+      statusPatch,
+    };
   }
 
-  for (const bucket of buckets.values()) {
-    const ids = Array.from(bucket.ids);
-    if (!ids.length) continue;
+  for (
+    const bucket of
+    buckets.values()
+  ) {
+    const ids =
+      Array.from(
+        bucket.ids
+      );
+
+    if (!ids.length) {
+      continue;
+    }
 
     try {
-      const schema = await getRecordNameSchema(dataProvider, bucket.config.moduleSlug);
-      const style = resolveSelectorStyle(bucket.config, schema);
-      const fieldRefs = selectorFieldRefs([getRecordNameFieldName(schema, bucket.config.displayField)], style);
-      const select = [...new Set([bucket.config.valueField, ...fieldRefs.filter(isDirectFieldRef).map(ref => normalizeFieldRef(ref).field)])];
+      const schema =
+        await getRecordNameSchema(
+          dataProvider,
+          bucket.config
+            .moduleSlug
+        );
+
+      const style =
+        resolveSelectorStyle(
+          bucket.config,
+          schema
+        );
+
+      const configuredDisplay =
+        bucket.config
+          .displayField;
+
+      const resolvedDisplayField:
+        FieldRefLike =
+        isDirectFieldRef(
+          configuredDisplay
+        )
+          ? getRecordNameFieldName(
+              schema,
+              normalizeFieldRef(
+                configuredDisplay
+              ).field
+            )
+          : configuredDisplay;
+
+      const fieldRefs =
+        selectorFieldRefs(
+          [
+            resolvedDisplayField,
+          ],
+          style
+        );
+
+      const select = [
+        ...new Set([
+          bucket.config
+            .valueField,
+
+          ...fieldRefs
+            .filter(
+              isDirectFieldRef
+            )
+            .map(
+              ref =>
+                normalizeFieldRef(
+                  ref
+                ).field
+            ),
+        ]),
+      ];
 
       const result =
-        typeof dataProvider.lookup === "function" && fieldRefs.every(isDirectFieldRef)
+        typeof dataProvider.lookup ===
+          "function" &&
+        fieldRefs.every(
+          isDirectFieldRef
+        )
           ? await dataProvider.lookup({
-              moduleSlug: bucket.config.moduleSlug,
-              table: bucket.config.moduleSlug,
-              valueField: bucket.config.valueField,
+              moduleSlug:
+                bucket.config
+                  .moduleSlug,
+
+              table:
+                bucket.config
+                  .moduleSlug,
+
+              valueField:
+                bucket.config
+                  .valueField,
+
               ids,
+
               select,
             })
           : await dataProvider.list?.({
-              moduleSlug: bucket.config.moduleSlug,
-              filters: [{ field: bucket.config.valueField, op: "in", value: ids }],
-              limit: Math.min(ids.length, 500),
-              hasStyle: bucket.config.hasStyle,
+              moduleSlug:
+                bucket.config
+                  .moduleSlug,
+
+              filters: [
+                {
+                  field:
+                    bucket.config
+                      .valueField,
+
+                  op: "in",
+
+                  value: ids,
+                },
+              ],
+
+              limit:
+                Math.min(
+                  ids.length,
+                  500
+                ),
+
+              hasStyle:
+                bucket.config
+                  .hasStyle,
+
               ...style,
+
               fieldRefs,
             });
 
-      const rowsResult = Array.isArray(result) ? result : Array.isArray((result as any)?.data) ? (result as any).data : [];
-      const resolvedKeys = new Set<string>();
+      const rowsResult =
+        Array.isArray(result)
+          ? result
+          : Array.isArray(
+                (result as any)
+                  ?.data
+              )
+            ? (result as any)
+                .data
+            : [];
 
-      for (const row of rowsResult) {
-        const id = normalizeRelationId(row?.[bucket.config.valueField]);
-        const entry = buildRelationDisplayEntry(bucket.config, row, schema);
-        if (!id || !entry) continue;
+      const resolvedKeys =
+        new Set<string>();
 
-        const cacheKey = getRelationCacheKey(bucket.config, id);
-        patch[cacheKey] = entry;
-        statusPatch[cacheKey] = "resolved";
-        resolvedKeys.add(cacheKey);
+      for (
+        const row of
+        rowsResult
+      ) {
+        const id =
+          normalizeRelationId(
+            row?.[
+              bucket.config
+                .valueField
+            ]
+          );
+
+        const entry =
+          buildRelationDisplayEntry(
+            bucket.config,
+            row,
+            schema
+          );
+
+        if (
+          !id ||
+          !entry
+        ) {
+          continue;
+        }
+
+        const cacheKey =
+          getRelationCacheKey(
+            bucket.config,
+            id
+          );
+
+        patch[
+          cacheKey
+        ] = entry;
+
+        statusPatch[
+          cacheKey
+        ] = "resolved";
+
+        resolvedKeys.add(
+          cacheKey
+        );
       }
 
-      for (const id of ids) {
-        const cacheKey = getRelationCacheKey(bucket.config, id);
-        if (!resolvedKeys.has(cacheKey) && !patch[cacheKey]) {
-          statusPatch[cacheKey] = "failed";
+      for (
+        const id of ids
+      ) {
+        const cacheKey =
+          getRelationCacheKey(
+            bucket.config,
+            id
+          );
+
+        if (
+          !resolvedKeys.has(
+            cacheKey
+          ) &&
+          !patch[cacheKey]
+        ) {
+          statusPatch[
+            cacheKey
+          ] = "failed";
         }
       }
     } catch (error) {
-      if (process.env.NODE_ENV !== "production") {
-        console.error("relationDisplay lookup failed", {
-          moduleSlug: bucket.config.moduleSlug,
-          ids,
-          error: error instanceof Error ? error.message : String(error),
-        });
+      if (
+        process.env.NODE_ENV !==
+        "production"
+      ) {
+        console.error(
+          "relationDisplay lookup failed",
+          {
+            moduleSlug:
+              bucket.config
+                .moduleSlug,
+
+            ids,
+
+            error:
+              error instanceof
+              Error
+                ? error.message
+                : String(
+                    error
+                  ),
+          }
+        );
       }
 
-      for (const id of ids) {
-        statusPatch[getRelationCacheKey(bucket.config, id)] = "failed";
+      for (
+        const id of ids
+      ) {
+        statusPatch[
+          getRelationCacheKey(
+            bucket.config,
+            id
+          )
+        ] = "failed";
       }
     }
   }
 
-  return { patch, pendingKeys, statusPatch };
+  return {
+    patch,
+    pendingKeys,
+    statusPatch,
+  };
 }

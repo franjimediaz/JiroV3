@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import { normalizeFieldRef } from "@repo/types";
 import { isUUID } from "@/lib/utils/isUUID";
 import { MODULOS_SYSTEM_FIELD_NAMES, serializeModuleSchema, normalizeModuleDefaultFilters, normalizeSelectorTableFilters, VALID_FIELD_TYPES, validateRecordNameFields } from "@repo/types";
 
@@ -31,11 +32,29 @@ function validateModuleProps(props: any): { ok: boolean; detail?: string } {
     if (!field.label || typeof field.label !== "string") return { ok: false, detail: `fields[${index}].label requerido` };
     if (!FIELD_TYPES.has(field.type)) return { ok: false, detail: `fields[${index}].type invalido` };
 
+  
     if (field.type === "selectorTabla") {
       const ref = field.ref;
-      if (!ref || typeof ref !== "object" || typeof ref.moduleSlug !== "string" || typeof ref.displayField !== "string") {
-        return { ok: false, detail: `fields[${index}].ref invalido para selectorTabla` };
-      }
+
+        if (
+          !ref ||
+          typeof ref !== "object" ||
+          typeof ref.moduleSlug !== "string"
+        ) {
+          return {
+            ok: false,
+            detail: `fields[${index}].ref invalido para selectorTabla`
+          };
+        }
+
+        const displayField = normalizeFieldRef(ref.displayField);
+
+        if (!displayField.field) {
+          return {
+            ok: false,
+            detail: `fields[${index}].ref.displayField invalido`
+          };
+        }
 
       try {
         normalizeSelectorTableFilters(ref.filters);

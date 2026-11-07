@@ -135,16 +135,22 @@ function validatePropsClient(props: any): string | null {
     const fieldVisibilityError = validateVisibilityConfigClient(`fields[${i}].visibility`, f.visibility);
     if (fieldVisibilityError) return fieldVisibilityError;
     
-    if (f.type === "selectorTabla") {
-      const r = f.ref;
-      if (
-        !r ||
-        typeof r !== "object" ||
-        typeof r.moduleSlug !== "string" ||
-        typeof r.displayField !== "string"
-      ) {
-        return `fields[${i}].ref inválido para selectorTabla`;
-      }
+      if (f.type === "selectorTabla") {
+        const r = f.ref;
+
+        if (
+          !r ||
+          typeof r !== "object" ||
+          typeof r.moduleSlug !== "string"
+        ) {
+          return `fields[${i}].ref inválido para selectorTabla`;
+        }
+
+        const displayField = normalizeFieldRef(r.displayField);
+
+        if (!displayField.field) {
+          return `fields[${i}].ref.displayField inválido`;
+        }
 
       if (r.multiple !== undefined && typeof r.multiple !== "boolean") {
         return `fields[${i}].ref.multiple debe ser boolean`;
