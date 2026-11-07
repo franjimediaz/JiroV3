@@ -1,5 +1,7 @@
 "use client";
 
+import { FractalConfigEditor } from "./FractalConfigEditor";
+import { validateFractalConfig } from "@repo/types";
 import { ConfigEditor } from "./ConfigEditor";
 
 import { useState, useTransition, useEffect, useRef, useCallback} from "react";
@@ -180,6 +182,9 @@ function validatePropsClient(props: any): string | null {
       }
     }
   }
+
+  const fractalError = validateFractalConfig(props);
+  if (fractalError) return fractalError;
 
   const formActions = Array.isArray(props.ui?.formActions) ? props.ui.formActions : [];
   for (let i = 0; i < formActions.length; i++) {
@@ -1697,6 +1702,11 @@ const editorTabs = [
   {/* UI */}
   {editorTab === "ui" && (
     <Section title="Sección: UI">
+      <FractalConfigEditor schema={propsObj} readOnly={readOnly} onChange={fractal => {
+        const next = applyModuleUiPatch(propsObj, { fractal });
+        setPropsObj(next);
+        setRawText(JSON.stringify(serializeModuleSchema(next), null, 2));
+      }} />
       <div className={styles.grid}>
         <div className={styles.switchRow}>
           <label className={styles.label} htmlFor="module-sidebar">Quitar del sidebar</label>

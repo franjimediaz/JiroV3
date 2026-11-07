@@ -1,9 +1,9 @@
 "use client";
 
 import { useRef, useState, type ChangeEvent } from "react";
-import { ListView } from "@repo/ui";
+import { ListView, FractalView } from "@repo/ui";
 import { AdvancedSearchView } from "./AdvancedSearchView";
-import { getEffectiveModuleCapabilities, isModuleActionAvailable } from "@repo/types";
+import { getEffectiveModuleCapabilities, isModuleActionAvailable, getFractalConfig } from "@repo/types";
 import type { ListViewExportPayload, ListViewProps, ModuleSchema } from "@repo/types";
 import { useRouter } from "next/navigation";
 import { RequirePerms, usePerms } from "@/lib/perms";
@@ -321,8 +321,10 @@ export default function ListPageClient({
     }
   };
 
+  const RecordsView = !advancedSearch && getFractalConfig(schema).enabled ? FractalView : ListView;
+
   const renderList = (overrides: Partial<ListViewProps> = {}) => (
-        <ListView
+        <RecordsView
           schema={schema}
           data={rows}
           onSearch={capabilities.allowSearch && canView ? () => router.push(`/m/${encodeURIComponent(moduleSlug)}?view=search`) : undefined}

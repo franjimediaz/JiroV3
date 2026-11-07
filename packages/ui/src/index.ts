@@ -27,3 +27,5 @@ export { default as ListView } from "./ListView";
 export { AdvancedFilterBuilder } from "./AdvancedFilterBuilder";
 export { FilterExpressionSummary } from "./FilterExpressionSummary";
 export { getModuleColorVariables } from "./utils/colorContrast";
+
+export { FractalView } from "./FractalView";

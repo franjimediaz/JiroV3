@@ -841,7 +841,7 @@ a {
   gap: 0.5rem;
   flex: 1;
   min-width: 0;
-  color: #ffffff;
+  color: #000000;
 }
 .record-breadcrumb a,
 .record-breadcrumb [aria-current] {
@@ -849,7 +849,7 @@ a {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.record-breadcrumb a { color: #ffffff; max-width: 45%; }
+.record-breadcrumb a { color: #000000; max-width: 25%; }
 .record-breadcrumb [aria-current] { flex: 1; }
 
 .Orymexa-list-view {
@@ -1393,8 +1393,7 @@ input[type="number"] {
 /* Sidebar and page column share the viewport from Y=0. */
 .main-shell-right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .main-shell-topbar { min-height: 64px; flex-shrink: 0; }
-.main-shell-topbar > .container-fluid { min-width: 0; }
-.main-shell-menu-toggle { display: none; min-width: 44px; min-height: 44px; flex-shrink: 0; }
+.main-shell-topbar .main-shell-menu-toggle {display: none !important;}
 .sidebar-brand-header { padding: 12px; }
 .sidebar-brand { display: flex; align-items: center; justify-content: center; min-width: 0; }
 .sidebar-brand img { display: block; width: 100%; max-width: 220px; height: 76px; object-fit: contain; }
@@ -1417,4 +1416,11 @@ input[type="number"] {
   .main-shell-sidebar { display: none; }
   .main-shell-menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
   .main-shell-topbar > .container-fluid { padding-inline: 8px; }
+}
+@media screen and (max-width: 768px) {
+  .main-shell-topbar .main-shell-menu-toggle {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+  }
 }

@@ -176,3 +176,5 @@ export { normalizeEmptyRelations } from "./recordValues";
 export { isPersistableField, pickPersistablePayload, SERVER_CONTROLLED_FIELDS } from "./persistablePayload";
 
 export * from "./systemModuleSchemas";
+
+export * from "./fractal";

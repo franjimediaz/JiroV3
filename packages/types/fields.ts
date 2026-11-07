@@ -415,6 +415,7 @@ export type UiTab =
                         visibility?: VisibilityConfig;
                       };
 export type ModuleUiSchema = {
+  fractal?: import("./fractal").FractalConfig;
   titlePlural?: string;
   titleSingular?: string;
   displayField?: string;
