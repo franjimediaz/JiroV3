@@ -14,51 +14,15 @@
   position: relative;
   min-height: 100dvh;
   overflow: hidden;
-  isolation: isolate;
   color: #fff;
-  background: radial-gradient(circle at 12% 12%, rgba(39, 127, 255, .35), transparent 32%), linear-gradient(145deg, #06172e 0%, #082853 58%, #0b3f7c 100%);
+  background-image: url("../../../public/jiro-login-fondo-azul.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
-
-.visualPanel::before,
-.visualPanel::after {
-  position: absolute;
-  content: "";
-  z-index: -1;
-  border-radius: 38% 62% 64% 36% / 45% 42% 58% 55%;
-}
-
-.visualPanel::before {
-  width: 34rem;
-  height: 34rem;
-  right: -17rem;
-  bottom: -9rem;
-  background: linear-gradient(145deg, rgba(45, 139, 255, .65), rgba(9, 72, 150, .1));
-  transform: rotate(-18deg);
-}
-
-.visualPanel::after {
-  width: 18rem;
-  height: 18rem;
-  right: 7%;
-  top: 19%;
-  border: 1px solid rgba(157, 204, 255, .16);
-  transform: rotate(38deg);
-}
-
-.visualGlow { position: absolute; width: 28rem; height: 28rem; left: 22%; bottom: -18rem; border-radius: 50%; background: #1479ee; filter: blur(80px); opacity: .42; }
-.visualGrid { position: absolute; inset: 0; opacity: .14; background-image: linear-gradient(rgba(255, 255, 255, .12) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, .12) 1px, transparent 1px); background-size: 72px 72px; mask-image: linear-gradient(to bottom, transparent, #000 35%, transparent 92%); }
-.orbitOne, .orbitTwo { position: absolute; border: 1px solid rgba(128, 190, 255, .2); border-radius: 50%; }
-.orbitOne { width: 36rem; height: 36rem; right: -25rem; top: 7%; }
-.orbitTwo { width: 12rem; height: 12rem; left: -7rem; bottom: 18%; }
 
 .visualContent { position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: space-between; width: 100%; min-height: 100dvh; padding: clamp(2.5rem, 5vw, 4.5rem); }
-.brand { display: inline-flex; align-items: center; gap: .8rem; width: fit-content; color: #103d73; }
-.brandLight { color: #fff; }
-.brandMark { position: relative; display: grid; place-items: center; width: 2.65rem; height: 2.65rem; border: .42rem solid currentColor; border-radius: .3rem .85rem .3rem .85rem; transform: rotate(45deg); }
-.brandMark::after { position: absolute; content: ""; right: -.46rem; bottom: -.46rem; width: 1.05rem; height: .55rem; background: #082853; }
-.brand:not(.brandLight) .brandMark::after { background: #fbfcfe; }
-.brandMark span { width: .55rem; height: .55rem; border: .13rem solid currentColor; border-radius: .15rem; }
-.brandName { font-size: 2rem; font-weight: 730; letter-spacing: -.055em; }
+.visualLogo { width: clamp(14rem, 28vw, 24rem); aspect-ratio: 3 / 2; margin: auto auto 0; background-image: url("/logo.png"); background-size: contain; background-repeat: no-repeat; background-position: center; }
 .messageBlock { max-width: 34rem; margin: auto 0; padding: 5rem 0; }
 .eyebrow { display: block; margin-bottom: 1.3rem; color: #83c2ff; font-size: .78rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
 .messageBlock h2 { max-width: 31rem; margin: 0; color: #fff; font-size: clamp(2.5rem, 4.3vw, 4.25rem); font-weight: 650; line-height: 1.02; letter-spacing: -.055em; }
@@ -68,6 +32,7 @@
 .authPanel { display: grid; place-items: center; min-width: 0; min-height: 100dvh; padding: 3rem clamp(2rem, 7vw, 7rem); background: #fbfcfe; }
 .authContainer { width: min(100%, 420px); }
 .mobileBrand { display: none; margin-bottom: 3.5rem; }
+.mobileLogo { width: min(15rem, 70vw); aspect-ratio: 3 / 2; margin: 0 auto; background-image: url("/mylogo2.png"); background-size: contain; background-repeat: no-repeat; background-position: center; }
 .header { margin-bottom: 2.25rem; }
 .welcome { display: block; margin-bottom: .7rem; color: var(--login-blue); font-size: .76rem; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
 .header h1 { margin: 0; color: var(--login-ink); font-size: clamp(2.2rem, 3vw, 2.75rem); font-weight: 680; line-height: 1.1; letter-spacing: -.045em; }

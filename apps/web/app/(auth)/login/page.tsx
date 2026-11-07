@@ -5,15 +5,6 @@ import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import styles from "./login.module.css";
 
-function Brand({ light = false }: { light?: boolean }) {
-  return (
-    <div className={`${styles.brand} ${light ? styles.brandLight : ""}`} aria-label="JiRo">
-      <span className={styles.brandMark} aria-hidden="true"><span /></span>
-      <span className={styles.brandName}>JiRo</span>
-    </div>
-  );
-}
-
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -50,25 +41,30 @@ export default function LoginPage() {
   return (
     <main className={styles.page}>
       <section className={styles.visualPanel} aria-label="Presentación de JiRo">
-        <div className={styles.visualGlow} aria-hidden="true" />
-        <div className={styles.visualGrid} aria-hidden="true" />
-        <div className={styles.orbitOne} aria-hidden="true" />
-        <div className={styles.orbitTwo} aria-hidden="true" />
-
         <div className={styles.visualContent}>
-          <Brand light />
+          <div
+            className={styles.visualLogo}
+            role="img"
+            aria-label="Logotipo de JiRo"
+          />
           <div className={styles.messageBlock}>
-            <span className={styles.eyebrow}>Plataforma de gestión</span>
-            <h2>Gestión empresarial, flexible y a tu medida</h2>
-            <p>Todo lo que necesitas para organizar tu negocio en un único espacio de trabajo.</p>
+            <span className={styles.eyebrow}>Omira</span>
+            
+            
           </div>
-          <p className={styles.visualFooter}>Tu empresa. Tus procesos. Una sola plataforma.</p>
+          
         </div>
       </section>
 
       <section className={styles.authPanel}>
         <div className={styles.authContainer}>
-          <div className={styles.mobileBrand}><Brand /></div>
+          <div className={styles.mobileBrand}>
+            <div
+              className={styles.mobileLogo}
+              role="img"
+              aria-label="Logotipo de JiRo"
+            />
+          </div>
 
           <header className={styles.header}>
             <span className={styles.welcome}>Bienvenido de nuevo</span>
