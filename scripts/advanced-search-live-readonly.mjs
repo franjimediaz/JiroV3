@@ -79,7 +79,7 @@ for (const [slug, relation, field] of [["py", "customer", "name"], ["task", "obr
   assert.equal(union.count, a.count + b.count - intersection.count, "AND/OR set identity");
   const nested = success(await query(slug, group([group([local, related], "OR"), related])));
   assert.equal(nested.count, b.count, "Nested (A OR B) AND B equals B");
-  const none = condition(field, "=", `__jiro_readonly_probe_${crypto.randomUUID()}__`, relation);
+  const none = condition(field, "=", `__Orymexa_readonly_probe_${crypto.randomUUID()}__`, relation);
   assert.equal(success(await query(slug, group([local, none]))).count, 0);
   assert.equal(success(await query(slug, group([local, none], "OR"))).count, a.count, "Related nonmatch must not erase local OR matches");
   const fullPage = success(await query(slug, group([local, related], "OR"), { limit: 2 }));

@@ -63,9 +63,9 @@ export async function supervise(commands) {
 async function main() {
   const args = process.argv.slice(2);
   if (args.some(arg => !["--direct", "--check"].includes(arg))) throw new Error("Uso: dev [--direct] [--check]");
-  if (Number(process.versions.node.split(".")[0]) < 22) throw new Error("Jiro necesita Node 22 o posterior. Se recomienda Node 22 LTS.");
+  if (Number(process.versions.node.split(".")[0]) < 22) throw new Error("Orymexa necesita Node 22 o posterior. Se recomienda Node 22 LTS.");
   if (process.versions.node.split(".")[0] !== "22") console.warn(`Node actual: ${process.version}. Versión recomendada: Node 22 LTS.`);
-  if (/onedrive/i.test(repoRoot)) console.warn("Repositorio en OneDrive: para evitar sincronización/bloqueos, se recomienda una copia en C:\\src\\JiroV3.");
+  if (/onedrive/i.test(repoRoot)) console.warn("Repositorio en OneDrive: para evitar sincronización/bloqueos, se recomienda una copia en C:\\src\\OrymexaV3.");
   const require = createRequire(resolve(repoRoot, "package.json"));
   const turbo = probeTurbo(require);
   if (!turbo.cli) console.warn(`Turbo no está disponible (${turbo.reason}). Se usará Next directamente para web y docs.`);

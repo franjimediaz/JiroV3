@@ -33,8 +33,8 @@ apps/web/
 
 ### `actions/`
 
-- [apps/web/actions/modulos.ts](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/actions/modulos.ts): alta/edición de módulos con validación runtime.
-- [apps/web/actions/seed-modulos.ts](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/actions/seed-modulos.ts): carga seed de módulos.
+- [apps/web/actions/modulos.ts](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/actions/modulos.ts): alta/edición de módulos con validación runtime.
+- [apps/web/actions/seed-modulos.ts](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/actions/seed-modulos.ts): carga seed de módulos.
 
 ### `app/(auth)`
 

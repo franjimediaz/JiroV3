@@ -1,8 +1,8 @@
-# Auditoría de configuración legacy - JiRo
+# Auditoría de configuración legacy - Orymexa
 
 ## 1. Resumen ejecutivo
 
-JiRo tiene una base potente de arquitectura dinámica: módulos persistidos en `modulos`, schemas en `props`, formularios y listados renderizados desde configuración, permisos por módulo, relaciones, filtros, vistas especiales, workflows y plantillas PDF configurables. El riesgo principal no es falta de capacidad, sino convivencia de contratos antiguos y nuevos en los mismos flujos.
+Orymexa tiene una base potente de arquitectura dinámica: módulos persistidos en `modulos`, schemas en `props`, formularios y listados renderizados desde configuración, permisos por módulo, relaciones, filtros, vistas especiales, workflows y plantillas PDF configurables. El riesgo principal no es falta de capacidad, sino convivencia de contratos antiguos y nuevos en los mismos flujos.
 
 Los puntos más delicados son:
 
@@ -239,7 +239,7 @@ El contrato conceptual debería ser:
 
 | Concepto | Significado recomendado |
 | --- | --- |
-| `slug` | Identificador estable del módulo en JiRo y clave de permisos. |
+| `slug` | Identificador estable del módulo en Orymexa y clave de permisos. |
 | `moduleSlug` | Parámetro runtime que apunta a `slug`; no debería aceptar tabla salvo adaptador legacy. |
 | `db.table` | Tabla real de persistencia. |
 | `table` | Alias interno normalizado de `db.table`; evitar guardarlo en raíz de módulo. |

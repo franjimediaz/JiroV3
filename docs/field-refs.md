@@ -1,6 +1,6 @@
 # Referencias de campos (`FieldRef`)
 
-Jiro usa un único contrato para toda configuración que **lee** el valor de un campo:
+Orymexa usa un único contrato para toda configuración que **lee** el valor de un campo:
 
 ```ts
 type FieldRef = {
@@ -89,7 +89,7 @@ service.category.name
 
 producen un solo embed de `service` y uno de `category`. PostgREST devuelve filas hidratadas en una petición cuyo número de consultas no depende del número de registros. Los selectores múltiples también resuelven sus labels mediante un único filtro `in`.
 
-Las proyecciones y los filtros admiten hasta tres relaciones. La ordenación del recurso principal por un campo relacionado admite una relación simple mediante la sintaxis `relation(field)` de PostgREST. PostgREST no soporta todavía esa ordenación principal a través de varias relaciones; Jiro rechaza esa configuración de forma explícita en vez de ordenar sólo el embed o paginar resultados en un orden incorrecto. Ampliarla requerirá una vista o función SQL deliberada, no una migración automática.
+Las proyecciones y los filtros admiten hasta tres relaciones. La ordenación del recurso principal por un campo relacionado admite una relación simple mediante la sintaxis `relation(field)` de PostgREST. PostgREST no soporta todavía esa ordenación principal a través de varias relaciones; Orymexa rechaza esa configuración de forma explícita en vez de ordenar sólo el embed o paginar resultados en un orden incorrecto. Ampliarla requerirá una vista o función SQL deliberada, no una migración automática.
 
 ## Selector de UI
 

@@ -1,6 +1,7 @@
 :root {
   --background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
   --foreground: #171717;
+  --bg-background:rgba(15, 23, 42, 0.04);;
   --bg-primary: #00305fe8;
   --bg-secondary: #0066cc57;
   --bs-secondary-bg-rgb: 233, 236, 239;
@@ -849,24 +850,24 @@ a {
 .record-breadcrumb a { color: #ffffff; max-width: 45%; }
 .record-breadcrumb [aria-current] { flex: 1; }
 
-.jiro-list-view {
+.Orymexa-list-view {
   background: #ffffff;
   color: #111827;
   border: 1px solid var(--module-border);
 }
-.jiro-list-view > .card-header,
-.jiro-list-view > .card-header :is(.fw-semibold, .text-muted),
-.jiro-list-view thead th {
+.Orymexa-list-view > .card-header,
+.Orymexa-list-view > .card-header :is(.fw-semibold, .text-muted),
+.Orymexa-list-view thead th {
   background: var(--module-color);
   color: var(--module-contrast) !important;
 }
-.jiro-list-view > .card-body {
+.Orymexa-list-view > .card-body {
   background: var(--module-color-soft);
   color: var(--module-soft-contrast);
   border-color: var(--module-border) !important;
 }
-.jiro-list-view > .card-header .fw-semibold { opacity: 1; }
-.jiro-list-view .table {
+.Orymexa-list-view > .card-header .fw-semibold { opacity: 1; }
+.Orymexa-list-view .table {
   --bs-table-bg: #ffffff;
   --bs-table-color: #111827;
   --bs-table-border-color: var(--module-border);
@@ -875,9 +876,9 @@ a {
   --bs-table-active-bg: var(--module-color-light);
   --bs-table-active-color: var(--module-light-contrast);
 }
-.jiro-list-view :is(th, td) { border-inline-end: 1px solid var(--module-border); }
-.jiro-list-view :is(.form-control, .form-select) { border-color: var(--module-border); }
-.jiro-list-view .pagination {
+.Orymexa-list-view :is(th, td) { border-inline-end: 1px solid var(--module-border); }
+.Orymexa-list-view :is(.form-control, .form-select) { border-color: var(--module-border); }
+.Orymexa-list-view .pagination {
   --bs-pagination-color: #111827;
   --bs-pagination-border-color: var(--module-border);
   --bs-pagination-hover-bg: var(--module-color-light);
@@ -889,67 +890,67 @@ a {
   --bs-pagination-focus-color: var(--module-light-contrast);
   --bs-pagination-focus-bg: var(--module-color-light);
 }
-.jiro-list-view .page-link {
+.Orymexa-list-view .page-link {
   background: #ffffff;
   color: #111827;
   border: 1px solid var(--module-border);
 }
-.jiro-list-view .page-link:hover {
+.Orymexa-list-view .page-link:hover {
   background: var(--module-color-light);
   color: var(--module-light-contrast);
 }
-.jiro-list-view .page-item.active .page-link {
+.Orymexa-list-view .page-item.active .page-link {
   background: var(--module-color);
   color: var(--module-contrast);
 }
-.jiro-list-view .page-item.disabled .page-link {
+.Orymexa-list-view .page-item.disabled .page-link {
   background: var(--module-color-soft);
   color: #595959;
 }
-.jiro-list-view .card-body > .d-flex { flex-wrap: wrap; }
-.jiro-list-view .jiro-list-action,
-.jiro-list-menu .am-item:not(.am-danger) {
+.Orymexa-list-view .card-body > .d-flex { flex-wrap: wrap; }
+.Orymexa-list-view .Orymexa-list-action,
+.Orymexa-list-menu .am-item:not(.am-danger) {
   background: var(--module-color);
   color: var(--module-contrast);
   border: 1px solid var(--module-contrast);
 }
-.jiro-list-view .jiro-list-action:hover:not(:disabled),
-.jiro-list-menu .am-item:not(.am-danger):hover:not(:disabled) {
+.Orymexa-list-view .Orymexa-list-action:hover:not(:disabled),
+.Orymexa-list-menu .am-item:not(.am-danger):hover:not(:disabled) {
   background: var(--module-action-hover);
   color: var(--module-action-text);
 }
-.jiro-list-view .jiro-list-action[aria-pressed="true"] { box-shadow: inset 0 -3px currentColor; }
-.jiro-list-menu { background: #ffffff; }
-.jiro-list-menu .am-danger { color: #a11212; }
-:is(.jiro-record-form, .jiro-advanced-search) .jiro-form-primary {
+.Orymexa-list-view .Orymexa-list-action[aria-pressed="true"] { box-shadow: inset 0 -3px currentColor; }
+.Orymexa-list-menu { background: #ffffff; }
+.Orymexa-list-menu .am-danger { color: #a11212; }
+:is(.Orymexa-record-form, .Orymexa-advanced-search) .Orymexa-form-primary {
   background: var(--module-color);
   color: var(--module-contrast);
   border: 1px solid var(--module-color);
 }
-:is(.jiro-record-form, .jiro-advanced-search) .jiro-form-primary:hover:not(:disabled) {
+:is(.Orymexa-record-form, .Orymexa-advanced-search) .Orymexa-form-primary:hover:not(:disabled) {
   background: var(--module-color-light);
   color: var(--module-light-contrast);
 }
-.jiro-list-view :is(button, input, select):focus-visible,
-.jiro-list-menu .am-item:focus-visible,
-:is(.jiro-record-form, .jiro-advanced-search) .jiro-form-primary:focus-visible {
+.Orymexa-list-view :is(button, input, select):focus-visible,
+.Orymexa-list-menu .am-item:focus-visible,
+:is(.Orymexa-record-form, .Orymexa-advanced-search) .Orymexa-form-primary:focus-visible {
   outline: 2px solid #111827;
   outline-offset: 2px;
   box-shadow: 0 0 0 4px #ffffff;
 }
 
-.jiro-advanced-search .jiro-query-card {
+.Orymexa-advanced-search .Orymexa-query-card {
   border: 1px solid var(--module-border);
   border-radius: 14px;
   overflow: hidden;
   background: #fff;
 }
-.jiro-advanced-search .jiro-query-header {
+.Orymexa-advanced-search .Orymexa-query-header {
   padding: 14px 18px;
   background: var(--module-color);
   color: var(--module-contrast);
 }
-.jiro-advanced-search .jiro-filter-group {
+.Orymexa-advanced-search .Orymexa-filter-group {
   margin-top: 8px;
   padding: 12px;
   border-inline-start: 3px solid var(--module-color);
@@ -958,8 +959,8 @@ a {
   color: var(--module-soft-contrast);
   overflow-wrap: anywhere;
 }
-.jiro-advanced-search .jiro-filter-group .jiro-filter-group { background: #fff; }
-.jiro-advanced-search .jiro-filter-logic {
+.Orymexa-advanced-search .Orymexa-filter-group .Orymexa-filter-group { background: #fff; }
+.Orymexa-advanced-search .Orymexa-filter-logic {
   display: inline-block;
   padding: 3px 8px;
   margin-bottom: 10px;
@@ -969,45 +970,45 @@ a {
   background: var(--module-color);
   color: var(--module-contrast);
 }
-.jiro-advanced-search .jiro-filter-connector { margin: 6px 0; font-weight: 600; font-size: 0.8rem; }
-.jiro-advanced-search .jiro-filter-condition { line-height: 1.6; }
-.jiro-advanced-search fieldset {
+.Orymexa-advanced-search .Orymexa-filter-connector { margin: 6px 0; font-weight: 600; font-size: 0.8rem; }
+.Orymexa-advanced-search .Orymexa-filter-condition { line-height: 1.6; }
+.Orymexa-advanced-search fieldset {
   border-color: var(--module-border) !important;
   border-inline-start: 3px solid var(--module-color) !important;
   background: var(--module-color-soft);
   color: var(--module-soft-contrast);
 }
-.jiro-advanced-search fieldset fieldset { background: #fff; }
-.jiro-advanced-search fieldset legend { font-weight: 600; }
-.jiro-advanced-search fieldset .btn-outline-secondary {
+.Orymexa-advanced-search fieldset fieldset { background: #fff; }
+.Orymexa-advanced-search fieldset legend { font-weight: 600; }
+.Orymexa-advanced-search fieldset .btn-outline-secondary {
   color: var(--module-soft-contrast);
   border-color: var(--module-color);
   background: #fff;
 }
-.jiro-advanced-search fieldset .btn-outline-secondary:hover {
+.Orymexa-advanced-search fieldset .btn-outline-secondary:hover {
   background: var(--module-color);
   color: var(--module-contrast);
 }
-.jiro-advanced-search :is(input, select, textarea):focus {
+.Orymexa-advanced-search :is(input, select, textarea):focus {
   border-color: var(--module-color);
   outline: 2px solid var(--module-color);
   outline-offset: 2px;
   box-shadow: none;
 }
 @media (max-width: 600px) {
-  .jiro-advanced-search fieldset { padding: 10px !important; }
-  .jiro-advanced-search .jiro-filter-group { padding: 8px; }
+  .Orymexa-advanced-search fieldset { padding: 10px !important; }
+  .Orymexa-advanced-search .Orymexa-filter-group { padding: 8px; }
 }
 
-.jiro-report-fields { max-height: 480px; overflow-y: auto; }
-.jiro-report-label { flex: 1 1 160px; width: auto; min-width: 0; }
-.jiro-report-aggregate { flex: 1 1 145px; width: auto; }
-.jiro-report-matrix :is(thead, tfoot) :is(th, td) {
+.Orymexa-report-fields { max-height: 480px; overflow-y: auto; }
+.Orymexa-report-label { flex: 1 1 160px; width: auto; min-width: 0; }
+.Orymexa-report-aggregate { flex: 1 1 145px; width: auto; }
+.Orymexa-report-matrix :is(thead, tfoot) :is(th, td) {
   background: var(--module-color);
   color: var(--module-contrast);
 }
-.jiro-report-matrix :is(th, td) { white-space: nowrap; }
-.jiro-report-matrix td { text-align: right; }
+.Orymexa-report-matrix :is(th, td) { white-space: nowrap; }
+.Orymexa-report-matrix td { text-align: right; }
 
 .main-shell-sidebar {
   width: 16.6667%;
@@ -1043,146 +1044,146 @@ a {
   padding: 0 !important;
 }
 
-.jiro-list-view,
-.jiro-record-form {
+.Orymexa-list-view,
+.Orymexa-record-form {
   width: 100%;
   min-width: 0;
   max-width: none;
 }
 
-.jiro-record-form .jiro-form-section-header {
-  background: var(--jiro-section-bg, #e2e8f0);
+.Orymexa-record-form .Orymexa-form-section-header {
+  background: var(--Orymexa-section-bg, #e2e8f0);
 }
 
 /* Module accents stay inside forms; all base surfaces remain white. */
-.main-shell-content :has(> .jiro-record-form),
-.jiro-record-form,
-.jiro-record-form :is(.card, .card-form, .card-body, .field-box) {
+.main-shell-content :has(> .Orymexa-record-form),
+.Orymexa-record-form,
+.Orymexa-record-form :is(.card, .card-form, .card-body, .field-box) {
   background: #ffffff;
 }
 
-.jiro-record-form .field-box {
-  border-color: var(--jiro-field-border);
-  border-inline-start: 3px solid var(--jiro-section-bg);
+.Orymexa-record-form .field-box {
+  border-color: var(--Orymexa-field-border);
+  border-inline-start: 3px solid var(--Orymexa-section-bg);
   color: #111827;
 }
 
-.jiro-record-form :is(.card, .card-form),
-.jiro-record-form :is(.card, .card-form):hover {
+.Orymexa-record-form :is(.card, .card-form),
+.Orymexa-record-form :is(.card, .card-form):hover {
   backdrop-filter: none;
   box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
 }
 
-.jiro-record-form .field-box:hover,
-.jiro-record-form .field-box:focus-within {
-  border-color: var(--jiro-section-bg);
-  box-shadow: 0 0 0 1px var(--jiro-field-border);
+.Orymexa-record-form .field-box:hover,
+.Orymexa-record-form .field-box:focus-within {
+  border-color: var(--Orymexa-section-bg);
+  box-shadow: 0 0 0 1px var(--Orymexa-field-border);
 }
 
-.jiro-record-form .field-box > .form-label {
+.Orymexa-record-form .field-box > .form-label {
   color: #000000;
 }
 
-.jiro-record-form .field-box :is(.form-control, .form-select, [contenteditable]) {
+.Orymexa-record-form .field-box :is(.form-control, .form-select, [contenteditable]) {
   background-color: #ffffff;
   color: #111827;
 }
 
-.jiro-record-form .field-box :is(.form-control, .form-select):focus:not(.is-invalid):not(.is-valid) {
-  border-color: var(--jiro-section-bg);
+.Orymexa-record-form .field-box :is(.form-control, .form-select):focus:not(.is-invalid):not(.is-valid) {
+  border-color: var(--Orymexa-section-bg);
   outline: 2px solid #111827;
   outline-offset: 2px;
   box-shadow: none;
 }
 
-.jiro-record-form .field-box :is(input, select, textarea):disabled {
+.Orymexa-record-form .field-box :is(input, select, textarea):disabled {
   opacity: 0.65;
   cursor: not-allowed;
 }
 
-.jiro-record-form :is(.jiro-reverse-link, .jiro-reverse-links > .card) {
-  border-color: var(--jiro-field-border);
+.Orymexa-record-form :is(.Orymexa-reverse-link, .Orymexa-reverse-links > .card) {
+  border-color: var(--Orymexa-field-border);
 }
 
-.jiro-record-form .jiro-module-tabs {
-  background: var(--jiro-section-bg);
+.Orymexa-record-form .Orymexa-module-tabs {
+  background: var(--Orymexa-section-bg);
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
 }
 
-.jiro-module-tabs > .nav-tabs {
+.Orymexa-module-tabs > .nav-tabs {
   flex-wrap: nowrap;
   width: max-content;
   min-width: 100%;
   margin: 0;
 }
-.jiro-module-tabs .nav-link { white-space: nowrap; }
+.Orymexa-module-tabs .nav-link { white-space: nowrap; }
 
-.jiro-tree-view-table {
+.Orymexa-tree-view-table {
   --bs-table-bg: #ffffff;
   --bs-table-color: #111827;
 }
-.jiro-tree-view-table > thead > tr > th {
+.Orymexa-tree-view-table > thead > tr > th {
   background: var(--module-color);
   color: var(--module-contrast);
   border-inline-end: 1px solid var(--module-border);
 }
-.jiro-tree-view-table > thead :is(i, svg, button, a) { color: inherit; }
-.jiro-tree-view-table > thead svg { fill: currentColor; }
+.Orymexa-tree-view-table > thead :is(i, svg, button, a) { color: inherit; }
+.Orymexa-tree-view-table > thead svg { fill: currentColor; }
 
-.jiro-relation-menu .am-item,
-.jiro-record-form .jiro-relation-button {
-  background: var(--jiro-relation-button);
-  color: var(--jiro-relation-button-text);
-  border: 1px solid var(--jiro-field-border);
+.Orymexa-relation-menu .am-item,
+.Orymexa-record-form .Orymexa-relation-button {
+  background: var(--Orymexa-relation-button);
+  color: var(--Orymexa-relation-button-text);
+  border: 1px solid var(--Orymexa-field-border);
 }
 
-.jiro-relation-menu .am-item:hover:not(:disabled),
-.jiro-record-form .jiro-relation-button:hover:not(:disabled) {
-  background: var(--jiro-relation-button-hover);
-  color: var(--jiro-relation-button-hover-text);
+.Orymexa-relation-menu .am-item:hover:not(:disabled),
+.Orymexa-record-form .Orymexa-relation-button:hover:not(:disabled) {
+  background: var(--Orymexa-relation-button-hover);
+  color: var(--Orymexa-relation-button-hover-text);
 }
 
-.jiro-record-form .jiro-relation-button.active {
+.Orymexa-record-form .Orymexa-relation-button.active {
   box-shadow: inset 0 -3px 0 currentColor;
   font-weight: 600;
 }
 
-.jiro-relation-menu .am-item:focus-visible,
-.jiro-record-form .jiro-relation-button:focus-visible {
+.Orymexa-relation-menu .am-item:focus-visible,
+.Orymexa-record-form .Orymexa-relation-button:focus-visible {
   outline: 2px solid #111827;
   outline-offset: 2px;
   box-shadow: 0 0 0 4px #ffffff;
 }
 
-.jiro-relation-menu { background: #ffffff; }
+.Orymexa-relation-menu { background: #ffffff; }
 
-.jiro-record-form .field-box .form-check-input:not(:checked) {
+.Orymexa-record-form .field-box .form-check-input:not(:checked) {
   background-color: #ffffff;
 }
 
-.jiro-record-form .field-box .form-check-label { color: #111827; }
+.Orymexa-record-form .field-box .form-check-label { color: #111827; }
 
 /* Scoped overrides for Bootstrap muted text and the existing global header colors. */
-.jiro-record-form .jiro-form-section-header,
-.jiro-record-form .jiro-form-section-header :is(.fw-semibold, .small, .text-muted) {
-  color: var(--jiro-section-text, #000000) !important;
+.Orymexa-record-form .Orymexa-form-section-header,
+.Orymexa-record-form .Orymexa-form-section-header :is(.fw-semibold, .small, .text-muted) {
+  color: var(--Orymexa-section-text, #000000) !important;
 }
 
-.main-shell-content :is(.jiro-list-view, form) :is(.card-body, .card-header) {
+.main-shell-content :is(.Orymexa-list-view, form) :is(.card-body, .card-header) {
   padding: 12px;
 }
 
 /* Data surfaces render immediately; loading indicators keep their animation. */
-.main-shell-content :is(.jiro-list-view, form),
-.main-shell-content :is(.jiro-list-view, form) *:not(.spinner-border):not(.spinner-grow) {
+.main-shell-content :is(.Orymexa-list-view, form),
+.main-shell-content :is(.Orymexa-list-view, form) *:not(.spinner-border):not(.spinner-grow) {
   animation: none !important;
   transition: none !important;
 }
 
-.main-shell-content :is(.jiro-list-view, form) :is(.card, .card-form, .field-box):hover,
-.main-shell-content .jiro-list-view:hover {
+.main-shell-content :is(.Orymexa-list-view, form) :is(.card, .card-form, .field-box):hover,
+.main-shell-content .Orymexa-list-view:hover {
   transform: none;
 }
 

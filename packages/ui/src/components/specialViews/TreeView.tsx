@@ -752,7 +752,7 @@ const pendingLookupKeys = useMemo(
 
   const renderTable = (items: any[]) => (
     <div className="table-responsive">
-      <table className="table table-hover align-middle mb-0 jiro-tree-view-table" style={getModuleColorVariables(p.moduleColor) as React.CSSProperties}>
+      <table className="table table-hover align-middle mb-0 Orymexa-tree-view-table" style={getModuleColorVariables(p.moduleColor) as React.CSSProperties}>
         <thead>
           <tr className="text-muted small">
             {(effectiveColumns || []).map((c, idx) => (

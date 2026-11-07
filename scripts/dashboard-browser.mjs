@@ -59,7 +59,7 @@ function markup() {
           loadError: fixture === "error",
         });
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Dashboard fixture</title><style>${css}</style></head><body>
-    <nav class="navbar navbar-dark bg-dark" style="height:90px;color:white;padding:24px">JiRo · Prueba visual</nav>
+    <nav class="navbar navbar-dark bg-dark" style="height:90px;color:white;padding:24px">Orymexa · Prueba visual</nav>
     <div class="container-fluid"><div class="main-shell-layout"><aside class="main-shell-sidebar d-none d-lg-block" style="background:#0b162b"></aside>
     <main class="main-shell-content flex-grow-1 p-3 p-lg-4"><div class="bg-white rounded shadow-sm p-3 p-lg-4">${renderToStaticMarkup(element)}</div></main>
     </div></div></body></html>`;

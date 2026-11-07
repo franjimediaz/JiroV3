@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const repoRoot = process.cwd();
-const tempDir = path.join(os.tmpdir(), "jiro-plan-editor-tests");
+const tempDir = path.join(os.tmpdir(), "Orymexa-plan-editor-tests");
 await mkdir(tempDir, { recursive: true });
 
 async function transpileUtility(sourcePath, outputName) {

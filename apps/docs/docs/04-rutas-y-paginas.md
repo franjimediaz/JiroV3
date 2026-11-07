@@ -26,17 +26,17 @@
 
 ### Root
 
-- [apps/web/app/layout.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/app/layout.tsx)
+- [apps/web/app/layout.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/app/layout.tsx)
 - Carga CSS global y `PermisosProvider`.
 
 ### Auth
 
-- [apps/web/app/(auth)/layout.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/app/(auth)/layout.tsx)
+- [apps/web/app/(auth)/layout.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/app/(auth)/layout.tsx)
 - Envuelve con `Providers`.
 
 ### Main
 
-- [apps/web/app/(main)/layout.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/app/(main)/layout.tsx)
+- [apps/web/app/(main)/layout.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/app/(main)/layout.tsx)
 - Consulta módulos activos y construye el árbol del sidebar.
 - Usa `MainShell`.
 

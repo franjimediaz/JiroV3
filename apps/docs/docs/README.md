@@ -37,7 +37,7 @@
 
 La app combina dos capas:
 
-- Capa genérica basada en metadatos: [apps/web/app/(main)/m/[slug]/page.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/app/(main)/m/[slug]/page.tsx), [apps/web/lib/FormClient.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/lib/FormClient.tsx), [packages/ui/src/Form.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/packages/ui/src/Form.tsx) y [packages/ui/src/ListView.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/packages/ui/src/ListView.tsx).
+- Capa genérica basada en metadatos: [apps/web/app/(main)/m/[slug]/page.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/app/(main)/m/[slug]/page.tsx), [apps/web/lib/FormClient.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/lib/FormClient.tsx), [packages/ui/src/Form.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/packages/ui/src/Form.tsx) y [packages/ui/src/ListView.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/packages/ui/src/ListView.tsx).
 - Capa de administración específica para `system`: módulos, roles, usuarios y plantillas PDF.
 
 ## Resumen final

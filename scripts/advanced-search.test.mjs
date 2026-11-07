@@ -81,8 +81,8 @@ test("related conditions use empty embedded joins, preserve cross-table OR and c
     requireModulePermission: async (...args) => permissions.push(args)};
   const result = await compileAdvancedFilters(group([condition(), condition("name", "contains", "ACME", "client_id"),
     condition("name", "!=", "Old", "client_id")], "OR"), root, {}, deps);
-  assert.equal(result.expression, 'or(name.eq."ACME",jiro_search_0.not.is.null,jiro_search_1.not.is.null)');
-  assert.deepEqual(result.embeds.map(embed => embed.select), ["jiro_search_0:customers!client_id()", "jiro_search_1:customers!client_id()"]);
+  assert.equal(result.expression, 'or(name.eq."ACME",Orymexa_search_0.not.is.null,Orymexa_search_1.not.is.null)');
+  assert.deepEqual(result.embeds.map(embed => embed.select), ["Orymexa_search_0:customers!client_id()", "Orymexa_search_1:customers!client_id()"]);
   assert.equal(resolutions, 1); assert.deepEqual(permissions, [["clients", "ver"]]);
 });
 
@@ -138,9 +138,9 @@ test("real Supabase query builder receives validated predicates, server paginati
   const request = fixture.requests.at(-1);
   assert.equal(request.url.searchParams.get("offset"), "10"); assert.equal(request.url.searchParams.get("limit"), "10");
   assert.equal(request.url.searchParams.get("order"), "amount.desc,id.asc");
-  assert.equal(request.url.searchParams.get("select"), "*,jiro_search_0:customers!client_id()");
-  assert.match(request.url.searchParams.get("or"), /and\(and\(jiro_search_0.not.is.null\),or\(active.eq.true,amount.gt.500\)\)/);
-  assert.equal(request.url.searchParams.get("jiro_search_0.or"), '(name.ilike."%ACME%")');
+  assert.equal(request.url.searchParams.get("select"), "*,Orymexa_search_0:customers!client_id()");
+  assert.match(request.url.searchParams.get("or"), /and\(and\(Orymexa_search_0.not.is.null\),or\(active.eq.true,amount.gt.500\)\)/);
+  assert.equal(request.url.searchParams.get("Orymexa_search_0.or"), '(name.ilike."%ACME%")');
   assert.match(request.headers.get("prefer"), /count=exact/);
 });
 
@@ -184,7 +184,7 @@ test("out-of-range advanced pages recover count with exactly the same predicates
   assert.deepEqual(await result.json(), {ok: true, data: [], count: 23});
   const requests = fixture.requests.filter(request => !request.url.pathname.endsWith("/modulos"));
   assert.equal(requests.length, 2);
-  for (const key of ["select", "or", "jiro_search_0.or", "order"]) assert.equal(requests[0].url.searchParams.get(key), requests[1].url.searchParams.get(key));
+  for (const key of ["select", "or", "Orymexa_search_0.or", "order"]) assert.equal(requests[0].url.searchParams.get(key), requests[1].url.searchParams.get(key));
   assert.equal(requests[1].url.searchParams.get("offset"), "0");
   assert.equal(requests[1].url.searchParams.get("limit"), "1");
 });
@@ -262,5 +262,5 @@ test("filter summary renders labels, nested logic and readable values without ed
   assert.match(html, /Cliente &gt; Nombre cliente/); assert.match(html, /Contiene/); assert.match(html, /Falso/); assert.match(html, /10 y 20/);
   assert.doesNotMatch(html, /<select|<input|client_id|"kind"/);
   const empty = renderToStaticMarkup(React.createElement(FilterExpressionSummary, {fields, filter: group()}));
-  assert.match(empty, /No hay condiciones configuradas/); assert.doesNotMatch(empty, /jiro-filter-group/);
+  assert.match(empty, /No hay condiciones configuradas/); assert.doesNotMatch(empty, /Orymexa-filter-group/);
 });

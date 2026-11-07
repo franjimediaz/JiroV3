@@ -98,18 +98,18 @@ export function AdvancedSearchView({ schema, moduleSlug, modulesBySlug, onExport
     finally { setExporting(false); }
   } : undefined;
 
-  return <div className="jiro-advanced-search d-flex flex-column gap-3" style={palette as CSSProperties}>
+  return <div className="Orymexa-advanced-search d-flex flex-column gap-3" style={palette as CSSProperties}>
     <section className="border rounded bg-white text-dark p-3" aria-label="Búsqueda avanzada">
       <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <h1 className="h5 mb-0">{modulesBySlug?.[moduleSlug]?.nombre || schema.db.name || schema.db.table} · Búsqueda avanzada</h1>
-        <a className="btn jiro-form-primary" href={`/m/${encodeURIComponent(moduleSlug)}`}>Volver al listado</a>
+        <a className="btn Orymexa-form-primary" href={`/m/${encodeURIComponent(moduleSlug)}`}>Volver al listado</a>
       </div>
       {!fields.length && <p>No hay campos habilitados para filtro.</p>}
-      <div className="jiro-query-card mb-3">
-        <h2 className="jiro-query-header h6 mb-0">Consulta</h2>
+      <div className="Orymexa-query-card mb-3">
+        <h2 className="Orymexa-query-header h6 mb-0">Consulta</h2>
         <div className="p-3">
           <FilterExpressionSummary filter={draft} fields={fields} />
-          <button type="button" className="btn jiro-form-primary mt-3" disabled={!fields.length}
+          <button type="button" className="btn Orymexa-form-primary mt-3" disabled={!fields.length}
             onClick={() => setModalDraft(structuredClone(draft))}>
             {draft.items.length ? "Editar consulta" : "Crear consulta"}
           </button>
@@ -120,7 +120,7 @@ export function AdvancedSearchView({ schema, moduleSlug, modulesBySlug, onExport
           if (!modalDraft) return;
           setDraft(modalDraft); persist(modalDraft); setModalDraft(null);
         }}>
-        <div className="jiro-advanced-search">
+        <div className="Orymexa-advanced-search">
           <p className="small">Aplicar guarda la consulta. Pulsa Buscar en la vista principal para ejecutarla.</p>
           {modalDraft && <AdvancedFilterBuilder fields={fields} value={modalDraft} onChange={setModalDraft} />}
         </div>
@@ -129,7 +129,7 @@ export function AdvancedSearchView({ schema, moduleSlug, modulesBySlug, onExport
         <button type="button" className="btn btn-outline-secondary" onClick={() => {
           generation.current++; setDraft(emptyAdvancedFilter()); setApplied(null); setData([]); setTotal(0); setError(null); setPage(1); persist(emptyAdvancedFilter());
         }}>Limpiar</button>
-        <button type="button" className="btn jiro-form-primary" disabled={loading || !fields.length} onClick={() => {
+        <button type="button" className="btn Orymexa-form-primary" disabled={loading || !fields.length} onClick={() => {
           setPage(1); setApplied(structuredClone(draft)); persist(draft);
         }}>{loading ? "Buscando…" : "Buscar"}</button>
       </div>

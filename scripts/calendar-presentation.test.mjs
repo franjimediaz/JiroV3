@@ -36,7 +36,7 @@ test("event presentation exposes title, time and optional metadata without extra
   assert.doesNotMatch(buildCalendarEventTooltip(event("short", "09:30", "10:00")), /undefined|null/);
 });
 
-test("color precedence is event, module, then stable Jiro default with automatic contrast", () => {
+test("color precedence is event, module, then stable Orymexa default with automatic contrast", () => {
   assert.equal(isValidCalendarColor("#123abc"), true);
   assert.equal(isValidCalendarColor("red"), false);
   const fromEvent = getCalendarEventPalette("#111827", "#ff0000");

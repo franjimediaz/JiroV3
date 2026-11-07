@@ -6,15 +6,15 @@ import { randomUUID } from "node:crypto";
 import { chromium } from "playwright";
 const require = createRequire(resolve("apps/web/package.json"));
 process.loadEnvFile(resolve("apps/web/.env.local"));
-if (process.env.JIRO_LIVE_REVIEW !== "1")
-  throw new Error("Requires JIRO_LIVE_REVIEW=1");
+if (process.env.Orymexa_LIVE_REVIEW !== "1")
+  throw new Error("Requires Orymexa_LIVE_REVIEW=1");
 const { createClient } = require("@supabase/supabase-js");
 const { createServerClient } = require("@supabase/ssr");
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE, {
   auth: { persistSession: false },
 });
-const base = process.env.JIRO_REVIEW_URL || "http://localhost:3000";
+const base = process.env.Orymexa_REVIEW_URL || "http://localhost:3000";
 const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
 const projectSlug = `review_py_${suffix}`;
 const taskSlug = `review_task_${suffix}`;
@@ -36,7 +36,7 @@ function checked(result) {
   return result.data;
 }
 async function login(roleId, index) {
-  const email = `jiro-review-${suffix}-${index}@example.com`;
+  const email = `Orymexa-review-${suffix}-${index}@example.com`;
   const password = `${randomUUID()}Aa!9`;
   const user = checked(
     await admin.auth.admin.createUser({ email, password, email_confirm: true }),

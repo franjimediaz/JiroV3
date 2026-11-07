@@ -204,7 +204,7 @@ export function compileFieldRefFilterGroup(
       const ref = byKey.get(fieldRefKey(item.field));
       if (!ref) throw new Error(`FieldRef no resuelto: ${fieldRefKey(item.field)}`);
       if (!ref.relations.length) return filterConditionExpression(ref.field, item.op, item.value);
-      const alias = `jiro_default_${embeds.length}`;
+      const alias = `Orymexa_default_${embeds.length}`;
       const relatedPath = [...ref.ref.relations.slice(1), ref.field].map(filterIdentifier).join(".");
       embeds.push({
         alias,

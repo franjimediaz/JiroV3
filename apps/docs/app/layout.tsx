@@ -12,8 +12,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "JiRo Docs",
-  description: "Documentación del proyecto JiRo",
+  title: "Orymexa Docs",
+  description: "Documentación del proyecto Orymexa",
 };
 
 export default function RootLayout({

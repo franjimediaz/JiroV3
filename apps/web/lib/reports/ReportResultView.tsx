@@ -14,7 +14,7 @@ export default function ReportResultView({result, color, name}: {result: ReportR
       toolbar={{create: false, search: false, import: false, export: false}} />
     <p className="small text-muted mt-2">{result.scanned} registros de origen.</p>
   </div>;
-  return <div className="jiro-report-matrix" style={getModuleColorVariables(color) as CSSProperties}>
+  return <div className="Orymexa-report-matrix" style={getModuleColorVariables(color) as CSSProperties}>
     <div className="table-responsive">
       <table className="table table-bordered table-sm align-middle mb-0">
         <caption>{name} · {result.scanned} registros de origen. Totales calculados sobre los valores originales.</caption>

@@ -13,16 +13,16 @@ export function FilterExpressionSummary({ filter, fields }: {
     if (typeof value === "number") return new Intl.NumberFormat("es-ES").format(value);
     return typeof value === "string" ? `“${value}”` : "Sin valor";
   };
-  return <div className="jiro-filter-group" role="group" aria-label={filter.logic === "AND" ? "Todas las condiciones" : "Cualquiera de las condiciones"}>
-    <span className="jiro-filter-logic">{filter.logic === "AND" ? "TODAS · AND" : "CUALQUIERA · OR"}</span>
+  return <div className="Orymexa-filter-group" role="group" aria-label={filter.logic === "AND" ? "Todas las condiciones" : "Cualquiera de las condiciones"}>
+    <span className="Orymexa-filter-logic">{filter.logic === "AND" ? "TODAS · AND" : "CUALQUIERA · OR"}</span>
     {filter.items.map((item, index) => <React.Fragment key={index}>
-      {index > 0 && <div className="jiro-filter-connector">{filter.logic === "AND" ? "Y" : "O"}</div>}
+      {index > 0 && <div className="Orymexa-filter-connector">{filter.logic === "AND" ? "Y" : "O"}</div>}
       {item.kind === "group" ? <FilterExpressionSummary filter={item} fields={fields} /> : (() => {
         const field = fields.find(option => option.field.name === item.field && option.relation === item.relation);
-        return <div className="jiro-filter-condition">
+        return <div className="Orymexa-filter-condition">
           <strong>{field?.label || "Campo no disponible"}</strong>{" "}
           <span>{advancedFilterOperatorLabels[item.op] || "Operador no disponible"}</span>{" "}
-          {item.op !== "isNull" && item.op !== "isNotNull" && <span className="jiro-filter-value">
+          {item.op !== "isNull" && item.op !== "isNotNull" && <span className="Orymexa-filter-value">
             {Array.isArray(item.value) ? item.value.map(format).join(item.op === "between" ? " y " : ", ") : format(item.value)}
           </span>}
         </div>;

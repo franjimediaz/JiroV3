@@ -15,14 +15,25 @@
   min-height: 100dvh;
   overflow: hidden;
   color: #fff;
-  background-image: url("../../../public/jiro-login-fondo-azul.png");
+  background-image: url("../../../public/Orymexa-login-fondo-azul.png");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 }
 
 .visualContent { position: relative; z-index: 1; display: flex; flex-direction: column; justify-content: space-between; width: 100%; min-height: 100dvh; padding: clamp(2.5rem, 5vw, 4.5rem); }
-.visualLogo { width: clamp(14rem, 28vw, 24rem); aspect-ratio: 3 / 2; margin: auto auto 0; background-image: url("/logo.png"); background-size: contain; background-repeat: no-repeat; background-position: center; }
+.visualLogo {
+  width: min(95%, 460px);
+  height: 500px;
+  flex-shrink: 0;
+
+  background-image: url("../../../public/Orimexa_blanco_logo.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+
+  margin: auto;
+}
 .messageBlock { max-width: 34rem; margin: auto 0; padding: 5rem 0; }
 .eyebrow { display: block; margin-bottom: 1.3rem; color: #83c2ff; font-size: .78rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
 .messageBlock h2 { max-width: 31rem; margin: 0; color: #fff; font-size: clamp(2.5rem, 4.3vw, 4.25rem); font-weight: 650; line-height: 1.02; letter-spacing: -.055em; }

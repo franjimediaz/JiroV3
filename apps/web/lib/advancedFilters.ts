@@ -130,7 +130,7 @@ export async function compileAdvancedFilters(input: unknown, schema: ModuleSchem
     if (!relationSteps.length) return expression;
     // Empty embeds + not.is.null are EXISTS predicates; no related records are downloaded.
     // One alias per condition preserves OR across root and related columns.
-    let alias = `jiro_search_${embeds.length}`;
+    let alias = `Orymexa_search_${embeds.length}`;
     while (schema.fields.some(field => field.name === alias)) alias += "_";
     const defaults = relationSteps.length === 1 ? defaultFilterExpression(resolveDefaultFiltersForQuery(target.db.defaultFilters, runtime).group, target) : undefined;
     // PostgREST accepts the single-column FK's source column as a hint. This

@@ -209,7 +209,7 @@ export default function ListView({
   );
 
   return (
-    <div className="jiro-list-view d-flex flex-column" style={palette as React.CSSProperties}>
+    <div className="Orymexa-list-view d-flex flex-column" style={palette as React.CSSProperties}>
       {/* HEADER */}
       <div className="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div className="d-flex align-items-center gap-2">
@@ -231,7 +231,7 @@ export default function ListView({
           {toolbar.create !== false && capabilities.allowCreate && onCreate && (
             <button
               type="button"
-              className="btn btn-sm jiro-list-action"
+              className="btn btn-sm Orymexa-list-action"
               onClick={onCreate}
             >
               <i className="bi bi-plus-lg me-1" />
@@ -241,7 +241,7 @@ export default function ListView({
           {toolbar.search !== false && capabilities.allowSearch && filterFields.length > 0 && (
             <button
               type="button"
-              className="btn btn-sm jiro-list-action"
+              className="btn btn-sm Orymexa-list-action"
               title="Mostrar filtros"
               aria-pressed={showFilters}
               onClick={() => onSearch ? onSearch() : setShowFilters(v => !v)}
@@ -252,7 +252,7 @@ export default function ListView({
           {toolbar.export !== false && capabilities.allowExport && onExport && (
             <button
               type="button"
-              className="btn btn-sm jiro-list-action"
+              className="btn btn-sm Orymexa-list-action"
               onClick={() => void onExport(exportPayload)}
               disabled={exportLoading}
               title={exportLoading ? "Exportando" : "Exportar"}
@@ -264,7 +264,7 @@ export default function ListView({
           {toolbar.import !== false && capabilities.allowImport && onImport && (
             <button
               type="button"
-              className="btn btn-sm jiro-list-action"
+              className="btn btn-sm Orymexa-list-action"
               onClick={onImport}
               disabled={importLoading}
               title={importLoading ? "Importando" : "Importar"}
@@ -374,7 +374,7 @@ export default function ListView({
                   {(onViewRow || onEditRow || onDeleteRow) && (
                     <td className="text-start text-nowrap" >
                       <ActionMenu
-                        triggerClassName="jiro-list-action"
+                        triggerClassName="Orymexa-list-action"
                         menuClassName="sidebar-module-menu"
                         menuStyle={palette as React.CSSProperties}
                         items={[

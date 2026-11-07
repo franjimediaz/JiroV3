@@ -148,9 +148,9 @@ test("nested default filter groups compile related predicates for one server que
     { field: "title", op: "contains", value: "urgent" },
   ] }, resolved);
   assert.equal(compiled.embeds.length, 1);
-  assert.match(compiled.embeds[0].select, /jiro_default_0:services!service\(category:categories!category!inner\(\)\)/);
+  assert.match(compiled.embeds[0].select, /Orymexa_default_0:services!service\(category:categories!category!inner\(\)\)/);
   assert.match(compiled.embeds[0].expression, /category\.color\.eq\."red"/);
-  assert.equal(compiled.expression, 'or(jiro_default_0.not.is.null,title.ilike."%urgent%")');
+  assert.equal(compiled.expression, 'or(Orymexa_default_0.not.is.null,title.ilike."%urgent%")');
 });
 
 test("SSR and API lists share the same related default-filter query plan", async () => {
@@ -171,7 +171,7 @@ test("SSR and API lists share the same related default-filter query plan", async
     return { selects: plan.selects, calls };
   };
   assert.deepEqual(executeCaller(), executeCaller());
-  assert.match(plan.selects[0], /jiro_default_0:services/);
+  assert.match(plan.selects[0], /Orymexa_default_0:services/);
 });
 
 test("TreeView direct queries normalize object refs and reject unresolved related refs", async () => {

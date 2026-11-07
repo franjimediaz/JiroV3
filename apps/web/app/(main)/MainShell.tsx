@@ -6,8 +6,8 @@ import { SidebarWithPerms } from "./SidebarWithPerms";
 
 import { RecordBreadcrumbProvider, RecordBreadcrumbTrail } from "@/lib/RecordBreadcrumb";
 
-const SIDEBAR_MINI_STORAGE_KEY = "jiro.sidebar.mini";
-const SIDEBAR_MODULE_STORAGE_KEY = "jiro.sidebar.module";
+const SIDEBAR_MINI_STORAGE_KEY = "Orymexa.sidebar.mini";
+const SIDEBAR_MODULE_STORAGE_KEY = "Orymexa.sidebar.module";
 
 export default function MainShell({
   items,
@@ -60,7 +60,7 @@ export default function MainShell({
 
   return (
     <RecordBreadcrumbProvider>
-      <nav className="navbar navbar-dark bg-dark py-0">
+      <nav className="navbar navbar-dark bg-background py-0">
         <div className="container-fluid flex-nowrap gap-2">
           <button
             className="btn btn-outline-light d-lg-none"
@@ -78,9 +78,9 @@ export default function MainShell({
 
           <a className="navbar-brand ms-lg-2 d-flex align-items-center" href="/">
             <img
-              src="/mylogo2.png"
-              alt="JiRo v3"
-              height="90"
+              src="/Orimexa_color_logo.png"
+              alt="Orymexa v3"
+              height="100"
               style={{ objectFit: "contain", width: "auto" }}
               className="d-inline-block align-text-top"
             />
@@ -114,7 +114,7 @@ export default function MainShell({
           <main className="main-shell-content flex-grow-1">
             {children}
             <footer className="text-center mt-auto pt-3 text-muted small">
-              © {new Date().getFullYear()} JiRo v3
+              © {new Date().getFullYear()} Orymexa v3
             </footer>
           </main>
         </div>

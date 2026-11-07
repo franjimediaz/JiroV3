@@ -6,9 +6,9 @@ El formulario se basa en `ModuleSchema`, definido en `@repo/types` y almacenado 
 
 Piezas clave:
 
-- [packages/types/fields.ts](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/packages/types/fields.ts)
-- [packages/ui/src/Form.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/packages/ui/src/Form.tsx)
-- [apps/web/lib/FormClient.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/lib/FormClient.tsx)
+- [packages/types/fields.ts](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/packages/types/fields.ts)
+- [packages/ui/src/Form.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/packages/ui/src/Form.tsx)
+- [apps/web/lib/FormClient.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/lib/FormClient.tsx)
 
 ## Estructura del schema
 

@@ -33,7 +33,7 @@ test("new dynamic module joins a new family without source edits", () => {
   assert.equal(groups[0].modules[0].href, "/m/employees");
 });
 test("new physical internal page is discovered automatically, missing pages remain excluded", () => {
-  const root = mkdtempSync(join(tmpdir(), "jiro-route-"));
+  const root = mkdtempSync(join(tmpdir(), "Orymexa-route-"));
   try {
     mkdirSync(join(root, "(main)/rrhh/empleados"), { recursive: true });
     writeFileSync(
@@ -63,7 +63,7 @@ test("new physical internal page is discovered automatically, missing pages rema
     );
     assert.match(
       root.slice(resolve(tmpdir()).length + 1),
-      /^jiro-route-[^/\\]+$/,
+      /^Orymexa-route-[^/\\]+$/,
     );
     rmSync(root, { recursive: true });
   }

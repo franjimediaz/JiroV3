@@ -143,14 +143,14 @@ test("historical bottom block keeps its exact layout and bypasses the generic fi
   let block;
   function find(node) {
     if (ts.isJsxElement(node) && node.openingElement.attributes.properties.some(attribute =>
-      ts.isJsxAttribute(attribute) && attribute.name.getText(ast) === "className" && attribute.initializer?.text === "jiro-reverse-links d-flex flex-column gap-3")) block = node.getText(ast);
+      ts.isJsxAttribute(attribute) && attribute.name.getText(ast) === "className" && attribute.initializer?.text === "Orymexa-reverse-links d-flex flex-column gap-3")) block = node.getText(ast);
     ts.forEachChild(node, find);
   }
   find(ast);
   assert.ok(block);
   assert.doesNotMatch(expressions.renderFormContent, /trailingReverseLinks/);
   assert.doesNotMatch(block, /renderField/);
-  const expected = `<div className="jiro-reverse-links d-flex flex-column gap-3">
+  const expected = `<div className="Orymexa-reverse-links d-flex flex-column gap-3">
     <div className="card">
       <ModuleTabs
         items={displayedReverseLinks.map(field => ({ id: field.name, label: (field.label as string) || field.name }))}

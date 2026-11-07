@@ -22,17 +22,17 @@ test("process ownership excludes ancestors, unknown commands and other repositor
   const processes = [{ ProcessId: 9, ParentProcessId: 8 }, { ProcessId: 8, ParentProcessId: 7 }, { ProcessId: 7, ParentProcessId: 0 }];
   const protectedPids = ancestorPids(processes, 9);
   assert.deepEqual([...protectedPids], [9, 8, 7]);
-  const item = { ProcessId: 20, Name: "node.exe", CommandLine: 'node "C:\\src\\Jiro\\node_modules\\next\\dist\\server\\lib\\start-server.js"' };
-  assert.equal(isRepoDevProcess(item, "C:\\src\\Jiro", protectedPids), true);
-  assert.equal(isRepoDevProcess({ ...item, ProcessId: 8 }, "C:\\src\\Jiro", protectedPids), false);
+  const item = { ProcessId: 20, Name: "node.exe", CommandLine: 'node "C:\\src\\Orymexa\\node_modules\\next\\dist\\server\\lib\\start-server.js"' };
+  assert.equal(isRepoDevProcess(item, "C:\\src\\Orymexa", protectedPids), true);
+  assert.equal(isRepoDevProcess({ ...item, ProcessId: 8 }, "C:\\src\\Orymexa", protectedPids), false);
   assert.equal(isRepoDevProcess(item, "C:\\src\\Other", protectedPids), false);
   assert.equal(isRepoDevProcess(item, "C:\\src\\Ji", protectedPids), false);
-  assert.equal(isRepoDevProcess({ ...item, CommandLine: null }, "C:\\src\\Jiro", protectedPids), false);
-  assert.equal(isRepoDevProcess({ ...item, Name: "other.exe" }, "C:\\src\\Jiro", protectedPids), false);
+  assert.equal(isRepoDevProcess({ ...item, CommandLine: null }, "C:\\src\\Orymexa", protectedPids), false);
+  assert.equal(isRepoDevProcess({ ...item, Name: "other.exe" }, "C:\\src\\Orymexa", protectedPids), false);
 });
 
 test("cleanup removes only build/dependency artifacts and tolerates partial deletion", async () => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "jiro-clean-test-")));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "Orymexa-clean-test-")));
   try {
     const artifacts = ["node_modules/.pnpm/next/node_modules/next/dist/compiled", "apps/web/.next/cache", "apps/web/node_modules", "apps/nested/demo/.next", "packages/ui/.next", ".turbo", "pdf-service/node_modules"];
     for (const path of artifacts) await mkdir(join(root, path), { recursive: true });
@@ -48,8 +48,8 @@ test("cleanup removes only build/dependency artifacts and tolerates partial dele
 });
 
 test("cleanup does not traverse a workspace junction outside the root", async () => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "jiro-links-test-")));
-  const outside = await realpath(await mkdtemp(join(tmpdir(), "jiro-outside-test-")));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "Orymexa-links-test-")));
+  const outside = await realpath(await mkdtemp(join(tmpdir(), "Orymexa-outside-test-")));
   try {
     await mkdir(join(root, "apps"));
     await mkdir(join(outside, ".next"));
@@ -65,7 +65,7 @@ test("cleanup does not traverse a workspace junction outside the root", async ()
 });
 
 test("cleanup passes bounded Windows retry options and only ignores ENOENT", async () => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "jiro-retry-test-")));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "Orymexa-retry-test-")));
   try {
     await removeTarget(root, join(root, "node_modules"), async (_path, options) => {
       assert.deepEqual(options, { recursive: true, force: true, maxRetries: 6, retryDelay: 250 });

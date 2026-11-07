@@ -72,7 +72,7 @@ Define contratos de datos usados por `web`: `ModuleSchema`, `Field`, `Compute`, 
 
 Archivo de referencia principal:
 
-- [packages/types/fields.ts](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/packages/types/fields.ts)
+- [packages/types/fields.ts](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/packages/types/fields.ts)
 
 ### `@repo/ui`
 

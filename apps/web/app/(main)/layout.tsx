@@ -15,8 +15,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "JiRo Web",
-  description: "JiRo v3 Web Application",
+  title: "Orymexa Web",
+  description: "Orymexa v3 Web Application",
 };
 
 type ModuloRow = {

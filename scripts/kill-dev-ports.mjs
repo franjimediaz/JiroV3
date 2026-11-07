@@ -43,7 +43,7 @@ export async function freeDevPorts({ run = exec, platform = process.platform } =
     const { createServer } = await import("node:net");
     for (const port of devPorts) await new Promise((done, reject) => {
       const server = createServer();
-      server.once("error", () => reject(new Error(`Puerto ${port} ocupado. Detén su servidor antes de iniciar Jiro.`)));
+      server.once("error", () => reject(new Error(`Puerto ${port} ocupado. Detén su servidor antes de iniciar Orymexa.`)));
       server.listen(port, () => server.close(done));
     });
     return;
@@ -70,7 +70,7 @@ export async function freeDevPorts({ run = exec, platform = process.platform } =
     }
     try { run("taskkill.exe", ["/PID", String(pid), "/T", "/F"]); }
     catch (error) { if (listeners().some(item => item.pid === pid)) throw error; }
-    console.log(`Detenido Next de Jiro: PID ${pid}`);
+    console.log(`Detenido Next de Orymexa: PID ${pid}`);
   }
   for (let attempt = 0; attempt < 20; attempt++) {
     if (!listeners().length) return;

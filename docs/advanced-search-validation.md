@@ -22,7 +22,7 @@ Repetir explícitamente (no forma parte de la suite automática):
 node scripts/advanced-search-live-readonly.mjs --readonly
 ```
 
-El script depende de los schemas/datos actuales de Jiro. Si cambia la configuración,
+El script depende de los schemas/datos actuales de Orymexa. Si cambia la configuración,
 hay que revisar sus fixtures; no hay que crear datos ni activar campos para hacerlo pasar.
 
 ## Resolución exacta de relaciones
@@ -34,7 +34,7 @@ hay que revisar sus fixtures; no hay que crear datos ni activar campos para hace
    `ver` sobre el módulo relacionado. La tabla sale de ese schema.
 4. El campo destino también debe existir en su schema, tener `filter === true` y
    admitir el operador y tipo de valor solicitados.
-5. Genera un alias vacío por condición: `jiro_search_0:customers!customer()`.
+5. Genera un alias vacío por condición: `Orymexa_search_0:customers!customer()`.
    `customer` es una **pista por columna de origen**, no un nombre de constraint
    inventado. PostgREST resuelve la relación contra su caché de FKs físicas.
 
@@ -64,9 +64,9 @@ cumplen la rama local de un OR. Ejemplo de parámetros finales decodificados:
 
 ```text
 /rest/v1/py
-select=*,jiro_search_0:customers!customer()
-jiro_search_0.or=(name.eq."ejemplo")
-or=(and(or(title.eq."ejemplo",jiro_search_0.not.is.null)))
+select=*,Orymexa_search_0:customers!customer()
+Orymexa_search_0.or=(name.eq."ejemplo")
+or=(and(or(title.eq."ejemplo",Orymexa_search_0.not.is.null)))
 order=title.asc,id.asc
 offset=0
 limit=10

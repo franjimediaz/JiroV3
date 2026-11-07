@@ -13,7 +13,7 @@ type ExecutionContext = {
 
 function selectExpression(field: ReportQuery["fields"][number], index: number) {
   if (!field.relationPath.length) return { select: filterIdentifier(field.field), aliases: [] as string[] };
-  const aliases = field.relationPath.map((_, depth) => `jiro_report_${index}_${depth}`);
+  const aliases = field.relationPath.map((_, depth) => `Orymexa_report_${index}_${depth}`);
   let select = filterIdentifier(field.field);
   for (let depth = field.relationPath.length - 1; depth >= 0; depth--) {
     const relation = field.relationPath[depth]!;
@@ -21,8 +21,8 @@ function selectExpression(field: ReportQuery["fields"][number], index: number) {
   }
   // Preserve the established alias for one-hop reports.
   if (aliases.length === 1) {
-    select = select.replace("jiro_report_" + index + "_0:", "jiro_report_" + index + ":");
-    aliases[0] = `jiro_report_${index}`;
+    select = select.replace("Orymexa_report_" + index + "_0:", "Orymexa_report_" + index + ":");
+    aliases[0] = `Orymexa_report_${index}`;
   }
   return { select, aliases };
 }

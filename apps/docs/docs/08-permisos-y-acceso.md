@@ -4,7 +4,7 @@
 
 ### Protección de rutas
 
-- [apps/web/proxy.ts](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/proxy.ts)
+- [apps/web/proxy.ts](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/proxy.ts)
 
 El proxy:
 
@@ -20,7 +20,7 @@ El proxy:
 
 ### Provider principal
 
-- [apps/web/lib/perms.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/lib/perms.tsx)
+- [apps/web/lib/perms.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/lib/perms.tsx)
 
 Responsabilidades:
 
@@ -31,7 +31,7 @@ Responsabilidades:
 
 ### Endpoint de permisos
 
-- [apps/web/app/api/perms/route.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/app/api/perms/route.tsx)
+- [apps/web/app/api/perms/route.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/app/api/perms/route.tsx)
 
 Flujo:
 

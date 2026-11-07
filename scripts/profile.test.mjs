@@ -119,7 +119,7 @@ function serverFixture({ immediate = false, dbFails = false, rollbackFails = fal
   };
   const ctx = { user: { id: "self" }, supabase: { auth: { async updateUser(input, options) {
     events.push("auth"); assert.equal(rows.profile_email_changes[0].status, "starting");
-    assert.equal(options.emailRedirectTo, "https://jiro.test/auth/profile-callback");
+    assert.equal(options.emailRedirectTo, "https://Orymexa.test/auth/profile-callback");
     if (immediate) auth.email = input.email; else auth.new_email = input.email;
     return { data: { user: { ...auth } }, error: null };
   } } } };
@@ -134,40 +134,40 @@ function serverFixture({ immediate = false, dbFails = false, rollbackFails = fal
 }
 test("server journals first, retains old DB email until confirmation and then synchronizes", async () => {
   const f = serverFixture();
-  const pending = await f.server.updateProfile(f.ctx, { action: "email", email: op.new_email }, "https://jiro.test");
+  const pending = await f.server.updateProfile(f.ctx, { action: "email", email: op.new_email }, "https://Orymexa.test");
   assert.equal(pending.status, "pending_confirmation"); assert.equal(f.rows.users[0].email, op.old_db_email);
   assert.deepEqual(f.events, ["journal", "auth"]);
   f.auth.email = op.new_email; f.auth.new_email = "";
-  assert.equal((await f.server.updateProfile(f.ctx, { action: "finishEmail" }, "https://jiro.test")).status, "completed");
+  assert.equal((await f.server.updateProfile(f.ctx, { action: "finishEmail" }, "https://Orymexa.test")).status, "completed");
   assert.equal(f.rows.users[0].email, op.new_email);
 });
 test("server supports immediate Auth changes and blocks concurrent pending requests", async () => {
   const f = serverFixture({ immediate: true });
-  assert.equal((await f.server.updateProfile(f.ctx, { action: "email", email: op.new_email }, "https://jiro.test")).status, "completed");
+  assert.equal((await f.server.updateProfile(f.ctx, { action: "email", email: op.new_email }, "https://Orymexa.test")).status, "completed");
   assert.deepEqual(f.events, ["journal", "auth", "db"]);
   const pending = serverFixture();
-  await pending.server.updateProfile(pending.ctx, { action: "email", email: op.new_email }, "https://jiro.test");
-  await assert.rejects(pending.server.updateProfile(pending.ctx, { action: "email", email: "other@example.test" }, "https://jiro.test"));
+  await pending.server.updateProfile(pending.ctx, { action: "email", email: op.new_email }, "https://Orymexa.test");
+  await assert.rejects(pending.server.updateProfile(pending.ctx, { action: "email", email: "other@example.test" }, "https://Orymexa.test"));
   assert.equal(pending.events.filter(x => x === "auth").length, 1);
 });
 test("server preserves durable marker on failed compensation; successful compensation closes it", async () => {
   for (const rollbackFails of [false, true]) {
     const f = serverFixture({ immediate: true, dbFails: true, rollbackFails });
-    await assert.rejects(f.server.updateProfile(f.ctx, { action: "email", email: op.new_email }, "https://jiro.test"));
+    await assert.rejects(f.server.updateProfile(f.ctx, { action: "email", email: op.new_email }, "https://Orymexa.test"));
     assert.equal(f.rows.profile_email_changes[0].status, rollbackFails ? "reconciliation_required" : "rolled_back");
   }
 });
 test("details only update the current DB user and do not mutate Auth", async () => {
   const f = serverFixture(); f.rows.users.push({ uid: "other", name: "Other", surname: "User", email: "other@example.test" });
-  await f.server.updateProfile(f.ctx, parseProfileInput({ action: "details", name: "Ana María", surname: "Pérez López" }), "https://jiro.test");
+  await f.server.updateProfile(f.ctx, parseProfileInput({ action: "details", name: "Ana María", surname: "Pérez López" }), "https://Orymexa.test");
   assert.equal(f.rows.users[0].name, "Ana María"); assert.equal(f.rows.users[1].name, "Other"); assert.deepEqual(f.events, []);
 });
 test("password requires current credentials, obeys Auth failures and closes its temporary session", async () => {
   const input = parseProfileInput({ action: "password", currentPassword: "old-secret", password: "new-password-long", confirmPassword: "new-password-long" });
   for (const options of [{}, { wrongPassword: true }, { passwordError: true }]) {
     const f = serverFixture(options);
-    if (options.wrongPassword || options.passwordError) await assert.rejects(f.server.updateProfile(f.ctx, input, "https://jiro.test"));
-    else assert.equal((await f.server.updateProfile(f.ctx, input, "https://jiro.test")).status, "completed");
+    if (options.wrongPassword || options.passwordError) await assert.rejects(f.server.updateProfile(f.ctx, input, "https://Orymexa.test"));
+    else assert.equal((await f.server.updateProfile(f.ctx, input, "https://Orymexa.test")).status, "completed");
     assert.equal(f.events[0], "reauthenticate"); assert.equal(f.events.at(-1), "revoke_temporary_session");
     if (options.wrongPassword) assert.ok(!f.events.includes("password"));
     assert.ok(!("password" in f.rows.users[0]));
@@ -175,16 +175,16 @@ test("password requires current credentials, obeys Auth failures and closes its 
 });
 test("preexisting email divergence is recorded without touching Auth", async () => {
   const f = serverFixture(); f.rows.users[0].email = "divergent@example.test";
-  await assert.rejects(f.server.updateProfile(f.ctx, { action: "email", email: op.new_email }, "https://jiro.test"));
+  await assert.rejects(f.server.updateProfile(f.ctx, { action: "email", email: op.new_email }, "https://Orymexa.test"));
   assert.equal(f.rows.profile_email_changes[0].status, "reconciliation_required"); assert.deepEqual(f.events, ["journal"]);
 });
 test("PKCE callback exchanges code and returns to profile without reporting success", async () => {
   let received;
   const route = loader({ "@/lib/supabase/server": { createClient: async () => ({ auth: { exchangeCodeForSession: async code => { received = code; return { error: null }; } } }) } })("apps/web/app/auth/profile-callback/route.ts");
-  const result = await route.GET(new Request("https://jiro.test/auth/profile-callback?code=test-code&next=https://evil.test"));
-  assert.equal(received, "test-code"); assert.equal(result.headers.get("location"), "https://jiro.test/mi-perfil?emailConfirmation=1");
-  const invalid = await route.GET(new Request("https://jiro.test/auth/profile-callback?error=expired"));
-  assert.equal(invalid.headers.get("location"), "https://jiro.test/mi-perfil?emailConfirmation=error");
+  const result = await route.GET(new Request("https://Orymexa.test/auth/profile-callback?code=test-code&next=https://evil.test"));
+  assert.equal(received, "test-code"); assert.equal(result.headers.get("location"), "https://Orymexa.test/mi-perfil?emailConfirmation=1");
+  const invalid = await route.GET(new Request("https://Orymexa.test/auth/profile-callback?error=expired"));
+  assert.equal(invalid.headers.get("location"), "https://Orymexa.test/mi-perfil?emailConfirmation=error");
 });
 test("API rejects unauthenticated/cross-origin requests and validates before update", async () => {
   let mutations = 0, signedIn = true;
@@ -194,7 +194,7 @@ test("API rejects unauthenticated/cross-origin requests and validates before upd
     "@/lib/security/rateLimit": { enforceRateLimit: async () => {} },
     "@/lib/auth/handleApiError": { handleApiError: error => new Response("error", { status: error.status || 401 }) },
   })("apps/web/app/api/profile/route.ts");
-  const request = (body, origin = "https://jiro.test") => new Request("https://jiro.test/api/profile", { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body) });
+  const request = (body, origin = "https://Orymexa.test") => new Request("https://Orymexa.test/api/profile", { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body) });
   assert.equal((await route.POST(request({ action: "finishEmail" }, "https://evil.test"))).status, 403);
   signedIn = false; assert.equal((await route.GET()).status, 401);
   assert.equal((await route.POST(request({ action: "finishEmail" }))).status, 401);

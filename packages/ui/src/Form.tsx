@@ -884,7 +884,7 @@ export default function Form({
       </button>
 
       {effectiveMode === "view" && canEdit && (
-        <button type="button" className="btn jiro-form-primary px-4" onClick={handleEdit}>
+        <button type="button" className="btn Orymexa-form-primary px-4" onClick={handleEdit}>
           Editar
         </button>
       )}
@@ -892,7 +892,7 @@ export default function Form({
       {(effectiveMode === "edit" || effectiveMode === "create") && (
         <button
           type="submit"
-          className="btn jiro-form-primary px-5"
+          className="btn Orymexa-form-primary px-5"
         >
           Guardar
         </button>
@@ -1158,7 +1158,7 @@ export default function Form({
               <div key={section.id} className="card">
                 <button
                   type="button"
-                  className="card-header jiro-form-section-header d-flex justify-content-between align-items-center w-100"
+                  className="card-header Orymexa-form-section-header d-flex justify-content-between align-items-center w-100"
                   onClick={() => toggleSection(section.id)}
                   aria-expanded={isOpen}
                   style={{
@@ -1193,7 +1193,7 @@ export default function Form({
 
   const renderTreeViewContent = () => (
     <div className="card">
-      <div className="card-header jiro-form-section-header">
+      <div className="card-header Orymexa-form-section-header">
         <div className="fw-semibold">{treeViewConfig?.ui?.title || ""}</div>
         
       </div>
@@ -1230,7 +1230,7 @@ export default function Form({
 
   const renderCalendarContent = () => (
     <div className="card">
-      <div className="card-header jiro-form-section-header">
+      <div className="card-header Orymexa-form-section-header">
         <div className="fw-semibold">{calendarConfig?.ui?.title || "Calendario"}</div>
         <div className="small text-muted">
           Módulo fuente: {calendarConfig?.sourceModuleSlug || calendarConfig?.sourceTable || "-"}
@@ -1293,16 +1293,16 @@ export default function Form({
   const relationButtonHover = lightenColor(sectionColors.background, 0.28);
 
   return (
-    <form className="jiro-record-form d-flex flex-column gap-3" onSubmit={handleSubmit}
+    <form className="Orymexa-record-form d-flex flex-column gap-3" onSubmit={handleSubmit}
       style={{
         ...getModuleColorVariables(sectionColors.background),
-        "--jiro-section-bg": sectionColors.background,
-        "--jiro-section-text": sectionColors.foreground,
-        "--jiro-field-border": lightenColor(sectionColors.background, 0.65),
-        "--jiro-relation-button": relationButtonColor,
-        "--jiro-relation-button-text": getContrastingTextColor(relationButtonColor),
-        "--jiro-relation-button-hover": relationButtonHover,
-        "--jiro-relation-button-hover-text": getContrastingTextColor(relationButtonHover),
+        "--Orymexa-section-bg": sectionColors.background,
+        "--Orymexa-section-text": sectionColors.foreground,
+        "--Orymexa-field-border": lightenColor(sectionColors.background, 0.65),
+        "--Orymexa-relation-button": relationButtonColor,
+        "--Orymexa-relation-button-text": getContrastingTextColor(relationButtonColor),
+        "--Orymexa-relation-button-hover": relationButtonHover,
+        "--Orymexa-relation-button-hover-text": getContrastingTextColor(relationButtonHover),
       } as React.CSSProperties}>
       {showMainTabs && (
         <div className="card">
@@ -1330,7 +1330,7 @@ export default function Form({
       )}
 
       {showReverseLinks && displayedReverseLinks.length > 0 && (
-        <div className="jiro-reverse-links d-flex flex-column gap-3">
+        <div className="Orymexa-reverse-links d-flex flex-column gap-3">
           <div className="card">
             <ModuleTabs
               items={displayedReverseLinks.map(field => ({ id: field.name, label: (field.label as string) || field.name }))}

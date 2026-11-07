@@ -220,7 +220,7 @@ test("drawer event handlers still close on Escape, overlay click, link navigatio
 
 test("shell shares selection and storage while permission wrapper retains hasPermiso(slug, ver)", () => {
   const shell = readFileSync("apps/web/app/(main)/MainShell.tsx", "utf8");
-  assert.match(shell, /jiro.sidebar.module/);
+  assert.match(shell, /Orymexa.sidebar.module/);
   assert.equal((shell.match(/moduleSelection=\{moduleSelection\}/g) || []).length, 2);
   assert.equal((shell.match(/onModuleChange=\{selectModule\}/g) || []).length, 2);
   const wrapper = readFileSync("apps/web/app/(main)/SidebarWithPerms.tsx", "utf8");
@@ -328,13 +328,13 @@ test("lightening shares HEX normalization, clamps amounts and preserves readable
 test("form headers use schema color through scoped variables; two wrapper levels and list card decoration are removed", () => {
   const form = readFileSync("packages/ui/src/Form.tsx", "utf8");
   assert.match(form, /getFormSectionColors\(normalizedSchema.ui\?\.color\)/);
-  assert.match(form, /"--jiro-section-bg": sectionColors.background/);
-  assert.match(form, /card-header jiro-form-section-header/);
+  assert.match(form, /"--Orymexa-section-bg": sectionColors.background/);
+  assert.match(form, /card-header Orymexa-form-section-header/);
   const css = readFileSync("apps/web/app/globals.css", "utf8");
-  assert.match(css, /\.jiro-record-form \.jiro-form-section-header\s*\{\s*background: var\(--jiro-section-bg/);
-  assert.match(css, /\.jiro-record-form \.jiro-form-section-header :is\(\.fw-semibold, \.small, \.text-muted\)/);
+  assert.match(css, /\.Orymexa-record-form \.Orymexa-form-section-header\s*\{\s*background: var\(--Orymexa-section-bg/);
+  assert.match(css, /\.Orymexa-record-form \.Orymexa-form-section-header :is\(\.fw-semibold, \.small, \.text-muted\)/);
   assert.match(css, /\.main-shell-content\s*\{[^}]*margin: 0;[^}]*padding: 8px;/);
-  assert.match(css, /\.jiro-list-view,\s*\.jiro-record-form\s*\{\s*width: 100%;/);
+  assert.match(css, /\.Orymexa-list-view,\s*\.Orymexa-record-form\s*\{\s*width: 100%;/);
   const shell = readFileSync("apps/web/app/(main)/MainShell.tsx", "utf8");
   assert.doesNotMatch(shell, /container-fluid px-0 layout-min-vh/);
   assert.match(shell, /className="main-shell-layout layout-min-vh"/);
@@ -345,8 +345,8 @@ test("form headers use schema color through scoped variables; two wrapper levels
     assert.match(page, /return\s*\(\s*<(?:ListPageClient|FormClient)/);
   }
   const list = readFileSync("packages/ui/src/ListView.tsx", "utf8");
-  assert.match(list, /className="jiro-list-view d-flex flex-column"/);
-  assert.doesNotMatch(list, /className="card jiro-list-view"/);
+  assert.match(list, /className="Orymexa-list-view d-flex flex-column"/);
+  assert.doesNotMatch(list, /className="card Orymexa-list-view"/);
   assert.match(form, /className="row g-3"/);
   assert.match(form, /key=\{section.id\} className="card"/);
 });

@@ -63,8 +63,8 @@ const bundle = `(function(){var process={env:{NODE_ENV:'development'}};var modul
   try {
     const page = await browser.newPage({viewport:{width:1280,height:900}});
     const errors=[]; page.on('pageerror', error=>errors.push(error.message));
-    await page.route('http://jiro.test/**',route=>route.fulfill({contentType:'text/html',body:'<div id="root" class="main-shell-content"></div>'}));
-    await page.goto('http://jiro.test/m/projects?view=search');
+    await page.route('http://Orymexa.test/**',route=>route.fulfill({contentType:'text/html',body:'<div id="root" class="main-shell-content"></div>'}));
+    await page.goto('http://Orymexa.test/m/projects?view=search');
     await page.addStyleTag({content:fs.readFileSync(require.resolve('bootstrap/dist/css/bootstrap.min.css'),'utf8')+'\n'+fs.readFileSync('apps/web/app/globals.css','utf8')+'\n'+styles.join('\n')});
     const iconRequire=createRequire(path.resolve('packages/ui/package.json'));
     await page.route('**/*.woff2*',route=>route.fulfill({contentType:'font/woff2',body:fs.readFileSync(iconRequire.resolve('bootstrap-icons/font/fonts/bootstrap-icons.woff2'))}));
@@ -78,7 +78,7 @@ const bundle = `(function(){var process={env:{NODE_ENV:'development'}};var modul
     await page.getByRole('button',{name:'Aplicar',exact:true}).click();
     assert.equal(await calls(),0);
     assert.ok(page.url().includes('filters='));
-    assert.match(await page.locator('.jiro-query-card').innerText(),/ACME/);
+    assert.match(await page.locator('.Orymexa-query-card').innerText(),/ACME/);
     assert.equal(await page.getByLabel('Campo del filtro').count(),0);
     const savedUrl=page.url();
     for (const exit of ['cancel','escape','close','overlay']) {
@@ -92,7 +92,7 @@ const bundle = `(function(){var process={env:{NODE_ENV:'development'}};var modul
       assert.equal(await page.getByRole('dialog').count(),0);
       assert.equal(await page.evaluate(()=>document.activeElement.textContent),'Editar consulta');
       assert.equal(page.url(),savedUrl);
-      assert.doesNotMatch(await page.locator('.jiro-query-card').innerText(),/DISCARD/);
+      assert.doesNotMatch(await page.locator('.Orymexa-query-card').innerText(),/DISCARD/);
     }
     await page.getByRole('button',{name:'Editar consulta',exact:true}).click();
     await page.getByRole('button',{name:'+ Grupo',exact:true}).click();
@@ -103,8 +103,8 @@ const bundle = `(function(){var process={env:{NODE_ENV:'development'}};var modul
     assert.equal(await page.locator('.qa_header').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(35, 86, 133)');
     await page.getByRole('button',{name:'Aplicar',exact:true}).click();
     assert.equal(await calls(),0);
-    assert.match(await page.locator('.jiro-query-card').innerText(),/CUALQUIERA · OR/);
-    assert.match(await page.locator('.jiro-query-card').innerText(),/Cliente > Nombre cliente/);
+    assert.match(await page.locator('.Orymexa-query-card').innerText(),/CUALQUIERA · OR/);
+    assert.match(await page.locator('.Orymexa-query-card').innerText(),/Cliente > Nombre cliente/);
     await page.getByRole('button',{name:'Buscar',exact:true}).click();
     await page.getByRole('cell',{name:'Resultado',exact:true}).waitFor();
     assert.equal(await calls(),1);
@@ -120,11 +120,11 @@ const bundle = `(function(){var process={env:{NODE_ENV:'development'}};var modul
     await page.getByRole('button',{name:'Aplicar',exact:true}).click();
     assert.equal(await calls(),1);
     assert.equal(await page.evaluate(()=>window.calls[0].advancedFilters.items[0].value),'ACME');
-    assert.match(await page.locator('.jiro-query-card').innerText(),/NUEVA/);
+    assert.match(await page.locator('.Orymexa-query-card').innerText(),/NUEVA/);
     await page.reload(); await page.addScriptTag({content:bundle});
     await page.getByRole('button',{name:'Editar consulta',exact:true}).waitFor();
     assert.equal(await calls(),0);
-    assert.match(await page.locator('.jiro-query-card').innerText(),/NUEVA/);
+    assert.match(await page.locator('.Orymexa-query-card').innerText(),/NUEVA/);
     assert.deepEqual(errors,[]);
     console.log('PASS modal draft/apply/cancel/Escape/close/overlay, summary, URL restore, explicit search, palette, mobile scroll.');
   } finally { await browser.close(); }

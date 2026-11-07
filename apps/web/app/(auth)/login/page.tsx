@@ -40,17 +40,16 @@ export default function LoginPage() {
 
   return (
     <main className={styles.page}>
-      <section className={styles.visualPanel} aria-label="Presentación de JiRo">
+      <section className={styles.visualPanel} aria-label="Presentación de Orymexa">
         <div className={styles.visualContent}>
-          <div
-            className={styles.visualLogo}
-            role="img"
-            aria-label="Logotipo de JiRo"
-          />
+          <div className={styles.visualLogo} role="img" aria-label="Logotipo de Orymexa"/>
           <div className={styles.messageBlock}>
-            <span className={styles.eyebrow}>Omira</span>
-            
-            
+            <span className={styles.eyebrow}>Orymexa · PLATAFORMA EMPRESARIAL</span>
+
+            <p>
+              Adapta cada proceso a las necesidades de tu negocio.
+              Una plataforma flexible que evoluciona contigo.
+            </p>
           </div>
           
         </div>
@@ -62,7 +61,7 @@ export default function LoginPage() {
             <div
               className={styles.mobileLogo}
               role="img"
-              aria-label="Logotipo de JiRo"
+              aria-label="Logotipo de Orymexa"
             />
           </div>
 
@@ -137,7 +136,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className={styles.support}>Acceso seguro a la plataforma JiRo</p>
+          <p className={styles.support}>Acceso seguro a la plataforma Orymexa</p>
         </div>
       </section>
     </main>

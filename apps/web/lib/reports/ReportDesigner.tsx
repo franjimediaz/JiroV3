@@ -61,14 +61,14 @@ export default function ReportDesigner({report, sources, onChange}: {
     <p className="small text-muted">Arrastra un campo a una zona o selecciónalo y pulsa Añadir. Cambiar el módulo o tipo vacía el diseño. Máximo 5.000 registros de origen.</p>
     <div className="row g-3">
       <aside className="col-lg-4">
-        <div className="jiro-query-card">
-          <h2 className="jiro-query-header h6">Campos disponibles</h2>
+        <div className="Orymexa-query-card">
+          <h2 className="Orymexa-query-header h6">Campos disponibles</h2>
           <div className="p-3">
             <input className="form-control mb-2" aria-label="Buscar campo" placeholder="Buscar campo…" value={search} onChange={event => setSearch(event.target.value)} />
-            <div className="jiro-report-fields" role="list" aria-label="Campos disponibles">
+            <div className="Orymexa-report-fields" role="list" aria-label="Campos disponibles">
               {options.filter(option => option.label.toLocaleLowerCase().includes(search.toLocaleLowerCase())).map(option => <button key={reportFieldKey(option.ref)} type="button"
-                className={`btn text-start w-100 mb-1 ${selected === reportFieldKey(option.ref) ? "jiro-form-primary" : "btn-light"}`}
-                draggable onDragStart={event => {event.dataTransfer.setData("application/jiro-field", reportFieldKey(option.ref)); event.dataTransfer.effectAllowed = "copy";}}
+                className={`btn text-start w-100 mb-1 ${selected === reportFieldKey(option.ref) ? "Orymexa-form-primary" : "btn-light"}`}
+                draggable onDragStart={event => {event.dataTransfer.setData("application/Orymexa-field", reportFieldKey(option.ref)); event.dataTransfer.effectAllowed = "copy";}}
                 onClick={() => setSelected(reportFieldKey(option.ref))} aria-pressed={selected === reportFieldKey(option.ref)}>
                 <i className="bi bi-grip-vertical me-1" aria-hidden="true" />{option.label}
               </button>)}
@@ -78,20 +78,20 @@ export default function ReportDesigner({report, sources, onChange}: {
         </div>
       </aside>
       <div className="col-lg-8">
-        {zones.map(zone => <section key={zone} className="jiro-query-card mb-3" aria-label={`Zona ${zone === "rows" ? "Filas" : zone === "values" ? "Valores" : "Columnas"}`}
+        {zones.map(zone => <section key={zone} className="Orymexa-query-card mb-3" aria-label={`Zona ${zone === "rows" ? "Filas" : zone === "values" ? "Valores" : "Columnas"}`}
           onDragOver={event => event.preventDefault()} onDrop={event => {
-            event.preventDefault(); const key = event.dataTransfer.getData("application/jiro-field");
+            event.preventDefault(); const key = event.dataTransfer.getData("application/Orymexa-field");
             add(zone, options.find(option => reportFieldKey(option.ref) === key));
           }}>
-          <h2 className="jiro-query-header h6">{zone === "rows" ? "Filas" : zone === "values" ? "Valores" : "Columnas"}</h2>
+          <h2 className="Orymexa-query-header h6">{zone === "rows" ? "Filas" : zone === "values" ? "Valores" : "Columnas"}</h2>
           <div className="p-3">
             {inZone(zone).map((column, index) => {
               const option = options.find(option => reportFieldKey(option.ref) === reportFieldKey(column.ref));
               const aggregations = option ? reportAggregations(option.field).filter(aggregation => report.type === "list" || (zone === "values" ? aggregation !== "none" : aggregation === "none")) : [];
               return <div key={column.id} className="border rounded p-2 mb-2" draggable
-                onDragStart={event => {event.stopPropagation(); event.dataTransfer.setData("application/jiro-column", JSON.stringify({zone, index}));}}
+                onDragStart={event => {event.stopPropagation(); event.dataTransfer.setData("application/Orymexa-column", JSON.stringify({zone, index}));}}
                 onDragOver={event => event.preventDefault()} onDrop={event => {
-                  const raw = event.dataTransfer.getData("application/jiro-column"); if (!raw) return;
+                  const raw = event.dataTransfer.getData("application/Orymexa-column"); if (!raw) return;
                   event.preventDefault(); event.stopPropagation();
                   try { const from = JSON.parse(raw); if (from.zone === zone && Number.isInteger(from.index)) move(zone, from.index, index); } catch { /* Ignore unrelated drags. */ }
                 }}>
@@ -105,9 +105,9 @@ export default function ReportDesigner({report, sources, onChange}: {
                   {options.map(item => <option key={reportFieldKey(item.ref)} value={reportFieldKey(item.ref)}>{item.label}</option>)}
                 </select>
                 <div className="d-flex gap-2 flex-wrap align-items-center">
-                  <input className="form-control form-control-sm jiro-report-label" aria-label={`Etiqueta ${index + 1} de ${zone}`} maxLength={120} value={column.label}
+                  <input className="form-control form-control-sm Orymexa-report-label" aria-label={`Etiqueta ${index + 1} de ${zone}`} maxLength={120} value={column.label}
                     onChange={event => update(zone, inZone(zone).map(item => item.id === column.id ? {...item, label: event.target.value} : item))} />
-                  <select className="form-select form-select-sm jiro-report-aggregate" aria-label={`Agregación ${index + 1} de ${zone}`} value={column.aggregation}
+                  <select className="form-select form-select-sm Orymexa-report-aggregate" aria-label={`Agregación ${index + 1} de ${zone}`} value={column.aggregation}
                     onChange={event => update(zone, inZone(zone).map(item => item.id === column.id ? {...item, aggregation: event.target.value as ReportColumn["aggregation"]} : item))}>
                     {aggregations.map(aggregation => <option key={aggregation} value={aggregation}>{aggregationLabels[aggregation]}</option>)}
                   </select>
@@ -118,12 +118,12 @@ export default function ReportDesigner({report, sources, onChange}: {
               </div>;
             })}
             {!inZone(zone).length && <p className="text-muted">Arrastra campos aquí.</p>}
-            <button type="button" className="btn btn-sm jiro-form-primary" disabled={!options.some(option => reportFieldKey(option.ref) === selected) || inZone(zone).length >= (report.type === "list" ? 20 : zone === "values" ? 5 : 2)}
+            <button type="button" className="btn btn-sm Orymexa-form-primary" disabled={!options.some(option => reportFieldKey(option.ref) === selected) || inZone(zone).length >= (report.type === "list" ? 20 : zone === "values" ? 5 : 2)}
               onClick={() => add(zone, options.find(option => reportFieldKey(option.ref) === selected))}>Añadir campo seleccionado</button>
           </div>
         </section>)}
-        {report.type === "list" && <section className="jiro-query-card mb-3">
-          <h2 className="jiro-query-header h6">Orden</h2>
+        {report.type === "list" && <section className="Orymexa-query-card mb-3">
+          <h2 className="Orymexa-query-header h6">Orden</h2>
           <div className="p-3">
             {report.sort.map((sort, index) => <div key={index} className="d-flex gap-2 mb-2">
               <select aria-label="Columna de ordenación" className="form-select" value={sort.columnId} onChange={event => onChange({...report, sort: report.sort.map((item, i) => i === index ? {...item, columnId: event.target.value} : item)})}>
@@ -139,18 +139,18 @@ export default function ReportDesigner({report, sources, onChange}: {
         </section>}
       </div>
     </div>
-    <section className="jiro-query-card mt-3" aria-label="Zona Filtros" onDragOver={event => event.preventDefault()}
-      onDrop={event => {event.preventDefault(); addFilter(event.dataTransfer.getData("application/jiro-field"));}}>
-      <h2 className="jiro-query-header h6">Filtros</h2>
+    <section className="Orymexa-query-card mt-3" aria-label="Zona Filtros" onDragOver={event => event.preventDefault()}
+      onDrop={event => {event.preventDefault(); addFilter(event.dataTransfer.getData("application/Orymexa-field"));}}>
+      <h2 className="Orymexa-query-header h6">Filtros</h2>
       <div className="p-3"><FilterExpressionSummary filter={report.filters} fields={filters} />
-        <button type="button" className="btn jiro-form-primary mt-3" disabled={!source} onClick={() => setFilterDraft(structuredClone(report.filters))}>Editar consulta</button>
+        <button type="button" className="btn Orymexa-form-primary mt-3" disabled={!source} onClick={() => setFilterDraft(structuredClone(report.filters))}>Editar consulta</button>
         <button type="button" className="btn btn-outline-secondary mt-3 ms-2" disabled={!filterOption(selected)} onClick={() => addFilter(selected)}>Añadir campo seleccionado al filtro</button>
         <p className="small text-muted mt-2 mb-0">También puedes arrastrar aquí un campo con filtro habilitado para configurar su condición.</p>
       </div>
     </section>
     <ModalConfirm open={filterDraft !== null} configuration title="Construir consulta" confirmText="Aplicar" moduleColor={source?.schema.ui?.color || "#e2e8f0"}
       onCancel={() => setFilterDraft(null)} onConfirm={() => {if (filterDraft) onChange({...report, filters: filterDraft}); setFilterDraft(null);}}>
-      <div className="jiro-advanced-search">{filterDraft && <AdvancedFilterBuilder value={filterDraft} fields={filters} onChange={setFilterDraft} />}</div>
+      <div className="Orymexa-advanced-search">{filterDraft && <AdvancedFilterBuilder value={filterDraft} fields={filters} onChange={setFilterDraft} />}</div>
     </ModalConfirm>
   </>;
 }

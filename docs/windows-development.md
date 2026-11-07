@@ -1,4 +1,4 @@
-# Desarrollo de Jiro en Windows
+# Desarrollo de Orymexa en Windows
 
 ## Instalación y arranque
 
@@ -9,7 +9,7 @@ en la misma terminal. Después de cambiar Node, abrir una terminal nueva. No se 
 El lanzador comprueba la versión de Node que ejecuta realmente el desarrollo.
 
 Se recomienda un checkout corto fuera de carpetas sincronizadas, por ejemplo
-`C:\src\JiroV3`. OneDrive, antivirus y editores pueden mantener archivos abiertos;
+`C:\src\OrymexaV3`. OneDrive, antivirus y editores pueden mantener archivos abiertos;
 ningún script puede garantizar que Windows permita eliminar un archivo bloqueado.
 No se modifican políticas de Windows, permisos, antivirus ni configuración de OneDrive.
 Si se crea otro checkout, copiar los `.env.local` necesarios de forma privada; no

@@ -2,7 +2,7 @@
 
 ## Scope
 
-Static hardening pass for JiRoV3 focused on API authentication, authorization, Supabase Storage, user administration, workflow execution, PDF generation, rate limiting, security headers, errors and audit logging.
+Static hardening pass for OrymexaV3 focused on API authentication, authorization, Supabase Storage, user administration, workflow execution, PDF generation, rate limiting, security headers, errors and audit logging.
 
 ## Inventory
 

@@ -22,7 +22,7 @@ test("generated PDFs are fetched as blobs and downloaded without opening a tab",
   const clicks = [];
   let requestedUrl = "";
 
-  globalThis.window = { location: { origin: "https://jiro.test" }, open: () => assert.fail("window.open must not be used") };
+  globalThis.window = { location: { origin: "https://Orymexa.test" }, open: () => assert.fail("window.open must not be used") };
   globalThis.document = {
     body: { appendChild() {} },
     createElement: () => ({ style: {}, click() { clicks.push(this); }, remove() {} }),

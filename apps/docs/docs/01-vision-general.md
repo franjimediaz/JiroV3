@@ -6,9 +6,9 @@ La aplicación web implementa un workspace autenticado orientado a operar módul
 
 Esto se observa en:
 
-- [apps/web/app/(main)/layout.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/app/(main)/layout.tsx)
-- [apps/web/lib/modules.server.ts](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/lib/modules.server.ts)
-- [packages/ui/src/Form.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/packages/ui/src/Form.tsx)
+- [apps/web/app/(main)/layout.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/app/(main)/layout.tsx)
+- [apps/web/lib/modules.server.ts](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/lib/modules.server.ts)
+- [packages/ui/src/Form.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/packages/ui/src/Form.tsx)
 
 ## Módulos principales detectados
 

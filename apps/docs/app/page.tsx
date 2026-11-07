@@ -28,9 +28,9 @@ export default function DocsEstadoActual() {
 
   return (
     <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 32, marginBottom: 16 }}>JiRo v2 · Documentación de Estado Actual</h1>
+      <h1 style={{ fontSize: 32, marginBottom: 16 }}>Orymexa v2 · Documentación de Estado Actual</h1>
       <p style={{ marginBottom: 24 }}>
-        Este documento describe el estado actual del proyecto <b>JiRo v2</b>, centrado en la integración con{" "}
+        Este documento describe el estado actual del proyecto <b>Orymexa v2</b>, centrado en la integración con{" "}
         <b>Supabase</b>, la arquitectura con Next.js (App Router) y las piezas reutilizables (sidebar, módulos y
         formulario dinámico).
         <br />
@@ -88,7 +88,7 @@ export default async function Home() {
       {/* 3) Ruteo */}
       <Section title="3) Ruteo y estructura de páginas">
         <p>
-          JiRo v2 utiliza el App Router de Next.js con rutas <b>dinámicas</b> y páginas unificadas para ver, editar y crear.
+          Orymexa v2 utiliza el App Router de Next.js con rutas <b>dinámicas</b> y páginas unificadas para ver, editar y crear.
           Se ha corregido el error típico de Next 14: <code>params</code> y <code>searchParams</code> son promesas en componentes <i>async</i>.
         </p>
         <Code>{`// Ejemplo corregido
@@ -242,7 +242,7 @@ export default async function CustomersPage({ searchParams }: any) {
       <Section title="7) Formularios dinámicos (packages/ui/Form.tsx)">
         <p>
           El componente <code>Form</code> (default export en <code>packages/ui/src/Form.tsx</code>) es el{" "}
-          <b>formulario dinámico central</b> de JiRo v2. Su objetivo es transformar un <code>ModuleSchema</code> en una UI
+          <b>formulario dinámico central</b> de Orymexa v2. Su objetivo es transformar un <code>ModuleSchema</code> en una UI
           editable, soportando modos de vista/edición, cálculo automático y overrides sin tener que escribir formularios
           específicos por tabla.
         </p>
@@ -828,7 +828,7 @@ compute: {
 
   <h4>2) Campo con cálculo tipo <code>formula</code> (compute)</h4>
   <p>
-    En JiRo v2, el tipo “formula” no es un tipo de input, sino un modo de cálculo en la propiedad
+    En Orymexa v2, el tipo “formula” no es un tipo de input, sino un modo de cálculo en la propiedad
     <code>compute</code>. Se configura desde ModuloForm seleccionando <code>compute = formula</code>.
   </p>
 
@@ -946,7 +946,7 @@ compute: {
       {/* 15) Sistema de permisos y control de acceso */}
         <Section title="15) Sistema de permisos y control de acceso (frontend)">
           <p>
-            JiRo v2 implementa un sistema de control de acceso centralizado en frontend,
+            Orymexa v2 implementa un sistema de control de acceso centralizado en frontend,
             basado en <b>roles</b> y <b>permisos por módulo y acción</b>. El objetivo es:
           </p>
           <ul>
@@ -1047,7 +1047,7 @@ compute: {
 {/* 17) ActionMenu y patrón de acciones */}
 <Section title="17) ActionMenu y patrón de acciones condicionadas">
   <p>
-    JiRo v2 utiliza un componente reutilizable <code>ActionMenu</code> para
+    Orymexa v2 utiliza un componente reutilizable <code>ActionMenu</code> para
     centralizar las acciones de cada fila en vistas de listado
     (clientes, obras, roles, etc.).
   </p>
@@ -1140,7 +1140,7 @@ compute: {
       <p>
         <b>Ubicación sugerida del archivo:</b> <code>apps/web/app/docs/page.tsx</code>
         <br />
-        <Small>Documento de estado técnico — JiRo v2 (Supabase, Next.js, TypeScript).</Small>
+        <Small>Documento de estado técnico — Orymexa v2 (Supabase, Next.js, TypeScript).</Small>
       </p>
     </main>
   );

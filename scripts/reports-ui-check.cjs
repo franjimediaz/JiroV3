@@ -88,7 +88,7 @@ const bundle = `(function(){var process={env:{NODE_ENV:'development'}};var modul
     await page.getByRole('button',{name:/Nuevo informe/}).click({timeout:10000}).catch(async error=>{console.error(errors,await page.locator('body').innerText());throw error;});
     await page.getByLabel('Nombre',{exact:true}).fill('Ventas por país');
     await page.getByLabel('Módulo principal').selectOption('orders');
-    await page.evaluate(()=>{window.dragEvents=[];for(const type of ['dragstart','dragover','drop'])document.addEventListener(type,event=>window.dragEvents.push({type,data:event.dataTransfer?.getData('application/jiro-field')}));});
+    await page.evaluate(()=>{window.dragEvents=[];for(const type of ['dragstart','dragover','drop'])document.addEventListener(type,event=>window.dragEvents.push({type,data:event.dataTransfer?.getData('application/Orymexa-field')}));});
     await page.getByRole('button',{name:'País',exact:true}).dragTo(page.getByRole('region',{name:'Zona Columnas',exact:true}));
     assert.equal(await page.getByLabel('Etiqueta 1 de columns').inputValue({timeout:5000}).catch(async error=>{console.error(await page.evaluate(()=>window.dragEvents),errors);throw error;}),'País');
     await page.getByRole('button',{name:'Importe',exact:true}).click();
@@ -133,12 +133,12 @@ const bundle = `(function(){var process={env:{NODE_ENV:'development'}};var modul
       await page.getByRole('region',{name:'Zona '+zone,exact:true}).getByRole('button',{name:'Añadir campo seleccionado',exact:true}).click();
     }
     await page.getByRole('button',{name:'Vista previa',exact:true}).click();
-    await page.locator('.jiro-report-matrix').waitFor();
-    assert.match(await page.locator('.jiro-report-matrix').innerText(),/Total/);
+    await page.locator('.Orymexa-report-matrix').waitFor();
+    assert.match(await page.locator('.Orymexa-report-matrix').innerText(),/Total/);
     fs.mkdirSync('.tmp',{recursive:true});
     await page.getByRole('heading',{name:'Editar informe',exact:true}).scrollIntoViewIfNeeded();
     await page.screenshot({path:'.tmp/reports-desktop.png',fullPage:true});
-    await page.locator('.jiro-report-matrix').scrollIntoViewIfNeeded();
+    await page.locator('.Orymexa-report-matrix').scrollIntoViewIfNeeded();
     await page.screenshot({path:'.tmp/reports-matrix.png'});
     await page.setViewportSize({width:390,height:844});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));

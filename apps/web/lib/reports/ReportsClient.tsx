@@ -71,10 +71,10 @@ export default function ReportsClient() {
   };
   const selected = draft || view;
   const color = sources.find(source => source.slug === selected?.sourceModule)?.schema.ui?.color;
-  return <div className="jiro-advanced-search bg-white text-dark p-3" style={getModuleColorVariables(color) as CSSProperties}>
+  return <div className="Orymexa-advanced-search bg-white text-dark p-3" style={getModuleColorVariables(color) as CSSProperties}>
     <header className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
       <h1 className="h4 mb-0">{draft ? draft.id ? "Editar informe" : "Nuevo informe" : view ? view.name : "Informes"}</h1>
-      {!selected && <button type="button" className="btn jiro-form-primary" disabled={busy} onClick={() => edit(empty())}><i className="bi bi-plus-lg me-1" aria-hidden="true" />Nuevo informe</button>}
+      {!selected && <button type="button" className="btn Orymexa-form-primary" disabled={busy} onClick={() => edit(empty())}><i className="bi bi-plus-lg me-1" aria-hidden="true" />Nuevo informe</button>}
       {selected && <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={() => {revision.current++; setDraft(null); setView(null); setResult(null); setError(""); setNotice("");}}>Volver a informes</button>}
     </header>
     {error && <div role="alert" className="alert alert-danger">{error}</div>}
@@ -92,11 +92,11 @@ export default function ReportsClient() {
     {draft && <>
       <ReportDesigner report={draft} sources={sources} onChange={change} />
       <div className="d-flex gap-2 mt-3 mb-3">
-        <button type="button" className="btn jiro-form-primary" disabled={busy} onClick={() => void save()}>Guardar informe</button>
+        <button type="button" className="btn Orymexa-form-primary" disabled={busy} onClick={() => void save()}>Guardar informe</button>
         <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={() => void run(draft, true)}>Vista previa</button>
       </div>
     </>}
-    {view && <><p>{view.description}</p><div className="d-flex gap-2 mb-3"><button type="button" className="btn jiro-form-primary" disabled={busy} onClick={() => void run(view, false)}>Ejecutar</button><button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={() => edit(view)}>Editar informe</button></div></>}
+    {view && <><p>{view.description}</p><div className="d-flex gap-2 mb-3"><button type="button" className="btn Orymexa-form-primary" disabled={busy} onClick={() => void run(view, false)}>Ejecutar</button><button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={() => edit(view)}>Editar informe</button></div></>}
     {result && <section aria-label="Resultado del informe"><h2 className="h5">{draft ? "Vista previa" : "Resultado"}</h2><ReportResultView result={result} color={color} name={selected?.name || "Informe"} /></section>}
     <ModalConfirm open={deleting !== null} title="Eliminar informe" message={`Se eliminará la definición de «${deleting?.name || ""}».`} danger confirmText="Eliminar" confirmDisabled={busy}
       onCancel={() => {if (!busy) setDeleting(null);}} onConfirm={() => void remove()} />

@@ -4,8 +4,8 @@
 
 La vista de lista estándar se implementa con:
 
-- [apps/web/lib/ListPageClient.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/apps/web/lib/ListPageClient.tsx)
-- [packages/ui/src/ListView.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/JiroV3/JiroV3/packages/ui/src/ListView.tsx)
+- [apps/web/lib/ListPageClient.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/apps/web/lib/ListPageClient.tsx)
+- [packages/ui/src/ListView.tsx](/abs/path/c:/Users/Fjjim/OneDrive/Escritorio/OrymexaV3/OrymexaV3/packages/ui/src/ListView.tsx)
 
 ## Cómo se seleccionan columnas
 

@@ -44,7 +44,7 @@ export function Dashboard({
     <div className={styles.dashboard}>
       <header className={styles.hero}>
         <div className={styles.heroBody}>
-          <span className={styles.eyebrow}>JIRO</span>
+          <span className={styles.eyebrow}>Orymexa</span>
           <h1>Todo el proyecto en una portada.</h1>
           <p>Accede a tus módulos y continúa con el trabajo de hoy.</p>
           {first?.href && (

@@ -127,7 +127,7 @@ function fixture({denied = [], count = 4, errorCode, cap = 2} = {}) {
     const url = new URL(String(input)); requests.push({url, init});
     if (errorCode) return Response.json({code: errorCode, message: "Relation failed"}, {status: 400});
     const offset = Number(url.searchParams.get("offset") || 0);
-    const rows = Array.from({length: Math.min(cap, Math.max(0, count - offset))}, (_, i) => ({id: i + offset, country: "ES", amount: 10, jiro_report_0: {name: "ACME"}}));
+    const rows = Array.from({length: Math.min(cap, Math.max(0, count - offset))}, (_, i) => ({id: i + offset, country: "ES", amount: 10, Orymexa_report_0: {name: "ACME"}}));
     return Response.json(rows, {headers: {"Content-Range": `${offset}-${offset + rows.length - 1}/${count}`}});
   }}});
   const ctx = {user: {id: "owner"}, supabase: client};
@@ -160,9 +160,9 @@ test("related output fields and advanced mixed filters share schema validation a
   const result = await f.executeReport(report, false);
   assert.deepEqual(result.rows, [{client: "ACME", amount: 40}]);
   const url = f.requests[0].url;
-  assert.match(url.searchParams.get("select"), /jiro_report_0:customers!customer\(name\)/);
-  assert.match(url.searchParams.get("or"), /or\(country.eq."ES",jiro_search_0.not.is.null\)/);
-  assert.match(url.searchParams.get("jiro_report_0.or"), /name.neq."Hidden"/);
+  assert.match(url.searchParams.get("select"), /Orymexa_report_0:customers!customer\(name\)/);
+  assert.match(url.searchParams.get("or"), /or\(country.eq."ES",Orymexa_search_0.not.is.null\)/);
+  assert.match(url.searchParams.get("Orymexa_report_0.or"), /name.neq."Hidden"/);
   assert.ok(f.permissions.some(([slug, action]) => slug === "customers" && action === "ver"));
 });
 test("manual LIST definitions cover direct fields, relation, filter, sort, SUM/groupBy and COUNT", async () => {

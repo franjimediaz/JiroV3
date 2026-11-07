@@ -19,9 +19,9 @@ export default function DocsEstadoActual() {
 
   return (
     <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 32, marginBottom: 16 }}>JiRo v2 · Documentación de Estado Actual</h1>
+      <h1 style={{ fontSize: 32, marginBottom: 16 }}>Orymexa v2 · Documentación de Estado Actual</h1>
       <p style={{ marginBottom: 24 }}>
-        Este documento describe el estado actual del proyecto <b>JiRo v2</b>, centrado en la integración con <b>Supabase</b>, la arquitectura con Next.js (App Router) y las piezas reutilizables (sidebar, módulos y formulario dinámico).
+        Este documento describe el estado actual del proyecto <b>Orymexa v2</b>, centrado en la integración con <b>Supabase</b>, la arquitectura con Next.js (App Router) y las piezas reutilizables (sidebar, módulos y formulario dinámico).
         <br />
         <Small>Última revisión: 10 de noviembre de 2025</Small>
       </p>
@@ -68,7 +68,7 @@ export default async function Home() {
 
       <Section title="3) Ruteo y estructura de páginas">
         <p>
-          JiRo v2 utiliza el App Router de Next.js con rutas <b>dinámicas</b> y páginas unificadas para ver, editar y crear.
+          Orymexa v2 utiliza el App Router de Next.js con rutas <b>dinámicas</b> y páginas unificadas para ver, editar y crear.
           Se ha corregido el error típico de Next 14: <code>params</code> y <code>searchParams</code> son promesas en componentes <i>async</i>.
         </p>
         <Code>{`
@@ -266,7 +266,7 @@ export default async function CustomersPage({ searchParams }: any) {
       <p>
         <b>Ubicación sugerida del archivo:</b> <code>apps/web/app/docs/page.tsx</code>
         <br />
-        <Small>Documento de estado técnico — JiRo v2 (Supabase, Next.js, TypeScript).</Small>
+        <Small>Documento de estado técnico — Orymexa v2 (Supabase, Next.js, TypeScript).</Small>
       </p>
     </main>
   );

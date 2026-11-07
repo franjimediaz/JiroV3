@@ -391,7 +391,7 @@ export default function PlanPropertiesPanel({
       )}
 
       <div className={styles.panelSection}>
-        <h4 className={styles.sectionTitle}>Vinculacion JiRo</h4>
+        <h4 className={styles.sectionTitle}>Vinculacion Orymexa</h4>
         {linkTargets.length === 0 ? (
           <div className={styles.hint}>No hay destinos de vinculacion configurados.</div>
         ) : (
