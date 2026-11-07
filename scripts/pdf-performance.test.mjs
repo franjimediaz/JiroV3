@@ -172,8 +172,9 @@ test("context loads independent record and related labels concurrently with unch
         if (table === "owners" || table === "states" || (table === "modulos" && this.columns === "slug,props")) {
           pending.push({ table: table === "modulos" ? "allSchemas" : table, resolve }); return;
         }
-        const data = table === "projects" ? { id: "p1", ownerId: "u1" }
+        const data = table === "projects" ? { id: "p1", ownerId: "u1", reviewerId: "u2" }
           : table === "items" ? [{ id: "i1", projectId: "p1", stateId: "s1" }]
+          : table === "users" ? [{ id: "u1", name: "Owner" }, { id: "u2", name: "Reviewer" }]
           : table === "branding" ? { nombre: "Company" }
           : this.single ? { props: { fields: [] } }
           : [{ slug: "projects", props: { fields: [] } }, { slug: "items", props: { fields: [] } }];
@@ -203,20 +204,33 @@ test("context loads independent record and related labels concurrently with unch
     ],
   });
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(pending.map(({ table }) => table).sort(), ["allSchemas", "owners", "states"]);
+  assert.deepEqual(pending.map(({ table }) => table), ["allSchemas"]);
   pending.find(({ table }) => table === "allSchemas").resolve({ data: [
-    { slug: "projects", props: { fields: [] } },
+    { slug: "projects", props: { fields: [
+      { name: "ownerId", ref: { moduleSlug: "users" } },
+      { name: "reviewerId", ref: { moduleSlug: "users" } },
+    ] } },
     { slug: "items", props: { fields: [] } },
+    { slug: "owners", props: { fields: [] } },
+    { slug: "states", props: { fields: [] } },
+    { slug: "users", props: { fields: [{ name: "name" }] } },
   ], error: null });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(pending.map(({ table }) => table).sort(), ["allSchemas", "owners", "states"]);
   pending.find(({ table }) => table === "states").resolve({ data: [{ id: "s1", name: "Ready" }] });
   pending.find(({ table }) => table === "owners").resolve({ data: [{ id: "u1", name: "Owner" }] });
   const ctx = await resultPromise;
   assert.equal(ctx.record.ownerId__label, "Owner");
   assert.equal(ctx.py.ownerId__label, "Owner");
+  assert.equal(ctx.py.owner.name, "Owner");
+  assert.equal(ctx.py.reviewer.name, "Reviewer");
   assert.equal(ctx.related.items[0].stateId__label, "Ready");
   assert.equal(ctx.branding.nombre, "Company");
   assert.equal(calls.filter(([table]) => table === "owners").length, 1);
   assert.equal(calls.filter(([table]) => table === "states").length, 1);
+  assert.equal(calls.filter(([table]) => table === "users").length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls.find(([table]) => table === "users")[2])), [["id", ["u1", "u2"]]]);
+  assert.equal(calls.filter(([table]) => table === "modulos").length, 1);
   assert.equal(calls.filter(([table, columns]) => table === "modulos" && columns === "slug,props").length, 1);
   assert.deepEqual(JSON.parse(JSON.stringify(calls.find(([table]) => table === "owners")[2])), [["id", ["u1"]]]);
   assert.ok(timingMessages.some(message => /^\[pdf-context\] allSchemas: \d+ms$/.test(message)));

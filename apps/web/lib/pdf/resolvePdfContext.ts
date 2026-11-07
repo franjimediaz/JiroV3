@@ -39,6 +39,7 @@ type AnyObj = Record<string, any>;
 type ResolveRunCache = {
   recordNames: WeakMap<object, string>;
   schemaBySlug: Map<string, Promise<ModuleSchema>>;
+  allSchemas?: Promise<Record<string, ModuleSchema>>;
   rowByTableAndId: Map<string, Promise<any | null>>;
   childrenByTableFkAndParent: Map<string, Promise<any[]>>;
   labelValuesByGroup: Map<string, Map<string, string>>;
@@ -590,7 +591,11 @@ async function getSchemaCached(args: {
 
   let promise = cache.schemaBySlug.get(moduleSlug);
   if (!promise) {
-    promise = getSchemaFromDb({ supabase, moduleSlug });
+    promise = cache.allSchemas
+      ? cache.allSchemas.then((schemas) =>
+          schemas[moduleSlug] || getSchemaFromDb({ supabase, moduleSlug }),
+        )
+      : getSchemaFromDb({ supabase, moduleSlug });
     cache.schemaBySlug.set(moduleSlug, promise);
   }
 
@@ -637,6 +642,44 @@ async function getOneCached(args: {
   }
 
   return promise;
+}
+
+async function primeRowsByIds(args: {
+  supabase: any;
+  cache: ResolveRunCache;
+  table: string;
+  ids: string[];
+}) {
+  const { supabase, cache, table } = args;
+  const ids = Array.from(new Set(args.ids)).filter(
+    (id) => !cache.rowByTableAndId.has(`${table}:${id}`),
+  );
+  if (!ids.length) return;
+
+  const pending = new Map<string, (row: any | null) => void>();
+  for (const id of ids) {
+    cache.rowByTableAndId.set(
+      `${table}:${id}`,
+      new Promise<any | null>((resolve) => pending.set(id, resolve)),
+    );
+  }
+
+  const { data, error } = await supabase.from(table).select("*").in("id", ids);
+  if (error) {
+    console.warn(
+      `resolvePdfContext: getManyFromDb error (${table}):`,
+      error.message,
+    );
+  }
+
+  const rowsById = new Map<string, any>();
+  for (const row of error ? [] : data || []) {
+    const id = String((row as any)?.id ?? "");
+    if (id) rowsById.set(id, row);
+  }
+  for (const id of ids) {
+    pending.get(id)!(rowsById.get(id) ?? null);
+  }
 }
 
 async function fetchChildrenByFk(params: {
@@ -857,6 +900,29 @@ async function hydrateBelongsToTree(opts: {
     const schema = await getSchemaCached({ supabase, cache, moduleSlug });
     const fields = getSchemaFields(schema);
     const out: AnyObj = { ...rec };
+
+    const idsByTable = new Map<string, string[]>();
+    for (const field of fields) {
+      const fieldName = field?.name;
+      if (!fieldName || typeof fieldName !== "string") continue;
+      const ref = getRefFromField(field);
+      const fkValue = out[fieldName];
+      const alias = field.alias ?? inferAliasFromFieldName(fieldName);
+      if (
+        ref?.moduleSlug &&
+        typeof fkValue === "string" &&
+        fkValue &&
+        !(out[alias] && typeof out[alias] === "object")
+      ) {
+        if (!idsByTable.has(ref.moduleSlug)) idsByTable.set(ref.moduleSlug, []);
+        idsByTable.get(ref.moduleSlug)!.push(fkValue);
+      }
+    }
+    await Promise.all(
+      Array.from(idsByTable.entries()).map(([table, ids]) =>
+        primeRowsByIds({ supabase, cache, table, ids }),
+      ),
+    );
 
     const hydrationTasks = fields.map(async (field) => {
       const fieldName = field?.name;
@@ -1083,6 +1149,7 @@ async function resolvePdfContextInternal(args: ResolveArgs) {
   const allSchemasPromise = timeResolveStage("allSchemas", () =>
     loadAllSchemasFromDb({ supabase }),
   );
+  cache.allSchemas = allSchemasPromise;
 
   const recordResolvers = (args.labelResolvers || []).filter(
     (resolver) => resolver?.in === "record",
