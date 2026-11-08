@@ -184,6 +184,9 @@ importers:
 
   apps/web-static:
     dependencies:
+      '@repo/web-components':
+        specifier: workspace:*
+        version: link:../../packages/web-components
       next:
         specifier: 16.3.4
         version: 16.3.4(@types/node@22.15.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -292,6 +295,21 @@ importers:
       rimraf:
         specifier: ^6.1.0
         version: 6.1.0
+
+  packages/web-components:
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/react':
+        specifier: 19.2.2
+        version: 19.2.2
+      react:
+        specifier: 19.2.3
+        version: 19.2.3
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
 
   packages/web-schema:
     dependencies:

@@ -1,0 +1,18 @@
+:root {
+  --jws-color-primary: #245749;
+  --jws-color-primary-hover: #183e33;
+  --jws-color-surface: #ffffff;
+  --jws-color-soft: #edf3ef;
+  --jws-color-text: #182c24;
+  --jws-color-muted: #4e6258;
+  --jws-color-border: #bacbc1;
+  --jws-font-family: Arial, Helvetica, sans-serif;
+  --jws-space-1: 0.5rem;
+  --jws-space-2: 1rem;
+  --jws-space-3: 1.5rem;
+  --jws-space-4: 2rem;
+  --jws-space-5: 3rem;
+  --jws-space-6: 5rem;
+  --jws-radius: 1rem;
+  --jws-border: 1px solid var(--jws-color-border);
+}
