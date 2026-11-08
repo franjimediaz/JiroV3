@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "publicationId": "jiro-static-demo",
+  "publishedAt": "2026-11-08T18:00:00.000Z",
+  "theme": {
+    "colors": {
+      "primary": "#245749",
+      "text": "#182c24"
+    },
+    "typography": {
+      "body": "Arial, Helvetica, sans-serif"
+    },
+    "spacing": {
+      "small": "8px",
+      "medium": "16px"
+    }
+  },
+  "pages": [
+    {
+      "id": "home",
+      "path": "/",
+      "title": "Jiro Web Static",
+      "description": "Generador de páginas web estáticas de Jiro V3.",
+      "schemaVersion": 1,
+      "puckData": {
+        "root": {
+          "props": {
+            "title": "Jiro Web Static"
+          }
+        },
+        "content": [
+          {
+            "type": "Hero",
+            "props": {
+              "id": "home-hero",
+              "title": "Jiro Web Static",
+              "subtitle": "Generador de páginas web estáticas de Jiro V3.",
+              "align": "left",
+              "button": {
+                "text": "Contactar",
+                "href": "/contacto",
+                "variant": "primary",
+                "newTab": false
+              }
+            }
+          },
+          {
+            "type": "Section",
+            "props": {
+              "id": "home-section",
+              "spacing": "large",
+              "labelledBy": "home-heading",
+              "content": [
+                {
+                  "type": "Heading",
+                  "props": {
+                    "id": "home-heading",
+                    "text": "Tu contenido, publicado como HTML",
+                    "level": 2,
+                    "align": "left"
+                  }
+                },
+                {
+                  "type": "TextBlock",
+                  "props": {
+                    "id": "home-text",
+                    "text": "Estas páginas se generan desde una publicación JSON local durante el build, utilizando los componentes compartidos de Jiro.",
+                    "align": "left"
+                  }
+                },
+                {
+                  "type": "Columns",
+                  "props": {
+                    "id": "home-columns",
+                    "columns": 2,
+                    "first": [
+                      {
+                        "type": "Heading",
+                        "props": {
+                          "id": "home-column-one",
+                          "text": "Contenido reutilizable",
+                          "level": 3
+                        }
+                      }
+                    ],
+                    "second": [
+                      {
+                        "type": "TextBlock",
+                        "props": {
+                          "id": "home-column-two",
+                          "text": "Un mismo registro de componentes para todas tus páginas estáticas."
+                        }
+                      }
+                    ],
+                    "third": []
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "contact",
+      "path": "/contacto",
+      "title": "Contacto",
+      "description": "Ponte en contacto con Jiro Web Static.",
+      "schemaVersion": 1,
+      "puckData": {
+        "root": {
+          "props": {
+            "title": "Contacto"
+          }
+        },
+        "content": [
+          {
+            "type": "Heading",
+            "props": {
+              "id": "contact-heading",
+              "text": "Contacto",
+              "level": 1,
+              "align": "left"
+            }
+          },
+          {
+            "type": "TextBlock",
+            "props": {
+              "id": "contact-text",
+              "text": "Gracias por visitar Jiro Web Static. Esta página de contacto también se genera desde nuestra publicación JSON local.",
+              "align": "left"
+            }
+          },
+          {
+            "type": "ButtonLink",
+            "props": {
+              "id": "contact-link",
+              "text": "Volver al inicio",
+              "href": "/",
+              "variant": "primary",
+              "newTab": false
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
