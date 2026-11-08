@@ -293,6 +293,19 @@ importers:
         specifier: ^6.1.0
         version: 6.1.0
 
+  packages/web-schema:
+    dependencies:
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      typescript:
+        specifier: 5.9.2
+        version: 5.9.2
+
   pdf-service:
     dependencies:
       express:
