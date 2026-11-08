@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   icons: {
     icon: "./icon.png",
   },
-  description: "Orymexa v3 Web Application",
+  description: "Orymexa Web Application",
 };
 
 type ModuloRow = {
