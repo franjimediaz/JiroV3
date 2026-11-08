@@ -117,6 +117,15 @@ importers:
 
   apps/web:
     dependencies:
+      '@puckeditor/core':
+        specifier: 0.24.0
+        version: 0.24.0(@floating-ui/dom@1.8.0)(@types/react-dom@19.2.2(@types/react@19.2.2))(@types/react@19.2.2)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
+      '@repo/web-components':
+        specifier: workspace:*
+        version: link:../../packages/web-components
+      '@repo/web-puck':
+        specifier: workspace:*
+        version: link:../../packages/web-puck
       "@repo/ui":
         specifier: workspace:*
         version: link:../../packages/ui

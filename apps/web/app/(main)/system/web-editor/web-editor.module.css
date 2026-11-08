@@ -1,0 +1,28 @@
+.editor {
+  --puck-font-family: Arial, Helvetica, sans-serif;
+  width: 100%;
+  min-width: 0;
+  color: #17212b;
+  color-scheme: light;
+  font-family: Arial, Helvetica, sans-serif;
+}
+.intro { padding: 0.75rem 0; }
+.intro h1 { margin: 0 0 0.4rem; font-size: 1.4rem; }
+.intro p { margin: 0; font-size: 0.9rem; color: #52606d; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.actions button {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #bdc8d2;
+  border-radius: 0.35rem;
+  background: white;
+  color: #17212b;
+  font: 600 0.8rem/1.4 Arial, Helvetica, sans-serif;
+  cursor: pointer;
+}
+.actions button:hover { background: #eef3f7; }
+.actions button:focus-visible { outline: 2px solid #245749; outline-offset: 2px; }
+.success, .error { margin: 0.5rem 0; padding: 0.6rem 0.8rem; border-radius: 0.35rem; font-size: 0.9rem; }
+.success { background: #e8f4ed; color: #174b30; }
+.error { background: #fcebec; color: #8c1d27; }
+.editor :global([class*="Puck_"]) { min-width: 0; }
+@media (max-width: 768px) { .actions { gap: 0.25rem; } .actions button { padding: 0.4rem; } }
