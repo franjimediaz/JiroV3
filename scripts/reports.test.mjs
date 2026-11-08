@@ -199,7 +199,9 @@ test("server rejects forbidden fields/relations/aggregates and denied modules be
 
 test("reports API scopes CRUD to the session owner and executes saved definitions instead of client replacements", async () => {
   const owner = "00000000-0000-4000-8000-000000000001", id = "00000000-0000-4000-8000-000000000002";
-  const requests = [], executions = [];
+  const requests = [], executions = [], permissions = [];
+  let deniedAction;
+  const schema = {db: {table: "report_definitions"}, fields: [], capabilities: {}};
   let missing = false;
   const stored = {id, config: list(), created_at: "2026-01-01", updated_at: "2026-01-01"};
   const client = require("@supabase/supabase-js").createClient("https://example.test", "key", {auth: {persistSession: false}, global: {fetch: async (input, init) => {
@@ -208,12 +210,20 @@ test("reports API scopes CRUD to the session owner and executes saved definition
     return Response.json(missing ? null : many ? [stored] : stored);
   }}});
   const route = loader({
-    "@/lib/auth/getCurrentUser": {requireUser: async () => ({user: {id: owner}, supabase: client})},
+    "@/lib/auth/requireModulePermission": {requireModulePermission: async (slug, action) => {
+      permissions.push([slug, action]);
+      if (action === deniedAction) throw Object.assign(Error("Denied"), {status: 403});
+      return {user: {id: owner}, supabase: client};
+    }},
+    "@/lib/modules.server": {fetchModuleRowBySlug: async slug => {assert.equal(slug, "reports"); return {schema};}},
     "@/lib/reports/server": {prepareReport: async input => ({report: parseReport(input)}), reportSources: async () => [], executeReport: async (report, preview) => {executions.push({report, preview}); return {ok: true};}},
     "@/lib/auth/handleApiError": {handleApiError: error => Response.json({error: error.message}, {status: error.status || 500})},
   })("apps/web/app/api/reports/route.ts");
   const post = body => route.POST(new Request("http://localhost/api/reports", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify(body)}));
   assert.equal((await route.GET(new Request("http://localhost/api/reports"))).status, 200);
+  const detail = await route.GET(new Request(`http://localhost/api/reports?id=${id}`));
+  assert.equal(detail.status, 200);
+  assert.equal((await detail.json()).report.id, id);
   assert.equal((await post({action: "save", report: {...list(), owner_id: "attacker"}})).status, 200);
   assert.equal(requests.at(-1).body.owner_id, owner);
   assert.equal((await post({action: "save", id, report: list()})).status, 200);
@@ -221,19 +231,74 @@ test("reports API scopes CRUD to the session owner and executes saved definition
   assert.deepEqual(executions.at(-1), {report: list(), preview: false});
   assert.equal((await route.DELETE(new Request("http://localhost/api/reports", {method: "DELETE", headers: {"content-type": "application/json"}, body: JSON.stringify({id})}))).status, 200);
   for (const request of requests.filter(request => request.method !== "POST")) assert.equal(request.url.searchParams.get("owner_id"), `eq.${owner}`);
+  for (const action of ["ver", "crear", "actualizar", "eliminar"]) assert.ok(permissions.some(([slug, checked]) => slug === "reports" && checked === action));
+  for (const action of ["ver", "crear", "actualizar", "eliminar"]) {
+    deniedAction = action;
+    const before = requests.length;
+    const response = action === "ver" ? await route.GET(new Request("http://localhost/api/reports"))
+      : action === "eliminar" ? await route.DELETE(new Request("http://localhost/api/reports", {method: "DELETE", headers: {"content-type": "application/json"}, body: JSON.stringify({id})}))
+      : await post({action: "save", report: list(), ...(action === "actualizar" ? {id} : {})});
+    assert.equal(response.status, 403); assert.equal(requests.length, before);
+  }
+  deniedAction = "crear";
+  assert.equal((await post({action: "preview", report: list()})).status, 403);
+  deniedAction = "actualizar";
+  assert.equal((await post({action: "preview", id, report: list()})).status, 403);
+  deniedAction = undefined;
+  schema.capabilities.allowCreate = false;
+  assert.equal((await post({action: "save", report: list()})).status, 403);
+  schema.capabilities.allowCreate = true;
   missing = true;
+  assert.equal((await route.GET(new Request(`http://localhost/api/reports?id=${id}`))).status, 404);
   assert.equal((await post({action: "run", id})).status, 404);
   assert.equal((await post({action: "save", id, report: list()})).status, 404);
   assert.equal((await post({action: "run", id: "id),or(owner_id)"})).status, 400);
   assert.equal((await route.POST(new Request("http://localhost/api/reports", {method: "POST", body: JSON.stringify({action: "save", report: list()})}))).status, 400);
 });
 
-test("global Reports link precedes My account in desktop, mini and mobile sidebar", () => {
+test("configured Reports link appears once in desktop, mini and mobile sidebar", () => {
   const React = require("react"), {renderToStaticMarkup} = require("react-dom/server");
-  const {Sidebar} = loader({"next/navigation": {usePathname: () => "/informes"}})("packages/ui/src/Sidebar.tsx");
+  const {Sidebar} = loader({"next/navigation": {usePathname: () => "/reports"}})("packages/ui/src/Sidebar.tsx");
+  const items = [{id: "reports", slug: "reports", nombre: "Informes", route: "/reports", tipo: "vista", icon: "bi-table"}];
   for (const props of [{variant: "fixed"}, {variant: "fixed", miniMode: true}, {variant: "drawer", isOpen: true}]) {
-    const html = renderToStaticMarkup(React.createElement(Sidebar, {items: [], ...props}));
-    assert.match(html, /href="\/informes"/); assert.match(html, /bi-table/);
-    assert.ok(html.indexOf('href="/informes"') < html.indexOf('aria-label="Mi cuenta"'));
+    const html = renderToStaticMarkup(React.createElement(Sidebar, {items, ...props}));
+    assert.equal((html.match(/href="\/reports"/g) || []).length, 1);
+    assert.doesNotMatch(html, /href="\/informes"/);
+    const denied = renderToStaticMarkup(React.createElement(Sidebar, {items, ...props, canView: () => false}));
+    assert.doesNotMatch(denied, /href="\/reports"/);
   }
+});
+
+test("report list adapts configured names without mutating definitions", () => {
+  const {reportListRow} = load("apps/web/lib/reports/client.ts");
+  const report = {...list(), id: "report-id"};
+  const original = structuredClone(report);
+  const schema = {db: {primaryKey: "report_id"}, fields: [{name: "nombre"}, {name: "source_module"}, {name: "typeLabel"}]};
+  assert.deepEqual(reportListRow(report, schema, []), {report_id: "report-id", nombre: "Informe", source_module: "orders", typeLabel: "Lista"});
+  assert.deepEqual(report, original);
+});
+
+test("Reports routes share the configured schema and guard create and edit", async () => {
+  const schema = {db: {table: "report_definitions"}, fields: []};
+  const actions = [];
+  const routeLoad = loader({
+    "@/lib/reports/access": {reportsPageAccess: async (action = "ver") => {actions.push(action); return {schema};}},
+    "@/lib/reports/ReportsPageClient": {default: () => null},
+    "@/lib/reports/ReportFormClient": {default: () => null},
+  });
+  const index = await routeLoad("apps/web/app/(main)/reports/page.tsx").default();
+  assert.equal(index.props.schema, schema);
+  const create = await routeLoad("apps/web/app/(main)/reports/new/page.tsx").default();
+  assert.equal(create.props.mode, "create");
+  for (const edit of [undefined, "true"]) {
+    const page = await routeLoad("apps/web/app/(main)/reports/[id]/page.tsx").default({params: Promise.resolve({id: "00000000-0000-4000-8000-000000000002"}), searchParams: Promise.resolve({edit})});
+    assert.equal(page.props.mode, edit ? "edit" : "view");
+    assert.equal(page.props.schema, schema);
+  }
+  assert.deepEqual(actions, ["ver", "crear", "ver", "actualizar"]);
+});
+
+test("Reports retains its independent route even with a data table configured", () => {
+  const {resolveModuleConfigFromRow} = loader({"@/lib/supabase/server": {}})("apps/web/lib/modules/resolveModuleConfig.ts");
+  assert.equal(resolveModuleConfigFromRow({slug: "reports", route: "/reports", props: {db: {table: "report_definitions"}, fields: []}}).route, "/reports");
 });

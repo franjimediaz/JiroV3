@@ -1,7 +1,7 @@
-import { requireUser } from "@/lib/auth/getCurrentUser";
-import ReportsClient from "@/lib/reports/ReportsClient";
+import ReportsPageClient from "@/lib/reports/ReportsPageClient";
+import { reportsPageAccess } from "@/lib/reports/access";
 
 export default async function ReportsPage() {
-  await requireUser();
-  return <ReportsClient />;
+  const { schema } = await reportsPageAccess();
+  return <ReportsPageClient schema={schema} />;
 }

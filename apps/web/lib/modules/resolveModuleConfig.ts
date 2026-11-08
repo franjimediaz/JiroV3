@@ -53,6 +53,7 @@ function parseProps(props: unknown) {
 }
 
 function cleanRoute(route: unknown, slug: string, options?: { isDataModule?: boolean }) {
+  if (slug === "reports") return "/reports";
   const raw = typeof route === "string" && route.trim() ? route.trim() : `/m/${slug}/`;
   const withLeadingSlash = raw.startsWith("/") ? raw : `/${raw}`;
 

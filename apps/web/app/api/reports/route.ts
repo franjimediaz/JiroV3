@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth/getCurrentUser";
+import { requireReportsAccess } from "@/lib/reports/access";
 import { badRequest, notFound } from "@/lib/auth/apiError";
 import { handleApiError } from "@/lib/auth/handleApiError";
 import { executeReport, prepareReport, reportSources } from "@/lib/reports/server";
@@ -20,7 +20,15 @@ async function body(req: Request): Promise<Record<string, unknown>> {
 }
 export async function GET(req: Request) {
   try {
-    const ctx = await requireUser();
+    const { ctx } = await requireReportsAccess();
+    const id = new URL(req.url).searchParams.get("id");
+    if (id !== null) {
+      const { data, error } = await ctx.supabase.from("report_definitions").select("id,config,created_at,updated_at")
+        .eq("id", reportId(id)).eq("owner_id", ctx.user.id).maybeSingle();
+      if (error) throw Error("No se pudo cargar el informe");
+      if (!data) throw notFound("Informe no encontrado");
+      return NextResponse.json({ report: { ...data.config, id: data.id, created_at: data.created_at, updated_at: data.updated_at } });
+    }
     if (new URL(req.url).searchParams.get("metadata") === "1") return NextResponse.json({sources: await reportSources()});
     const {data, error} = await ctx.supabase.from("report_definitions").select("id,config,created_at,updated_at")
       .eq("owner_id", ctx.user.id).order("updated_at", {ascending: false}).limit(200);
@@ -30,8 +38,8 @@ export async function GET(req: Request) {
 }
 export async function POST(req: Request) {
   try {
-    const ctx = await requireUser();
     const input = await body(req);
+    const { ctx } = await requireReportsAccess(input.action === "save" || input.action === "preview" ? input.id ? "actualizar" : "crear" : "ver");
     if (input.action === "preview") return NextResponse.json({result: await executeReport(input.report, true)});
     if (input.action === "run") {
       const {data, error} = await ctx.supabase.from("report_definitions").select("config").eq("id", reportId(input.id)).eq("owner_id", ctx.user.id).maybeSingle();
@@ -53,7 +61,7 @@ export async function POST(req: Request) {
 }
 export async function DELETE(req: Request) {
   try {
-    const ctx = await requireUser();
+    const { ctx } = await requireReportsAccess("eliminar");
     const input = await body(req);
     const {data, error} = await ctx.supabase.from("report_definitions").delete().eq("id", reportId(input.id)).eq("owner_id", ctx.user.id).select("id").maybeSingle();
     if (error) throw Error("No se pudo eliminar el informe");
