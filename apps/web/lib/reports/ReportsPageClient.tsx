@@ -15,10 +15,10 @@ export default function ReportsPageClient({ schema }: { schema: ModuleSchema }) 
   const [deleting, setDeleting] = useState<ReportDefinition | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
-  const canView = hasPermiso("reports", "ver");
-  const canCreate = isModuleActionAvailable(schema, "crear", hasPermiso("reports", "crear"));
-  const canEdit = isModuleActionAvailable(schema, "actualizar", hasPermiso("reports", "actualizar"));
-  const canDelete = isModuleActionAvailable(schema, "eliminar", hasPermiso("reports", "eliminar"));
+  const canView = hasPermiso("report_definitions", "ver");
+  const canCreate = isModuleActionAvailable(schema, "crear", hasPermiso("report_definitions", "crear"));
+  const canEdit = isModuleActionAvailable(schema, "actualizar", hasPermiso("report_definitions", "actualizar"));
+  const canDelete = isModuleActionAvailable(schema, "eliminar", hasPermiso("report_definitions", "eliminar"));
   const primaryKey = schema.db.primaryKey || "id";
   useEffect(() => {
     let active = true;
@@ -39,12 +39,12 @@ export default function ReportsPageClient({ schema }: { schema: ModuleSchema }) 
     finally { setBusy(false); }
   };
   if (loading) return null;
-  return <RequirePerms modulo="reports" accion="ver">
+  return <RequirePerms modulo="report_definitions" accion="ver">
     {error && <div role="alert" className="alert alert-danger">{error}</div>}
     <ListView schema={schema} data={reports.map(report => reportListRow(report, schema, sources))} loading={busy}
-      onCreate={canCreate && !busy ? () => router.push("/reports/new") : undefined}
-      onViewRow={canView && !busy ? row => router.push(`/reports/${encodeURIComponent(row[primaryKey])}`) : undefined}
-      onEditRow={canEdit && !busy ? row => router.push(`/reports/${encodeURIComponent(row[primaryKey])}?edit=true`) : undefined}
+      onCreate={canCreate && !busy ? () => router.push("/report_definitions/new") : undefined}
+      onViewRow={canView && !busy ? row => router.push(`/report_definitions/${encodeURIComponent(row[primaryKey])}`) : undefined}
+      onEditRow={canEdit && !busy ? row => router.push(`/report_definitions/${encodeURIComponent(row[primaryKey])}?edit=true`) : undefined}
       onDeleteRow={canDelete && !busy ? row => setDeleting(reports.find(report => report.id === row[primaryKey]) || null) : undefined} />
     <ModalConfirm open={deleting !== null} title="Eliminar informe" message={`Se eliminará la definición de «${deleting?.name || ""}».`}
       danger confirmText="Eliminar" confirmDisabled={busy || !canDelete} onCancel={() => { if (!busy) setDeleting(null); }} onConfirm={() => void remove()} />

@@ -5,9 +5,9 @@ import { requireModulePermission } from "@/lib/auth/requireModulePermission";
 import { fetchModuleRowBySlug } from "@/lib/modules.server";
 
 export async function requireReportsAccess(action: "ver" | "crear" | "actualizar" | "eliminar" = "ver") {
-  const ctx = await requireModulePermission("reports", "ver");
-  if (action !== "ver") await requireModulePermission("reports", action);
-  const { schema } = await fetchModuleRowBySlug("reports");
+  const ctx = await requireModulePermission("report_definitions", "ver");
+  if (action !== "ver") await requireModulePermission("report_definitions", action);
+  const { schema } = await fetchModuleRowBySlug("report_definitions");
   if (action !== "ver" && !isModuleActionAvailable(schema, action, true)) throw forbidden();
   return { ctx, schema };
 }

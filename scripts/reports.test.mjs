@@ -215,7 +215,7 @@ test("reports API scopes CRUD to the session owner and executes saved definition
       if (action === deniedAction) throw Object.assign(Error("Denied"), {status: 403});
       return {user: {id: owner}, supabase: client};
     }},
-    "@/lib/modules.server": {fetchModuleRowBySlug: async slug => {assert.equal(slug, "reports"); return {schema};}},
+    "@/lib/modules.server": {fetchModuleRowBySlug: async slug => {assert.equal(slug, "report_definitions"); return {schema};}},
     "@/lib/reports/server": {prepareReport: async input => ({report: parseReport(input)}), reportSources: async () => [], executeReport: async (report, preview) => {executions.push({report, preview}); return {ok: true};}},
     "@/lib/auth/handleApiError": {handleApiError: error => Response.json({error: error.message}, {status: error.status || 500})},
   })("apps/web/app/api/reports/route.ts");
@@ -231,7 +231,7 @@ test("reports API scopes CRUD to the session owner and executes saved definition
   assert.deepEqual(executions.at(-1), {report: list(), preview: false});
   assert.equal((await route.DELETE(new Request("http://localhost/api/reports", {method: "DELETE", headers: {"content-type": "application/json"}, body: JSON.stringify({id})}))).status, 200);
   for (const request of requests.filter(request => request.method !== "POST")) assert.equal(request.url.searchParams.get("owner_id"), `eq.${owner}`);
-  for (const action of ["ver", "crear", "actualizar", "eliminar"]) assert.ok(permissions.some(([slug, checked]) => slug === "reports" && checked === action));
+  for (const action of ["ver", "crear", "actualizar", "eliminar"]) assert.ok(permissions.some(([slug, checked]) => slug === "report_definitions" && checked === action));
   for (const action of ["ver", "crear", "actualizar", "eliminar"]) {
     deniedAction = action;
     const before = requests.length;
@@ -258,14 +258,14 @@ test("reports API scopes CRUD to the session owner and executes saved definition
 
 test("configured Reports link appears once in desktop, mini and mobile sidebar", () => {
   const React = require("react"), {renderToStaticMarkup} = require("react-dom/server");
-  const {Sidebar} = loader({"next/navigation": {usePathname: () => "/reports"}})("packages/ui/src/Sidebar.tsx");
-  const items = [{id: "reports", slug: "reports", nombre: "Informes", route: "/reports", tipo: "vista", icon: "bi-table"}];
+  const {Sidebar} = loader({"next/navigation": {usePathname: () => "/report_definitions"}})("packages/ui/src/Sidebar.tsx");
+  const items = [{id: "report_definitions", slug: "report_definitions", nombre: "Informes", route: "/report_definitions", tipo: "vista", icon: "bi-table"}];
   for (const props of [{variant: "fixed"}, {variant: "fixed", miniMode: true}, {variant: "drawer", isOpen: true}]) {
     const html = renderToStaticMarkup(React.createElement(Sidebar, {items, ...props}));
-    assert.equal((html.match(/href="\/reports"/g) || []).length, 1);
+    assert.equal((html.match(/href="\/report_definitions"/g) || []).length, 1);
     assert.doesNotMatch(html, /href="\/informes"/);
     const denied = renderToStaticMarkup(React.createElement(Sidebar, {items, ...props, canView: () => false}));
-    assert.doesNotMatch(denied, /href="\/reports"/);
+    assert.doesNotMatch(denied, /href="\/report_definitions"/);
   }
 });
 
@@ -282,23 +282,26 @@ test("Reports routes share the configured schema and guard create and edit", asy
   const schema = {db: {table: "report_definitions"}, fields: []};
   const actions = [];
   const routeLoad = loader({
-    "@/lib/reports/access": {reportsPageAccess: async (action = "ver") => {actions.push(action); return {schema};}},
+    "@/lib/auth/requireModulePermission": {requireModulePermission: async (slug, action) => {assert.equal(slug, "report_definitions"); actions.push(action); return {};}},
+    "@/lib/modules.server": {fetchModuleRowBySlug: async slug => {assert.equal(slug, "report_definitions"); return {schema};}},
     "@/lib/reports/ReportsPageClient": {default: () => null},
     "@/lib/reports/ReportFormClient": {default: () => null},
   });
-  const index = await routeLoad("apps/web/app/(main)/reports/page.tsx").default();
+  const index = await routeLoad("apps/web/app/(main)/report_definitions/page.tsx").default();
   assert.equal(index.props.schema, schema);
-  const create = await routeLoad("apps/web/app/(main)/reports/new/page.tsx").default();
+  const create = await routeLoad("apps/web/app/(main)/report_definitions/new/page.tsx").default();
   assert.equal(create.props.mode, "create");
   for (const edit of [undefined, "true"]) {
-    const page = await routeLoad("apps/web/app/(main)/reports/[id]/page.tsx").default({params: Promise.resolve({id: "00000000-0000-4000-8000-000000000002"}), searchParams: Promise.resolve({edit})});
+    const page = await routeLoad("apps/web/app/(main)/report_definitions/[id]/page.tsx").default({params: Promise.resolve({id: "00000000-0000-4000-8000-000000000002"}), searchParams: Promise.resolve({edit})});
     assert.equal(page.props.mode, edit ? "edit" : "view");
     assert.equal(page.props.schema, schema);
   }
-  assert.deepEqual(actions, ["ver", "crear", "ver", "actualizar"]);
+  assert.deepEqual(actions, ["ver", "ver", "crear", "ver", "ver", "actualizar"]);
 });
 
 test("Reports retains its independent route even with a data table configured", () => {
   const {resolveModuleConfigFromRow} = loader({"@/lib/supabase/server": {}})("apps/web/lib/modules/resolveModuleConfig.ts");
-  assert.equal(resolveModuleConfigFromRow({slug: "reports", route: "/reports", props: {db: {table: "report_definitions"}, fields: []}}).route, "/reports");
+  assert.equal(resolveModuleConfigFromRow({slug: "report_definitions", route: "/report_definitions", props: {db: {table: "report_definitions"}, fields: []}}).route, "/report_definitions/");
+  assert.equal(resolveModuleConfigFromRow({slug: "report_definitions", route: "/custom-reports", props: {db: {table: "report_definitions"}, fields: []}}).route, "/custom-reports/");
+  assert.equal(resolveModuleConfigFromRow({slug: "orders", route: "/orders", props: {db: {table: "orders"}, fields: []}}).route, "/m/orders/");
 });

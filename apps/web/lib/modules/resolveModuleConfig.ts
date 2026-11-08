@@ -53,11 +53,10 @@ function parseProps(props: unknown) {
 }
 
 function cleanRoute(route: unknown, slug: string, options?: { isDataModule?: boolean }) {
-  if (slug === "reports") return "/reports";
   const raw = typeof route === "string" && route.trim() ? route.trim() : `/m/${slug}/`;
   const withLeadingSlash = raw.startsWith("/") ? raw : `/${raw}`;
 
-  if (options?.isDataModule && !withLeadingSlash.startsWith("/m/") && !withLeadingSlash.startsWith("/system/")) {
+  if (options?.isDataModule && slug !== "report_definitions" && !withLeadingSlash.startsWith("/m/") && !withLeadingSlash.startsWith("/system/")) {
     return `/m/${slug}/`;
   }
 

@@ -20,8 +20,8 @@ export default function ReportFormClient({ mode, id, schema }: { mode: "create" 
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   const revision = useRef(0);
-  const canEdit = isModuleActionAvailable(schema, "actualizar", hasPermiso("reports", "actualizar"));
-  const canWrite = mode === "create" ? isModuleActionAvailable(schema, "crear", hasPermiso("reports", "crear")) : canEdit;
+  const canEdit = isModuleActionAvailable(schema, "actualizar", hasPermiso("report_definitions", "actualizar"));
+  const canWrite = mode === "create" ? isModuleActionAvailable(schema, "crear", hasPermiso("report_definitions", "crear")) : canEdit;
   useEffect(() => {
     let active = true;
     void Promise.all([mode === "view" ? Promise.resolve({ sources: [] }) : reportRequest("/api/reports?metadata=1"),
@@ -47,15 +47,15 @@ export default function ReportFormClient({ mode, id, schema }: { mode: "create" 
     setBusy(true); setError("");
     try {
       const response = await reportRequest("/api/reports", "POST", { action: "save", report, id });
-      if (current === revision.current) router.replace(`/reports/${encodeURIComponent(response.report.id)}`);
+      if (current === revision.current) router.replace(`/report_definitions/${encodeURIComponent(response.report.id)}`);
     } catch (error) { if (current === revision.current) setError(error instanceof Error ? error.message : "Error guardando informe"); }
     finally { if (current === revision.current) setBusy(false); }
   };
   if (loading) return null;
-  return <RequirePerms modulo="reports" accion="ver"><div className="Orymexa-advanced-search bg-white text-dark p-3" style={getModuleColorVariables(schema.ui?.color) as CSSProperties}>
+  return <RequirePerms modulo="report_definitions" accion="ver"><div className="Orymexa-advanced-search bg-white text-dark p-3" style={getModuleColorVariables(schema.ui?.color) as CSSProperties}>
     <header className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
       <h1 className="h4 mb-0">{mode === "create" ? "Nuevo informe" : mode === "edit" ? "Editar informe" : report?.name || "Informe"}</h1>
-      <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={() => router.push(mode === "edit" ? `/reports/${encodeURIComponent(id!)}` : "/reports")}>{mode === "view" ? "Volver a informes" : "Cancelar"}</button>
+      <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={() => router.push(mode === "edit" ? `/report_definitions/${encodeURIComponent(id!)}` : "/report_definitions")}>{mode === "view" ? "Volver a informes" : "Cancelar"}</button>
     </header>
     {error && <div role="alert" className="alert alert-danger">{error}</div>}
     {busy && <p role="status">Cargando…</p>}
@@ -69,7 +69,7 @@ export default function ReportFormClient({ mode, id, schema }: { mode: "create" 
     {mode !== "view" && !canWrite && <p role="alert">No tienes permiso para modificar informes.</p>}
     {report && mode === "view" && <><p>{report.description}</p><div className="d-flex gap-2 mb-3">
       <button type="button" className="btn Orymexa-form-primary" disabled={busy} onClick={() => void run()}>Ejecutar</button>
-      {canEdit && <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={() => router.push(`/reports/${encodeURIComponent(id!)}?edit=true`)}>Editar informe</button>}
+      {canEdit && <button type="button" className="btn btn-outline-secondary" disabled={busy} onClick={() => router.push(`/report_definitions/${encodeURIComponent(id!)}?edit=true`)}>Editar informe</button>}
     </div></>}
     {result && <section aria-label="Resultado del informe"><h2 className="h5">{mode === "view" ? "Resultado" : "Vista previa"}</h2><ReportResultView result={result} color={schema.ui?.color} name={report?.name || "Informe"} /></section>}
   </div></RequirePerms>;
