@@ -15,7 +15,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Orymexa Web",
+  title: "Orymexa",
   icons: {
     icon: "./icon.png",
   },
