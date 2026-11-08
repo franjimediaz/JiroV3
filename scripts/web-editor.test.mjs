@@ -59,6 +59,7 @@ for (const [name, context, expected] of [
   test(`server authorization rejects ${name} before loading editor resources`, async () => {
     let reads = 0;
     const load = createSourceLoader({
+      "@/actions/webPages": { getWebPageDraft: async () => null },
       "@/lib/auth/getCurrentUser": { getCurrentUser: async () => context },
       "next/navigation": { redirect: (url) => { throw new Error(`redirect:${url}`); } },
       "node:fs/promises": { readFile: async () => { reads++; return ""; } },
@@ -70,6 +71,7 @@ for (const [name, context, expected] of [
 }
 test("systemadmin receives editor with isolated shared preview styles", async () => {
   const load = createSourceLoader({
+      "@/actions/webPages": { getWebPageDraft: async () => null },
     "@/lib/auth/getCurrentUser": { getCurrentUser: async () => ({ role: { slug: "systemadmin" } }) },
     "next/navigation": { redirect: () => { throw new Error("Unexpected redirect"); } },
     "node:fs/promises": { readFile: async () => '.jws-test { color: green; }' },

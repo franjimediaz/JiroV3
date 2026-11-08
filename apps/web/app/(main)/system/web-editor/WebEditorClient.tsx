@@ -1,18 +1,19 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, useRef, useEffect, type ReactNode } from "react";
 import { Puck, useGetPuck, type Overrides } from "@puckeditor/core";
-import { webPuckConfig } from "@repo/web-puck";
+import { saveWebPageDraft } from "@/actions/webPages";
+import { webPuckConfig, type WebPuckData } from "@repo/web-puck";
 import { createEditorExample, editorErrorMessage, serializeEditorPage } from "./fixture";
 import "@puckeditor/core/no-external.css";
 import styles from "./web-editor.module.css";
 
 type Notice = { kind: "success" | "error"; text: string };
-type ActionProps = { reset: () => void; notify: (notice: Notice) => void };
+type ActionProps = { reset: () => void; notify: (notice: Notice) => void; save: () => Promise<void>; busy: boolean; dirty: boolean };
 
-function EditorActions({ reset, notify }: ActionProps) {
+function EditorActions({ reset, notify, save, busy, dirty }: ActionProps) {
   const getPuck = useGetPuck();
-  const [saved, setSaved] = useState(() => JSON.stringify(createEditorExample()));
+
 
   function validate() {
     try {
@@ -35,7 +36,7 @@ function EditorActions({ reset, notify }: ActionProps) {
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setSaved(JSON.stringify(data));
+
       notify({ kind: "success", text: "page.json exportado. No se ha publicado ni guardado en el servidor." });
     } catch (error) {
       notify({ kind: "error", text: editorErrorMessage(error) });
@@ -43,42 +44,75 @@ function EditorActions({ reset, notify }: ActionProps) {
   }
 
   function restore() {
-    const changed = JSON.stringify(getPuck().appState.data) !== saved;
-    if (changed && !window.confirm("Hay cambios sin exportar. ¿Quieres descartarlos y restablecer el ejemplo?")) return;
+    const changed = dirty;
+    if (changed && !window.confirm("Hay cambios sin guardar. ¿Quieres descartarlos y restablecer el ejemplo?")) return;
     reset();
   }
 
   return <div className={styles.actions}>
+    <button type="button" disabled={busy} onClick={save}>{busy ? "Guardando..." : "Guardar borrador"}</button>
     <button type="button" onClick={validate}>Validar JSON</button>
     <button type="button" onClick={download}>Exportar JSON</button>
-    <button type="button" onClick={restore}>Restablecer ejemplo</button>
+    <button type="button" disabled={busy} onClick={restore}>Restablecer ejemplo</button>
   </div>;
 }
 
-export default function WebEditorClient({ previewCss }: { previewCss: string }) {
-  const [example, setExample] = useState(createEditorExample);
+export default function WebEditorClient({ previewCss, initialData, initialRevision, description }: { previewCss: string; initialData: WebPuckData; initialRevision: number | null; description: string | null }) {
+  const [example, setExample] = useState(() => structuredClone(initialData));
+  const current = useRef(initialData);
+  const saved = useRef(JSON.stringify(initialData));
+  const databaseRevision = useRef(initialRevision);
+  const inFlight = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [status, setStatus] = useState("Sin cambios");
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  const save = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true; setBusy(true); setStatus("Guardando");
+    try {
+      const snapshot = serializeEditorPage(current.current);
+      const puckData: WebPuckData = JSON.parse(snapshot);
+      const result = await saveWebPageDraft({ title: puckData.root.props?.title ?? "Página", description, puckData, revision: databaseRevision.current });
+      if (!result.ok) throw new Error(result.message);
+      databaseRevision.current = result.revision;
+      saved.current = JSON.stringify(puckData);
+      const changed = JSON.stringify(current.current) !== saved.current;
+      setDirty(changed); setStatus(changed ? "Cambios sin guardar" : "Guardado");
+      setNotice({ kind: "success", text: result.message });
+    } catch (error) { setStatus("Error"); setNotice({ kind: "error", text: editorErrorMessage(error) }); }
+    finally { inFlight.current = false; setBusy(false); }
+  }, [description]);
   const [revision, setRevision] = useState(0);
   const [notice, setNotice] = useState<Notice | null>(null);
   const overrides = useMemo<Partial<Overrides<typeof webPuckConfig>>>(() => ({
     iframe: ({ children }: { children: ReactNode }) => <><style>{previewCss}</style>{children}</>,
-    headerActions: () => <EditorActions notify={setNotice} reset={() => {
+    headerActions: () => <EditorActions notify={setNotice} save={save} busy={busy} dirty={dirty} reset={() => {
+      current.current = createEditorExample();
+      saved.current = ""; setDirty(true); setStatus("Cambios sin guardar");
       setExample(createEditorExample());
       setRevision(value => value + 1);
       setNotice({ kind: "success", text: "Ejemplo restablecido." });
     }} />,
-  }), [previewCss]);
+  }), [previewCss, busy, dirty, save]);
 
   return <section className={styles.editor} aria-label="Editor de páginas web">
     <div className={styles.intro}>
       <h1>Editor web</h1>
-      <p>Herramienta provisional. Los cambios solo permanecen en esta sesión; exporta JSON para conservarlos.</p>
+      <p>Guarda el borrador para conservar los cambios en Jiro. Exportar JSON no guarda el borrador.</p>
     </div>
     {notice && <p className={notice.kind === "error" ? styles.error : styles.success}
       role={notice.kind === "error" ? "alert" : "status"}>{notice.text}</p>}
+    <p role="status">{status}</p>
     <Puck
       key={revision}
       config={webPuckConfig}
       data={example}
+      onChange={data => { current.current = data; const changed = JSON.stringify(data) !== saved.current; setDirty(changed); if (!inFlight.current) setStatus(changed ? "Cambios sin guardar" : "Sin cambios"); }}
       overrides={overrides}
       iframe={{ enabled: true, syncHostStyles: false }}
       viewports={[

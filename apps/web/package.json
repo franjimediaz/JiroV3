@@ -27,7 +27,8 @@
     "react-dom": "^19.2.3",
     "@puckeditor/core": "0.24.0",
     "@repo/web-puck": "workspace:*",
-    "@repo/web-components": "workspace:*"
+    "@repo/web-components": "workspace:*",
+    "@repo/web-schema": "workspace:*"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",

@@ -1,3 +1,5 @@
+import { getWebPageDraft } from "@/actions/webPages";
+import { createEditorExample } from "./fixture";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { redirect } from "next/navigation";
@@ -11,6 +13,10 @@ export default async function WebEditorPage() {
   if (!context) redirect("/login");
   if (context.role?.slug !== "systemadmin") redirect("/403");
 
+  const draft = await getWebPageDraft();
+  const initialData = draft?.puckData ?? createEditorExample();
+  if (draft) initialData.root.props = { ...initialData.root.props, title: draft.title };
+
   // Load the actual shared styles, without copying Bootstrap into Puck's iframe.
   const [tokens, components, puck] = await Promise.all([
     readFile(path.join(process.cwd(), "node_modules/@repo/web-components/src/styles/tokens.css"), "utf8"),
@@ -21,5 +27,5 @@ export default async function WebEditorPage() {
     puck, tokens, components.replace('@import "./tokens.css";', ""),
     "html, body { margin: 0; background: #fff; } *, *::before, *::after { box-sizing: border-box; }",
   ].join("\n");
-  return <WebEditorLoader previewCss={previewCss} />;
+  return <WebEditorLoader previewCss={previewCss} initialData={initialData} initialRevision={draft?.revision ?? null} description={draft?.description ?? null} />;
 }
