@@ -2,11 +2,14 @@
 
 import { useCallback, useMemo, useState, useRef, useEffect, type ReactNode } from "react";
 import { Puck, useGetPuck, type Overrides } from "@puckeditor/core";
-import { saveWebPageDraft } from "@/actions/webPages";
+import Link from "next/link";
+import { saveWebPageDraft, saveWebPageDraftById } from "@/actions/webPages";
 import { webPuckConfig, type WebPuckData } from "@repo/web-puck";
 import { createEditorExample, editorErrorMessage, serializeEditorPage } from "./fixture";
 import "@puckeditor/core/no-external.css";
 import styles from "./web-editor.module.css";
+
+function normalized(data: unknown) { try { return serializeEditorPage(data); } catch { return null; } }
 
 type Notice = { kind: "success" | "error"; text: string };
 type ActionProps = { reset: () => void; notify: (notice: Notice) => void; save: () => Promise<void>; busy: boolean; dirty: boolean };
@@ -57,12 +60,15 @@ function EditorActions({ reset, notify, save, busy, dirty }: ActionProps) {
   </div>;
 }
 
-export default function WebEditorClient({ previewCss, initialData, initialRevision, description }: { previewCss: string; initialData: WebPuckData; initialRevision: number | null; description: string | null }) {
+export default function WebEditorClient({ previewCss, initialData, initialRevision, description, pageId, publicPath = "/" }: { pageId?: string; publicPath?: string; previewCss: string; initialData: WebPuckData; initialRevision: number | null; description: string | null }) {
   const [example, setExample] = useState(() => structuredClone(initialData));
   const current = useRef(initialData);
-  const saved = useRef(JSON.stringify(initialData));
+  const saved = useRef(serializeEditorPage(initialData));
+  const previousSnapshot = useRef<string | null>(saved.current);
+  const identity = useRef(pageId);
   const databaseRevision = useRef(initialRevision);
   const inFlight = useRef(false);
+  const [pageTitle, setPageTitle] = useState(initialData.root.props?.title ?? "Editor web");
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState("Sin cambios");
@@ -77,11 +83,13 @@ export default function WebEditorClient({ previewCss, initialData, initialRevisi
     try {
       const snapshot = serializeEditorPage(current.current);
       const puckData: WebPuckData = JSON.parse(snapshot);
-      const result = await saveWebPageDraft({ title: puckData.root.props?.title ?? "Página", description, puckData, revision: databaseRevision.current });
-      if (!result.ok) throw new Error(result.message);
+      const byId = identity.current ? await saveWebPageDraftById({ id: identity.current, revision: databaseRevision.current, puckData }) : null;
+      const result = byId ? (byId.ok ? {ok:true,code:"OK",message:"Borrador guardado.",revision:byId.data.revision,id:byId.data.id} : {...byId,revision:null,id:null}) : await saveWebPageDraft({ title: puckData.root.props?.title ?? "Página", description, puckData, revision: databaseRevision.current });
+      if (!result.ok) { setStatus(result.code === "CONFLICT" ? "Conflicto" : "Error"); setNotice({kind:"error",text:result.message}); return; }
+      identity.current = result.id ?? identity.current;
       databaseRevision.current = result.revision;
-      saved.current = JSON.stringify(puckData);
-      const changed = JSON.stringify(current.current) !== saved.current;
+      saved.current = serializeEditorPage(puckData);
+      const changed = normalized(current.current) !== saved.current;
       setDirty(changed); setStatus(changed ? "Cambios sin guardar" : "Guardado");
       setNotice({ kind: "success", text: result.message });
     } catch (error) { setStatus("Error"); setNotice({ kind: "error", text: editorErrorMessage(error) }); }
@@ -93,6 +101,7 @@ export default function WebEditorClient({ previewCss, initialData, initialRevisi
     iframe: ({ children }: { children: ReactNode }) => <><style>{previewCss}</style>{children}</>,
     headerActions: () => <EditorActions notify={setNotice} save={save} busy={busy} dirty={dirty} reset={() => {
       current.current = createEditorExample();
+      setPageTitle(current.current.root.props?.title ?? "Editor web");
       saved.current = ""; setDirty(true); setStatus("Cambios sin guardar");
       setExample(createEditorExample());
       setRevision(value => value + 1);
@@ -102,7 +111,8 @@ export default function WebEditorClient({ previewCss, initialData, initialRevisi
 
   return <section className={styles.editor} aria-label="Editor de páginas web">
     <div className={styles.intro}>
-      <h1>Editor web</h1>
+      <h1>{pageTitle}</h1>
+      <p>Ruta pública: {publicPath} · <Link href="/system/web-pages">Volver al listado</Link></p>
       <p>Guarda el borrador para conservar los cambios en Jiro. Exportar JSON no guarda el borrador.</p>
     </div>
     {notice && <p className={notice.kind === "error" ? styles.error : styles.success}
@@ -112,7 +122,16 @@ export default function WebEditorClient({ previewCss, initialData, initialRevisi
       key={revision}
       config={webPuckConfig}
       data={example}
-      onChange={data => { current.current = data; const changed = JSON.stringify(data) !== saved.current; setDirty(changed); if (!inFlight.current) setStatus(changed ? "Cambios sin guardar" : "Sin cambios"); }}
+      onChange={data => {
+        const previous = previousSnapshot.current;
+        const next = normalized(data);
+        previousSnapshot.current = next;
+        current.current = data;
+        setPageTitle(data.root.props?.title ?? "Editor web");
+        const changed = next !== saved.current;
+        setDirty(changed);
+        if (!inFlight.current && previous !== next) setStatus(changed ? "Cambios sin guardar" : "Sin cambios");
+      }}
       overrides={overrides}
       iframe={{ enabled: true, syncHostStyles: false }}
       viewports={[
@@ -120,7 +139,7 @@ export default function WebEditorClient({ previewCss, initialData, initialRevisi
         { width: 390, height: 844, label: "Móvil" },
       ]}
       headerTitle="Web Static"
-      headerPath="/system/web-editor"
+      headerPath={publicPath}
       height="calc(100dvh - 12rem)"
     />
   </section>;

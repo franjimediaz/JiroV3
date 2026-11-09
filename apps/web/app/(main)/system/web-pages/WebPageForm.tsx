@@ -1,0 +1,11 @@
+"use client";
+import { useState, type FormEvent } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createWebPage, updateWebPageMetadata } from "@/actions/webPages";
+type Page={id:string;title:string;path:string;description:string|null;revision:number;updated_at:string};
+export default function WebPageForm({page}:{page?:Page}) {
+ const router=useRouter(); const [current,setCurrent]=useState(page); const [title,setTitle]=useState(page?.title??"");const [path,setPath]=useState(page?.path??"/");const [description,setDescription]=useState(page?.description??"");const [busy,setBusy]=useState(false);const [message,setMessage]=useState("");
+ async function submit(event:FormEvent){ event.preventDefault(); if(busy)return;setBusy(true);try{const values={title,path,description};const result=current?await updateWebPageMetadata({...values,id:current.id,revision:current.revision}):await createWebPage(values);if(!result.ok){setMessage(result.code+": "+result.message);return;}if(!current){router.push("/system/web-editor/"+result.data.id);return;}setCurrent(result.data);setPath(result.data.path);setMessage("Configuración guardada.");}catch{setMessage("No se pudo guardar. Inténtalo de nuevo.");}finally{setBusy(false);}}
+ return <section className="p-3"><h1>{current?"Configuración de página":"Nueva página"}</h1>{current&&<dl><dt>ID</dt><dd>{current.id}</dd><dt>Revisión</dt><dd>{current.revision}</dd><dt>Última modificación</dt><dd>{current.updated_at}</dd></dl>}<form onSubmit={submit}><label className="d-block">Título<input required className="form-control mb-3" value={title} onChange={e=>setTitle(e.target.value)}/></label><label className="d-block">Ruta<input required className="form-control mb-3" value={path} onChange={e=>setPath(e.target.value)}/></label><label className="d-block">Descripción SEO<textarea className="form-control mb-3" value={description} onChange={e=>setDescription(e.target.value)}/></label><button className="btn btn-primary" disabled={busy}>{busy?"Guardando...":current?"Guardar configuración":"Crear página"}</button>{" "}<Link href="/system/web-pages">Cancelar</Link></form><p role="status">{message}</p></section>;
+}

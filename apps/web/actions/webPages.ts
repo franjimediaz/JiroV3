@@ -1,11 +1,12 @@
 "use server";
+import { revalidatePath } from "next/cache";
 import { randomUUID } from "node:crypto";
 import { getCurrentUser } from "@/lib/auth/getCurrentUser";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
 import { validateWebPuckData } from "@repo/web-puck";
-import { validateWebPage } from "@repo/web-schema";
-import { serializeEditorPage } from "@/app/(main)/system/web-editor/fixture";
+import { normalizeWebPath, validateWebPage } from "@repo/web-schema";
+import { createEditorExample, serializeEditorPage } from "@/app/(main)/system/web-editor/fixture";
 
 async function authorize(action: string) {
   const context = await getCurrentUser();
@@ -33,6 +34,7 @@ export async function saveWebPageDraft(input: unknown) {
   let actorUserId: string | undefined;
   const finish = async (ok: boolean, code: string, message: string, revision: number | null = null, id: string | null = null) => {
     await writeAuditEvent({ action: "webPages.save", requestId: randomUUID(), actorUserId, success: ok, resourceId: id, metadata: { code, revision } });
+    if (ok) revalidatePath("/system/web-pages");
     return { ok, code, message, revision, id };
   };
   try { actorUserId = (await authorize("webPages.save")).user.id; }
@@ -61,3 +63,114 @@ export async function saveWebPageDraft(input: unknown) {
   } catch { return finish(false, "DATABASE", "No se pudo guardar el borrador. Inténtalo de nuevo."); }
 }
 
+
+type PageSummary = { id: string; path: string; title: string; description: string | null; revision: number; updated_at: string };
+type PageDraft = PageSummary & { puckData: ReturnType<typeof validateWebPuckData> };
+type Outcome<T> = { ok: true; code: "OK"; message: string; data: T } | { ok: false; code: string; message: string; data: null };
+class PageError extends Error { constructor(public code: string, message: string) { super(message); } }
+async function operation<T>(action: string, work: (actor: string) => Promise<T>): Promise<Outcome<T>> {
+  let actorUserId: string | undefined;
+  try {
+    actorUserId = (await authorize(action)).user.id;
+    const data = await work(actorUserId);
+    if (["webPages.create", "webPages.metadata", "webPages.saveById"].includes(action)) {
+      revalidatePath("/system/web-pages");
+      if (data && typeof data === "object" && "id" in data && typeof data.id === "string") {
+        revalidatePath("/system/web-pages/" + data.id);
+        revalidatePath("/system/web-editor/" + data.id);
+      }
+      revalidatePath("/system/web-editor");
+    }
+    await writeAuditEvent({ action, actorUserId, requestId: randomUUID(), success: true });
+    return { ok: true, code: "OK", message: "Operación completada.", data };
+  } catch (error) {
+    const code = error instanceof PageError ? error.code : error instanceof Error && error.message === "FORBIDDEN" ? "FORBIDDEN" : "DATABASE";
+    await writeAuditEvent({ action, actorUserId, requestId: randomUUID(), success: false, metadata: { code } });
+    return { ok: false, code, message: error instanceof PageError ? error.message : code === "FORBIDDEN" ? "Acceso denegado." : "No se pudo completar la operación.", data: null };
+  }
+}
+function fields(input: unknown, allowed: string[]) {
+  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !allowed.includes(k))) throw new PageError("VALIDATION", "Argumentos inválidos.");
+  return input as Record<string, unknown>;
+}
+function uuid(id: unknown): string {
+  if (typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new PageError("VALIDATION", "ID de página inválido.");
+  return id;
+}
+function expectedRevision(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value >= 2147483647) throw new PageError("VALIDATION", "Revisión inválida.");
+  return value;
+}
+function metadata(input: Record<string, unknown>, puckData: unknown) {
+  try {
+    if (typeof input.path !== "string" || typeof input.title !== "string" || (input.description != null && typeof input.description !== "string")) throw new Error();
+    const path = normalizeWebPath(input.path);
+    const description = input.description as string | null ?? null;
+    const page = validateWebPage({ id: "page", path, title: input.title, ...(description === null ? {} : {description}), puckData, schemaVersion: 1 });
+    return { path: page.path, title: page.title, description };
+  } catch { throw new PageError("VALIDATION", "Título, descripción o ruta inválidos o reservados."); }
+}
+function draft(value: unknown) {
+  try { return validateWebPuckData(JSON.parse(serializeEditorPage(value))); }
+  catch { throw new PageError("VALIDATION", "Datos Puck inválidos."); }
+}
+function databaseError(error: {code?: string} | null) {
+  if (error?.code === "23505") throw new PageError("DUPLICATE", "Ya existe una página con esa ruta.");
+  if (error) throw new PageError("DATABASE", "Error al acceder a las páginas.");
+}
+const summaryColumns = "id,path,title,description,revision,updated_at";
+export async function listWebPages() {
+  return operation("webPages.list", async () => {
+    const { data, error } = await supabaseAdmin.from("web_pages").select(summaryColumns).order("path");
+    databaseError(error);
+    return (data as PageSummary[]).sort((a,b) => a.path === "/" ? -1 : b.path === "/" ? 1 : a.path.localeCompare(b.path));
+  });
+}
+export async function createWebPage(input: unknown) {
+  return operation("webPages.create", async actor => {
+    const f = fields(input, ["path", "title", "description"]);
+    const puckData = createEditorExample();
+    const meta = metadata(f, puckData);
+    puckData.root.props = { ...puckData.root.props, title: meta.title };
+    const {data,error} = await supabaseAdmin.from("web_pages").insert({ ...meta, draft_data: draft(puckData), revision: 1, updated_by: actor }).select(summaryColumns).single();
+    databaseError(error); return data as PageSummary;
+  });
+}
+async function readPage(id: string): Promise<PageDraft | null> {
+  const {data,error} = await supabaseAdmin.from("web_pages").select("id,path,title,description,revision,updated_at,draft_data").eq("id",id).maybeSingle();
+  databaseError(error);
+  if (!data) return null;
+  return { id:data.id, path:data.path, title:data.title, description:data.description, revision:data.revision, updated_at:data.updated_at, puckData:draft(data.draft_data) };
+}
+export async function getWebPageById(id: unknown) {
+  return operation("webPages.get", async () => {
+    const page = await readPage(uuid(id));
+    if (!page) throw new PageError("NOT_FOUND", "Página no encontrada.");
+    return page;
+  });
+}
+export async function updateWebPageMetadata(input: unknown) {
+  return operation("webPages.metadata", async actor => {
+    const f=fields(input,["id","path","title","description","revision"]), id=uuid(f.id), revision=expectedRevision(f.revision);
+    const page=await readPage(id);
+    if (!page) throw new PageError("NOT_FOUND","Página no encontrada.");
+    if (page.revision !== revision) throw new PageError("CONFLICT","La página ha cambiado. Recarga antes de guardar.");
+    const meta=metadata(f,page.puckData);
+    page.puckData.root.props={...page.puckData.root.props,title:meta.title};
+    const {data,error}=await supabaseAdmin.from("web_pages").update({...meta,draft_data:draft(page.puckData),revision:revision+1,updated_by:actor,updated_at:new Date().toISOString()}).eq("id",id).eq("revision",revision).select(summaryColumns).maybeSingle();
+    databaseError(error);
+    if(!data) throw new PageError("CONFLICT","La página ha cambiado. Recarga antes de guardar.");
+    return data as PageSummary;
+  });
+}
+export async function saveWebPageDraftById(input: unknown) {
+  return operation("webPages.saveById",async actor=>{
+    const f=fields(input,["id","revision","puckData"]), id=uuid(f.id), revision=expectedRevision(f.revision), puckData=draft(f.puckData);
+    const title=puckData.root.props?.title;
+    metadata({path:"/",title,description:null},puckData);
+    const {data,error}=await supabaseAdmin.from("web_pages").update({draft_data:puckData,title,revision:revision+1,updated_by:actor,updated_at:new Date().toISOString()}).eq("id",id).eq("revision",revision).select(summaryColumns).maybeSingle();
+    databaseError(error);
+    if(!data) throw new PageError("CONFLICT","La página ha cambiado. Exporta tus cambios y recarga antes de guardar.");
+    return data as PageSummary;
+  });
+}

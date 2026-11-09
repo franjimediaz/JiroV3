@@ -12,7 +12,7 @@ function setup({user={user:{id:'actor'},role:{slug:'systemadmin'}},row=null,erro
  if(mode==='update'&&(!row||row.revision!==filters.revision))return {data:null,error:null};
  row={...row,...values,id:'page-id'};return {data:row,error:null};
  }};return q;}};
- const api=createSourceLoader({'@/lib/auth/getCurrentUser':{getCurrentUser:async()=>user},'@/lib/supabase/admin':{supabaseAdmin:db},'@/lib/audit/writeAuditEvent':{writeAuditEvent:async e=>audits.push(e)}})('apps/web/actions/webPages.ts');
+ const api=createSourceLoader({"next/cache":{revalidatePath(){}},'@/lib/auth/getCurrentUser':{getCurrentUser:async()=>user},'@/lib/supabase/admin':{supabaseAdmin:db},'@/lib/audit/writeAuditEvent':{writeAuditEvent:async e=>audits.push(e)}})('apps/web/actions/webPages.ts');
  return {api,writes,audits};
 }
 const input=(revision=null)=>({title:'Página',description:null,puckData:fixture.createEditorExample(),revision});
