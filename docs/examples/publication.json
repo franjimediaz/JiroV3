@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "publicationId": "00000000-0000-4000-8000-000000000003",
+  "publishedAt": "2026-11-09T12:00:00.000Z",
+  "theme": {
+    "colors": {
+      "primary": "#245749",
+      "text": "#182c24"
+    },
+    "typography": {
+      "body": "Arial, Helvetica, sans-serif"
+    },
+    "spacing": {
+      "small": "8px",
+      "medium": "16px"
+    }
+  },
+  "pages": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "path": "/",
+      "title": "Jiro Web Static",
+      "description": "Generador de páginas web estáticas de Jiro V3.",
+      "puckData": {
+        "root": {
+          "props": {
+            "title": "Jiro Web Static"
+          }
+        },
+        "content": [
+          {
+            "type": "Hero",
+            "props": {
+              "id": "home-hero",
+              "title": "Jiro Web Static",
+              "subtitle": "Páginas creadas con Jiro.",
+              "align": "left"
+            }
+          }
+        ]
+      },
+      "schemaVersion": 1
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "path": "/contacto",
+      "title": "Contacto",
+      "puckData": {
+        "root": {
+          "props": {
+            "title": "Contacto"
+          }
+        },
+        "content": [
+          {
+            "type": "Heading",
+            "props": {
+              "id": "contact-heading",
+              "text": "Contacto",
+              "level": 1
+            }
+          },
+          {
+            "type": "TextBlock",
+            "props": {
+              "id": "contact-text",
+              "text": "Ponte en contacto con nuestro equipo."
+            }
+          }
+        ]
+      },
+      "schemaVersion": 1
+    }
+  ]
+}

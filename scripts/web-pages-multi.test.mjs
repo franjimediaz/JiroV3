@@ -103,7 +103,7 @@ test('save non-root by ID preserves path, SEO, and other pages',async()=>{
  const s=setup([row(),row(CONTACT,'/contacto')]);const puckData=fixture.createEditorExample();puckData.root.props.title='Editado';
  const result=await s.api.saveWebPageDraftById({id:CONTACT,revision:1,puckData});
  assert.equal(result.data.revision,2);assert.equal(s.rows[1].title,'Editado');assert.equal(s.rows[1].path,'/contacto');assert.equal(s.rows[1].description,'SEO');assert.deepEqual(s.rows[0],row());
- assert.deepEqual(s.calls[0].filters,{id:CONTACT,revision:1});
+ assert.deepEqual(s.calls.find(call=>call.mode==="update").filters,{id:CONTACT,revision:1});
  assert.equal((await s.api.getWebPageById(CONTACT)).data.puckData.root.props.title,'Editado');
  assert.equal((await s.api.saveWebPageDraftById({id:CONTACT,revision:1,puckData})).code,'CONFLICT');
 });
@@ -127,4 +127,15 @@ test('audit metadata never includes Puck content',async()=>{
 test('optional undefined values produce identical normalized editor snapshots',()=>{
  const data=fixture.createEditorExample();const before=fixture.serializeEditorPage(data);data.content[0].props.image=undefined;data.content[0].readOnly=undefined;
  assert.equal(fixture.serializeEditorPage(data),before);
+});
+
+test('saving validates real stored route and SEO before atomic update',async()=>{
+ for(const override of [{path:"/api/private"},{description:123}]) {
+  const s=setup([{...row(CONTACT,"/contacto"),...override}]);
+  const result=await s.api.saveWebPageDraftById({id:CONTACT,revision:1,puckData:fixture.createEditorExample()});
+  assert.equal(result.code,"VALIDATION");assert.equal(s.calls.some(call=>call.mode==="update"),false);
+ }
+ const s=setup([row(CONTACT,"/contacto")],{race:true});
+ assert.equal((await s.api.saveWebPageDraftById({id:CONTACT,revision:1,puckData:fixture.createEditorExample()})).code,"CONFLICT");
+ assert.equal(s.rows[0].title,"Contacto");
 });

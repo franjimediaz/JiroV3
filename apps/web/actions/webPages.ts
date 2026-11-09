@@ -167,7 +167,10 @@ export async function saveWebPageDraftById(input: unknown) {
   return operation("webPages.saveById",async actor=>{
     const f=fields(input,["id","revision","puckData"]), id=uuid(f.id), revision=expectedRevision(f.revision), puckData=draft(f.puckData);
     const title=puckData.root.props?.title;
-    metadata({path:"/",title,description:null},puckData);
+    const {data: page,error: readError} = await supabaseAdmin.from("web_pages").select("path,description,revision").eq("id",id).maybeSingle();
+    databaseError(readError);
+    if (!page || page.revision !== revision) throw new PageError("CONFLICT","La página ha cambiado. Exporta tus cambios y recarga antes de guardar.");
+    metadata({path:page.path,title,description:page.description},puckData);
     const {data,error}=await supabaseAdmin.from("web_pages").update({draft_data:puckData,title,revision:revision+1,updated_by:actor,updated_at:new Date().toISOString()}).eq("id",id).eq("revision",revision).select(summaryColumns).maybeSingle();
     databaseError(error);
     if(!data) throw new PageError("CONFLICT","La página ha cambiado. Exporta tus cambios y recarga antes de guardar.");
