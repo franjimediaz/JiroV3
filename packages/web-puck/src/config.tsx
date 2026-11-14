@@ -122,7 +122,7 @@ export const webPuckConfig: Config<
     },
 
     render: ({ children }) => (
-      <Container as="main" maxWidth="wide">
+      <Container as="main" maxWidth="full" padding={0}>
         {children}
       </Container>
     ),
