@@ -68,7 +68,7 @@ test('publication UI downloads only successful JSON and reports page count',asyn
  let clicked=0,name="",allow=false,index=0;const states=[];
  const hooks={useState(value){const n=index++;if(!(n in states))states[n]=value;return [states[n],next=>states[n]=next];},useRef(value){const n=index++;if(!(n in states))states[n]={current:value};return states[n];}};
  const json=serializePublicationManifest(build([row()]));
- const component=createSourceLoader({react:hooks,"@/actions/webPublication":{generateWebPublication:async()=>allow?{ok:true,json,pageCount:1,message:"Todavía no se ha publicado en GitHub ni Vercel."}:{ok:false,json:null,message:"Falta raíz"}}})("apps/web/app/(main)/system/web-pages/WebPagesClient.tsx").default;
+ const component=createSourceLoader({"@/actions/webGithub":{checkWebGithubPublication:async()=>{throw new Error("Unexpected GitHub call");}},react:hooks,"@/actions/webPublication":{generateWebPublication:async()=>allow?{ok:true,json,pageCount:1,message:"Todavía no se ha publicado en GitHub ni Vercel."}:{ok:false,json:null,message:"Falta raíz"}}})("apps/web/app/(main)/system/web-pages/WebPagesClient.tsx").default;
  const walk=node=>!node||typeof node!=="object"?[]:[node,...[node.props?.children].flat(Infinity).flatMap(walk)];
  const render=()=>{index=0;return walk(component({result:{ok:true,data:[]}}));};
  globalThis.window={setTimeout(fn){fn();}};
