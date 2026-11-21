@@ -8,7 +8,7 @@ export function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 export function publicationContent(manifest: WebPublicationManifest) {
-  return {schemaVersion:manifest.schemaVersion,theme:manifest.theme,pages:[...manifest.pages].sort((a,b)=>a.path.localeCompare(b.path))};
+  return {schemaVersion:manifest.schemaVersion,theme:manifest.theme,...(manifest.header ? {header:manifest.header} : {}),pages:[...manifest.pages].sort((a,b)=>a.path.localeCompare(b.path))};
 }
 function checked(value:unknown) {
   const manifest=validatePublicationManifest(value);
@@ -27,7 +27,7 @@ export function comparePublications(localValue:unknown,remoteJson:string|null) {
   const addedPaths=[...left.keys()].filter(p=>!right.has(p)).sort();
   const removedPaths=[...right.keys()].filter(p=>!left.has(p)).sort();
   const updatedPaths=[...left.keys()].filter(p=>right.has(p)&&canonical(left.get(p))!==canonical(right.get(p))).sort();
-  const changed=!!(addedPaths.length||removedPaths.length||updatedPaths.length||canonical(local.theme)!==canonical(remote.theme)||local.schemaVersion!==remote.schemaVersion);
+  const changed=!!(addedPaths.length||removedPaths.length||updatedPaths.length||canonical(local.theme)!==canonical(remote.theme)||canonical(local.header??null)!==canonical(remote.header??null)||local.schemaVersion!==remote.schemaVersion);
   return {status:changed?"CHANGES_DETECTED" as const:"NO_CHANGES" as const,changed,localPageCount:local.pages.length,remotePageCount:remote.pages.length,addedPaths,removedPaths,updatedPaths};
 }
 export function imageResourceWarnings(manifest:WebPublicationManifest) {

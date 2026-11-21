@@ -41,7 +41,7 @@ test('theme, date, and size constraints preserved',()=>{
 });
 function setup(rows=[],options={}) {
  const calls=[],audits=[];
- const supabaseAdmin={from(table){assert.equal(table,'web_pages');let cursor;
+ const supabaseAdmin={from(table){if(table==='web_site_settings')return {select(){return this;},eq(key,value){assert.equal(key,'id');assert.equal(value,1);return this;},async maybeSingle(){return {data:options.header?{header:options.header}:null,error:options.settingsError??null};}};assert.equal(table,'web_pages');let cursor;
   const query={select(columns){assert.equal(columns,'id,path,title,description,draft_data');return query;},order(column){assert.equal(column,'id');return query;},limit(n){assert.equal(n,100);return query;},gt(column,value){assert.equal(column,'id');cursor=value;return query;},then(resolve,reject){calls.push(cursor);return Promise.resolve(options.error?{data:null,error:{code:'offline'}}:{data:rows.filter(r=>!cursor||r.id>cursor).slice(0,options.cap??100),error:null}).then(resolve,reject);}};return query;
  }};
  const api=createSourceLoader({'@/lib/auth/getCurrentUser':{getCurrentUser:async()=>options.user===undefined?{user:{id:'admin'},role:{slug:'systemadmin'}}:options.user},'@/lib/supabase/admin':{supabaseAdmin},'@/lib/audit/writeAuditEvent':{writeAuditEvent:async event=>audits.push(event)}})('apps/web/actions/webPublication.ts');
@@ -77,4 +77,10 @@ test('publication UI downloads only successful JSON and reports page count',asyn
   await render().find(n=>n.type==="button").props.onClick();assert.equal(clicked,0);assert.ok(render().some(n=>n.props?.role==="alert"&&n.props.children==="Falta raíz"));
   allow=true;await render().find(n=>n.type==="button").props.onClick();assert.equal(clicked,1);assert.equal(name,"publication.json");assert.ok(render().some(n=>n.props?.role==="status"&&n.props.children.includes("1 páginas incluidas")));
  } finally {globalThis.window=oldWindow;globalThis.document=oldDocument;}
+});
+test('generation includes persisted Header and refuses missing settings table',async()=>{
+ const header={brandText:'Marca',sticky:true};const s=setup([row()],{header});
+ assert.deepEqual(parsePublicationManifest((await s.api.generateWebPublication()).json).header,header);
+ const missing=await setup([row()],{settingsError:{code:'42P01'}}).api.generateWebPublication();
+ assert.equal(missing.ok,false);assert.equal(missing.json,null);assert.match(missing.message,/web_site_settings/);
 });

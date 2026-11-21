@@ -66,7 +66,7 @@ test('local and HTTPS image references generate warnings without fetching assets
 });
 function actionSetup(options={}) {
  const audits=[],queries=[];const data=manifest();
- const supabaseAdmin={from(table){assert.equal(table,'web_pages');let after=false;const query={select(){return query;},order(){return query;},limit(){return query;},gt(){after=true;return query;},then(resolve,reject){queries.push(table);return Promise.resolve({data:after?[]:data.pages.map(p=>({id:p.id,path:p.path,title:p.title,description:p.description??null,draft_data:p.puckData})),error:null}).then(resolve,reject);}};return query;}};
+ const supabaseAdmin={from(table){if(table==='web_site_settings')return {select(){return this;},eq(){return this;},async maybeSingle(){return {data:null,error:null};}};assert.equal(table,'web_pages');let after=false;const query={select(){return query;},order(){return query;},limit(){return query;},gt(){after=true;return query;},then(resolve,reject){queries.push(table);return Promise.resolve({data:after?[]:data.pages.map(p=>({id:p.id,path:p.path,title:p.title,description:p.description??null,draft_data:p.puckData})),error:null}).then(resolve,reject);}};return query;}};
  const load=createSourceLoader({'server-only':{},'@/lib/auth/getCurrentUser':{getCurrentUser:async()=>options.unauthorized?null:{user:{id:'admin'},role:{slug:'systemadmin'}}},'@/lib/supabase/admin':{supabaseAdmin},'@/lib/audit/writeAuditEvent':{writeAuditEvent:async e=>audits.push(e)},'@/lib/web-publication/github/config':{...loader(base+'config.ts'),getGithubConfig:()=>getGithubConfig(options.badConfig?{}:env)}});
  return {run:load('apps/web/actions/webGithub.ts').checkWebGithubPublication,audits,queries};
 }
@@ -77,4 +77,12 @@ test('action uses simulated Supabase/GitHub without exposing secrets or full JSO
  const s=actionSetup(),mock=fakeGithub();const result=await withFetch(mock.fetch,s.run);assert.equal(result.code,'NO_CHANGES');assert.equal(result.branch,'release/static');assert.equal(result.comparison.localPageCount,1);
  const output=JSON.stringify({result,audits:s.audits});for(const secret of ['temporary-secret','PRIVATE KEY','puckData','draft_data'])assert.ok(!output.includes(secret));assert.ok(s.queries.length>0);
  const first=await withFetch(fakeGithub({missing:true}).fetch,actionSetup().run);assert.equal(first.ok,true);assert.equal(first.code,'REMOTE_NOT_FOUND');
+});
+test('Header-only changes trigger publication and change its preparation digest',()=>{
+ const local=manifest(),remote=manifest();local.header={brandText:'Nueva marca',sticky:true};
+ assert.equal(comparePublications(local,JSON.stringify(remote)).status,'CHANGES_DETECTED');
+ const {publicationDigest}=loader(base+'preparation.ts');
+ assert.notEqual(publicationDigest(local),publicationDigest(remote));
+ remote.header={...local.header};assert.equal(comparePublications(local,JSON.stringify(remote)).status,'NO_CHANGES');
+ delete local.header;assert.equal(comparePublications(local,JSON.stringify(remote)).status,'CHANGES_DETECTED');
 });

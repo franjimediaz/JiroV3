@@ -7,6 +7,7 @@ import { saveWebPageDraft, saveWebPageDraftById } from "@/actions/webPages";
 import { webPuckConfig, type WebPuckData } from "@repo/web-puck";
 import { createEditorExample, editorErrorMessage, serializeEditorPage } from "./fixture";
 import "@puckeditor/core/no-external.css";
+import { jiroPuckConfig } from "./jiroPuckConfig";
 import styles from "./web-editor.module.css";
 
 function normalized(data: unknown) { try { return serializeEditorPage(data); } catch { return null; } }
@@ -120,7 +121,7 @@ export default function WebEditorClient({ previewCss, initialData, initialRevisi
     <p role="status">{status}</p>
     <Puck
       key={revision}
-      config={webPuckConfig}
+      config={jiroPuckConfig}
       data={example}
       onChange={data => {
         const previous = previousSnapshot.current;

@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { writeAuditEvent } from "@/lib/audit/writeAuditEvent";
 import { serializePublicationManifest } from "@repo/web-schema";
 import { buildManifest, MAX_PUBLICATION_BYTES, PublicationError, type PublicationPage } from "@/lib/web-publication/buildManifest";
+import { readSiteHeader } from "@/lib/web-publication/siteSettings";
 import { defaultTheme } from "@/lib/web-publication/defaultTheme";
 
 export async function generateWebPublication() {
@@ -34,7 +35,7 @@ export async function generateWebPublication() {
       cursor = next;
     }
     const publicationId = randomUUID();
-    const manifest = buildManifest(pages, defaultTheme, publicationId, new Date().toISOString());
+    const manifest = buildManifest(pages, defaultTheme, publicationId, new Date().toISOString(), await readSiteHeader());
     const json = serializePublicationManifest(manifest);
     await writeAuditEvent({ action: "webPublication.generate", requestId, actorUserId, success: true, metadata: { publicationId, pageCount: manifest.pages.length } });
     return { ok: true, code: "OK", message: "JSON generado. Todavía no se ha publicado en GitHub ni Vercel.", json, publicationId, pageCount: manifest.pages.length };

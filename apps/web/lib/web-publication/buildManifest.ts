@@ -1,4 +1,4 @@
-import { createPublicationManifest, normalizeWebPath, serializePublicationManifest, validatePublicationManifest, validateWebPage, WEB_SCHEMA_VERSION, type WebTheme } from "@repo/web-schema";
+import { createPublicationManifest, normalizeWebPath, serializePublicationManifest, validatePublicationManifest, validateWebPage, WEB_SCHEMA_VERSION, type WebGlobalHeader, type WebTheme } from "@repo/web-schema";
 import { validateWebPuckData } from "@repo/web-puck";
 
 export type PublicationPage = { id: string; path: string; title: string; description: string | null; draft_data: unknown };
@@ -7,7 +7,7 @@ export const MAX_PUBLICATION_BYTES = 1024 * 1024;
 export class PublicationError extends Error {
   constructor(public code: string, message: string) { super(message); }
 }
-export function buildManifest(rows: readonly PublicationPage[], theme: WebTheme, publicationId: string, publishedAt: string) {
+export function buildManifest(rows: readonly PublicationPage[], theme: WebTheme, publicationId: string, publishedAt: string, header?: WebGlobalHeader) {
   const paths = new Map<string, string>();
   const pages = rows.map(row => {
     const label = String(row.path) + " (" + String(row.id) + ")";
@@ -26,7 +26,7 @@ export function buildManifest(rows: readonly PublicationPage[], theme: WebTheme,
   if (!paths.has("/")) throw new PublicationError("VALIDATION", 'Falta la página raíz "/".');
   pages.sort((a,b) => a.path === b.path ? 0 : a.path === "/" ? -1 : b.path === "/" ? 1 : a.path < b.path ? -1 : 1);
   try {
-    const manifest = validatePublicationManifest(createPublicationManifest({ pages, theme, publicationId, publishedAt, schemaVersion: WEB_SCHEMA_VERSION }));
+    const manifest = validatePublicationManifest(createPublicationManifest({ pages, theme, ...(header ? { header } : {}), publicationId, publishedAt, schemaVersion: WEB_SCHEMA_VERSION }));
     if (new TextEncoder().encode(serializePublicationManifest(manifest)).byteLength > MAX_PUBLICATION_BYTES) {
       throw new PublicationError("SIZE_LIMIT", "La publicación supera el límite de 1 MiB de datos.");
     }

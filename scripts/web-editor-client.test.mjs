@@ -22,7 +22,7 @@ function harness(options = {}) {
     async saveWebPageDraftById(input) { calls.push({action:'id',input}); return response ?? {ok:true,data:{id:input.id,revision:input.revision+1},message:'Saved',code:'OK'}; },
     async saveWebPageDraft(input) { calls.push({action:'root',input}); return {ok:true,id:'created-root',revision:1,message:'Saved',code:'OK'}; },
   };
-  const load=createSourceLoader({react:hooks,'@/actions/webPages':api,'@puckeditor/core':{Puck,useGetPuck:()=>()=>({appState:{data:current}})}});
+  const load=createSourceLoader({'@repo/ui':{FieldInput:()=>null},react:hooks,'@/actions/webPages':api,'@puckeditor/core':{Puck,useGetPuck:()=>()=>({appState:{data:current}})}});
   const Editor=load(base+'WebEditorClient.tsx').default;
   const props={previewCss:'',initialData:current,initialRevision:options.root?null:4,description:'SEO',pageId:options.root?undefined:'contact-id',publicPath:options.root?'/':'/contacto'};
   function render() {

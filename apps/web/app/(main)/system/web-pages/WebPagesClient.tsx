@@ -18,6 +18,7 @@ export default function WebPagesClient({result}:{result:Awaited<ReturnType<typeo
   async function confirm(){if(publishLock.current||!preparation?.ok||!preparation.preparationToken)return;publishLock.current=true;setPublishing(true);setPublishResult(null);try{const response=await publishWebPublication({preparationToken:preparation.preparationToken});setPublishResult(response);if(response.ok)setPreparation(null);}catch{setPublishResult({ok:false,code:"INTERNAL",message:"No se pudo publicar la web.",publicationId:null,pageCount:0,commitSha:null,commitUrl:null});}finally{publishLock.current=false;setPublishing(false);}}
   return <section className="p-3">
     <h1>Páginas web</h1>
+    <p><Link href="/system/web-pages/settings">Configurar Header global</Link></p>
     <div className="d-flex flex-wrap gap-2 mb-3">
       <Link className="btn btn-primary" href="/system/web-pages/new">Nueva página</Link>
       <button type="button" className="btn btn-secondary" disabled={busy} onClick={generate}>{generating?"Generando...":"Generar publicación JSON"}</button>
