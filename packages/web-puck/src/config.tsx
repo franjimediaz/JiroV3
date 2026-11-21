@@ -14,11 +14,14 @@ import {
   Header,
 } from "@repo/web-components";
 
-import type { WebPuckProps, WebPuckRootProps } from "./data.js";
+import type {
+  WebPuckProps,
+  WebPuckRootProps,
+} from "./data.js";
 
-// ============================================
+// =====================================================
 // CAMPOS REUTILIZABLES
-// ============================================
+// =====================================================
 
 const align = {
   type: "select",
@@ -29,6 +32,15 @@ const align = {
     { label: "Derecha", value: "right" },
   ],
 } satisfies Field;
+
+function selectOptions(
+  values: readonly string[]
+) {
+  return values.map((value) => ({
+    label: value,
+    value,
+  }));
+}
 
 const imageFields = {
   src: {
@@ -42,16 +54,13 @@ const imageFields = {
   fit: {
     type: "select",
     label: "Ajuste",
-    options: [
+    options: selectOptions([
       "cover",
       "contain",
       "fill",
       "none",
       "scale-down",
-    ].map((value) => ({
-      label: value,
-      value,
-    })),
+    ]),
   },
   width: {
     type: "number",
@@ -77,14 +86,11 @@ const buttonFields = {
   variant: {
     type: "select",
     label: "Variante",
-    options: [
+    options: selectOptions([
       "primary",
       "secondary",
       "outline",
-    ].map((value) => ({
-      label: value,
-      value,
-    })),
+    ]),
   },
   newTab: {
     type: "radio",
@@ -96,40 +102,366 @@ const buttonFields = {
   },
 } as const;
 
-const visualStyleFields = {
-  display: { type: "select", label: "Display", options: ["block", "flex"].map(value => ({ label: value, value })) },
-  flexDirection: { type: "select", label: "Dirección flex", options: ["row", "column"].map(value => ({ label: value, value })) },
-  justifyContent: { type: "select", label: "Distribución", options: ["start", "center", "end", "between"].map(value => ({ label: value, value })) },
-  alignItems: { type: "select", label: "Alineación", options: ["start", "center", "end", "stretch"].map(value => ({ label: value, value })) },
-  flexWrap: { type: "select", label: "Salto de línea", options: ["nowrap", "wrap"].map(value => ({ label: value, value })) },
-  gap: { type: "number", label: "Separación (px)", min: 0, max: 200 },
-  width: { type: "select", label: "Ancho", options: [{ label: "Automático", value: "auto" }, { label: "Completo", value: "full" }] },
-  maxWidth: { type: "number", label: "Ancho máximo (px)", min: 0, max: 2400 },
-  minHeight: { type: "number", label: "Altura mínima (px)", min: 0, max: 2000 },
-  padding: { type: "number", label: "Padding (px)", min: 0, max: 200 },
-  margin: { type: "number", label: "Margen (px)", min: 0, max: 200 },
-  backgroundColor: { type: "text", label: "Color de fondo HEX" }, color: { type: "text", label: "Color de texto HEX" },
-  borderWidth: { type: "number", label: "Grosor de borde (px)", min: 0, max: 20 }, borderColor: { type: "text", label: "Color de borde HEX" },
-  borderRadius: { type: "number", label: "Radio (px)", min: 0, max: 100 },
-  boxShadow: { type: "select", label: "Sombra", options: ["none", "small", "medium", "large"].map(value => ({ label: value, value })) },
-  fontSize: { type: "number", label: "Tamaño de fuente (px)", min: 8, max: 160 },
-  fontWeight: { type: "select", label: "Peso", options: [400, 500, 600, 700].map(value => ({ label: String(value), value })) },
-  lineHeight: { type: "number", label: "Interlineado", min: 0.8, max: 3 }, textAlign: align,
-} as const;
-const visualStyleField = { type: "object", label: "Diseño visual", objectFields: visualStyleFields } as const;
-const headerLinkFields = { label: { type: "text", label: "Texto" }, href: { type: "text", label: "URL" } } as const;
+// =====================================================
+// ESPACIADO POR LADO
+// =====================================================
 
-// ============================================
-// CONFIGURACIÓN GENERAL DE PUCK
-// ============================================
+const paddingSidesFields = {
+  top: {
+    type: "number",
+    label: "Arriba (px)",
+    min: 0,
+    max: 200,
+  },
+  right: {
+    type: "number",
+    label: "Derecha (px)",
+    min: 0,
+    max: 200,
+  },
+  bottom: {
+    type: "number",
+    label: "Abajo (px)",
+    min: 0,
+    max: 200,
+  },
+  left: {
+    type: "number",
+    label: "Izquierda (px)",
+    min: 0,
+    max: 200,
+  },
+} as const;
+
+const marginSidesFields = {
+  top: {
+    type: "number",
+    label: "Arriba (px)",
+    min: -200,
+    max: 200,
+  },
+  right: {
+    type: "number",
+    label: "Derecha (px)",
+    min: -200,
+    max: 200,
+  },
+  bottom: {
+    type: "number",
+    label: "Abajo (px)",
+    min: -200,
+    max: 200,
+  },
+  left: {
+    type: "number",
+    label: "Izquierda (px)",
+    min: -200,
+    max: 200,
+  },
+} as const;
+
+// =====================================================
+// VISUAL STYLE V2
+// =====================================================
+
+const visualStyleFields = {
+  // DISPLAY
+  display: {
+    type: "select",
+    label: "Display",
+    options: selectOptions([
+      "block",
+      "flex",
+      "grid",
+      "none",
+    ]),
+  },
+
+  // FLEXBOX
+  flexDirection: {
+    type: "select",
+    label: "Dirección Flex",
+    options: [
+      { label: "Horizontal", value: "row" },
+      { label: "Vertical", value: "column" },
+    ],
+  },
+
+  justifyContent: {
+    type: "select",
+    label: "Distribución",
+    options: [
+      { label: "Inicio", value: "start" },
+      { label: "Centro", value: "center" },
+      { label: "Final", value: "end" },
+      { label: "Espacio entre", value: "between" },
+    ],
+  },
+
+  alignItems: {
+    type: "select",
+    label: "Alineación",
+    options: [
+      { label: "Inicio", value: "start" },
+      { label: "Centro", value: "center" },
+      { label: "Final", value: "end" },
+      { label: "Estirar", value: "stretch" },
+    ],
+  },
+
+  flexWrap: {
+    type: "select",
+    label: "Salto de línea",
+    options: [
+      { label: "Sin salto", value: "nowrap" },
+      { label: "Permitir salto", value: "wrap" },
+    ],
+  },
+
+  flexGrow: {
+    type: "number",
+    label: "Flex Grow",
+    min: 0,
+    max: 20,
+  },
+
+  flexShrink: {
+    type: "number",
+    label: "Flex Shrink",
+    min: 0,
+    max: 20,
+  },
+
+  flexBasis: {
+    type: "number",
+    label: "Flex Basis (px)",
+    min: 0,
+    max: 4000,
+  },
+
+  order: {
+    type: "number",
+    label: "Orden",
+    min: -100,
+    max: 100,
+  },
+
+  // DIMENSIONES
+  width: {
+    type: "select",
+    label: "Ancho",
+    options: [
+      { label: "Automático", value: "auto" },
+      { label: "Completo", value: "full" },
+    ],
+  },
+
+  height: {
+    type: "number",
+    label: "Alto (px)",
+    min: 0,
+    max: 4000,
+  },
+
+  minWidth: {
+    type: "number",
+    label: "Ancho mínimo (px)",
+    min: 0,
+    max: 4000,
+  },
+
+  maxWidth: {
+    type: "number",
+    label: "Ancho máximo (px)",
+    min: 0,
+    max: 4000,
+  },
+
+  minHeight: {
+    type: "number",
+    label: "Alto mínimo (px)",
+    min: 0,
+    max: 4000,
+  },
+
+  maxHeight: {
+    type: "number",
+    label: "Alto máximo (px)",
+    min: 0,
+    max: 4000,
+  },
+
+  // ESPACIADO
+  gap: {
+    type: "number",
+    label: "Separación (px)",
+    min: 0,
+    max: 200,
+  },
+
+  padding: {
+    type: "number",
+    label: "Padding general (px)",
+    min: 0,
+    max: 200,
+  },
+
+  margin: {
+    type: "number",
+    label: "Margen general (px)",
+    min: 0,
+    max: 200,
+  },
+
+  paddingSides: {
+    type: "object",
+    label: "Padding por lado",
+    objectFields: paddingSidesFields,
+  },
+
+  marginSides: {
+    type: "object",
+    label: "Margen por lado",
+    objectFields: marginSidesFields,
+  },
+
+  // COLORES
+  backgroundColor: {
+    type: "text",
+    label: "Color de fondo HEX",
+  },
+
+  color: {
+    type: "text",
+    label: "Color de texto HEX",
+  },
+
+  // BORDES
+  borderWidth: {
+    type: "number",
+    label: "Grosor del borde (px)",
+    min: 0,
+    max: 20,
+  },
+
+  borderColor: {
+    type: "text",
+    label: "Color del borde HEX",
+  },
+
+  borderRadius: {
+    type: "number",
+    label: "Radio del borde (px)",
+    min: 0,
+    max: 100,
+  },
+
+  // SOMBRAS
+  boxShadow: {
+    type: "select",
+    label: "Sombra",
+    options: [
+      { label: "Sin sombra", value: "none" },
+      { label: "Pequeña", value: "small" },
+      { label: "Mediana", value: "medium" },
+      { label: "Grande", value: "large" },
+    ],
+  },
+
+  // TIPOGRAFÍA
+  fontFamily: {
+    type: "select",
+    label: "Familia tipográfica",
+    options: [
+      { label: "Heredada", value: "inherit" },
+      { label: "Sans Serif", value: "sans" },
+      { label: "Serif", value: "serif" },
+      { label: "Monoespaciada", value: "mono" },
+    ],
+  },
+
+  fontSize: {
+    type: "number",
+    label: "Tamaño de fuente (px)",
+    min: 8,
+    max: 160,
+  },
+
+  fontWeight: {
+    type: "select",
+    label: "Peso de fuente",
+    options: [
+      { label: "Normal (400)", value: 400 },
+      { label: "Medio (500)", value: 500 },
+      { label: "Semibold (600)", value: 600 },
+      { label: "Negrita (700)", value: 700 },
+    ],
+  },
+
+  lineHeight: {
+    type: "number",
+    label: "Interlineado",
+    min: 0.8,
+    max: 3,
+  },
+
+  letterSpacing: {
+    type: "number",
+    label: "Espaciado de letras (px)",
+    min: -10,
+    max: 30,
+  },
+
+  textAlign: align,
+
+  // COMPORTAMIENTO
+  opacity: {
+    type: "number",
+    label: "Opacidad (0 a 1)",
+    min: 0,
+    max: 1,
+    step: 0.05,
+  },
+
+  overflow: {
+    type: "select",
+    label: "Overflow",
+    options: [
+      { label: "Visible", value: "visible" },
+      { label: "Oculto", value: "hidden" },
+      { label: "Automático", value: "auto" },
+    ],
+  },
+} as const;
+
+const visualStyleField = {
+  type: "object",
+  label: "Diseño visual",
+  objectFields: visualStyleFields,
+} as const;
+
+const headerLinkFields = {
+  label: {
+    type: "text",
+    label: "Texto",
+  },
+  href: {
+    type: "text",
+    label: "URL",
+  },
+} as const;
+
+// =====================================================
+// CONFIGURACIÓN PUCK
+// =====================================================
 
 export const webPuckConfig: Config<
   WebPuckProps,
   WebPuckRootProps
 > = {
-  // ==========================================
+  // ===================================================
   // PÁGINA RAÍZ
-  // ==========================================
+  // ===================================================
 
   root: {
     label: "Página",
@@ -146,20 +478,24 @@ export const webPuckConfig: Config<
     },
 
     render: ({ children }) => (
-      <Container as="main" maxWidth="full" padding={0}>
+      <Container
+        as="main"
+        maxWidth="full"
+        padding={0}
+      >
         {children}
       </Container>
     ),
   },
 
-  // ==========================================
-  // COMPONENTES DISPONIBLES
-  // ==========================================
+  // ===================================================
+  // COMPONENTES
+  // ===================================================
 
   components: {
-    // ========================================
-    // CONTENEDOR CON ESTILOS EDITABLES
-    // ========================================
+    // =================================================
+    // CONTAINER
+    // =================================================
 
     Container: {
       label: "Contenedor",
@@ -185,6 +521,7 @@ export const webPuckConfig: Config<
           ],
         },
 
+        // Propiedades legacy
         backgroundColor: {
           type: "text",
           label: "Color de fondo (HEX)",
@@ -247,6 +584,7 @@ export const webPuckConfig: Config<
           type: "slot",
           label: "Contenido",
         },
+
         style: visualStyleField,
       },
 
@@ -293,9 +631,9 @@ export const webPuckConfig: Config<
       ),
     },
 
-    // ========================================
-    // SECCIÓN
-    // ========================================
+    // =================================================
+    // SECTION
+    // =================================================
 
     Section: {
       label: "Sección",
@@ -309,15 +647,12 @@ export const webPuckConfig: Config<
         spacing: {
           type: "select",
           label: "Espaciado",
-          options: [
+          options: selectOptions([
             "none",
             "small",
             "medium",
             "large",
-          ].map((value) => ({
-            label: value,
-            value,
-          })),
+          ]),
         },
 
         labelledBy: {
@@ -329,6 +664,7 @@ export const webPuckConfig: Config<
           type: "slot",
           label: "Contenido",
         },
+
         style: visualStyleField,
       },
 
@@ -356,9 +692,9 @@ export const webPuckConfig: Config<
       ),
     },
 
-    // ========================================
-    // ENCABEZADO
-    // ========================================
+    // =================================================
+    // HEADING
+    // =================================================
 
     Heading: {
       label: "Encabezado",
@@ -381,6 +717,7 @@ export const webPuckConfig: Config<
             })
           ),
         },
+
         style: visualStyleField,
       },
 
@@ -407,9 +744,9 @@ export const webPuckConfig: Config<
       ),
     },
 
-    // ========================================
-    // BLOQUE DE TEXTO
-    // ========================================
+    // =================================================
+    // TEXT BLOCK
+    // =================================================
 
     TextBlock: {
       label: "Texto",
@@ -421,6 +758,7 @@ export const webPuckConfig: Config<
         },
 
         align,
+
         style: visualStyleField,
       },
 
@@ -430,13 +768,17 @@ export const webPuckConfig: Config<
       },
 
       render: ({ text, align, style }) => (
-        <TextBlock text={text} align={align} style={style} />
+        <TextBlock
+          text={text}
+          align={align}
+          style={style}
+        />
       ),
     },
 
-    // ========================================
-    // IMAGEN
-    // ========================================
+    // =================================================
+    // IMAGE BLOCK
+    // =================================================
 
     ImageBlock: {
       label: "Imagen",
@@ -466,14 +808,17 @@ export const webPuckConfig: Config<
       ),
     },
 
-    // ========================================
-    // BOTÓN
-    // ========================================
+    // =================================================
+    // BUTTON LINK
+    // =================================================
 
     ButtonLink: {
       label: "Botón",
 
-      fields: { ...buttonFields, style: visualStyleField },
+      fields: {
+        ...buttonFields,
+        style: visualStyleField,
+      },
 
       defaultProps: {
         text: "Contacto",
@@ -499,9 +844,9 @@ export const webPuckConfig: Config<
       ),
     },
 
-    // ========================================
+    // =================================================
     // HERO
-    // ========================================
+    // =================================================
 
     Hero: {
       label: "Hero",
@@ -555,9 +900,9 @@ export const webPuckConfig: Config<
       ),
     },
 
-    // ========================================
-    // ESPACIADOR
-    // ========================================
+    // =================================================
+    // SPACER
+    // =================================================
 
     Spacer: {
       label: "Espacio",
@@ -566,16 +911,13 @@ export const webPuckConfig: Config<
         size: {
           type: "select",
           label: "Altura",
-          options: [
+          options: selectOptions([
             "none",
             "small",
             "medium",
             "large",
             "xlarge",
-          ].map((value) => ({
-            label: value,
-            value,
-          })),
+          ]),
         },
       },
 
@@ -588,9 +930,9 @@ export const webPuckConfig: Config<
       ),
     },
 
-    // ========================================
-    // COLUMNAS
-    // ========================================
+    // =================================================
+    // COLUMNS
+    // =================================================
 
     Columns: {
       label: "Columnas",
@@ -641,23 +983,141 @@ export const webPuckConfig: Config<
         </Columns>
       ),
     },
+
+    // =================================================
+    // HEADER
+    // =================================================
+
     Header: {
       label: "Header",
+
       fields: {
-        brandText: { type: "text", label: "Marca" }, logoSrc: { type: "text", label: "URL del logo" },
-        logoAlt: { type: "text", label: "Texto alternativo" }, homeHref: { type: "text", label: "Enlace de inicio" },
-        links: { type: "array", label: "Navegación", arrayFields: headerLinkFields, defaultItemProps: { label: "Enlace", href: "/" }, getItemSummary: item => item.label || "Enlace" },
-        cta: { type: "object", label: "Llamada a la acción", objectFields: headerLinkFields },
-        backgroundColor: { type: "text", label: "Color de fondo HEX" }, color: { type: "text", label: "Color de texto HEX" },
-        minHeight: { type: "number", label: "Altura mínima", min: 48, max: 200 }, paddingX: { type: "number", label: "Padding horizontal", min: 0, max: 120 },
-        paddingY: { type: "number", label: "Padding vertical", min: 0, max: 80 }, maxWidth: { type: "number", label: "Ancho máximo", min: 320, max: 2400 },
-        alignment: { type: "select", label: "Alineación", options: ["start", "center", "end"].map(value => ({ label: value, value })) },
-        sticky: { type: "radio", label: "Fijo al desplazar", options: [{ label: "No", value: false }, { label: "Sí", value: true }] },
+        brandText: {
+          type: "text",
+          label: "Marca",
+        },
+
+        logoSrc: {
+          type: "text",
+          label: "URL del logo",
+        },
+
+        logoAlt: {
+          type: "text",
+          label: "Texto alternativo",
+        },
+
+        homeHref: {
+          type: "text",
+          label: "Enlace de inicio",
+        },
+
+        links: {
+          type: "array",
+          label: "Navegación",
+          arrayFields: headerLinkFields,
+          defaultItemProps: {
+            label: "Enlace",
+            href: "/",
+          },
+          getItemSummary: (item) =>
+            item.label || "Enlace",
+        },
+
+        cta: {
+          type: "object",
+          label: "Llamada a la acción",
+          objectFields: headerLinkFields,
+        },
+
+        backgroundColor: {
+          type: "text",
+          label: "Color de fondo HEX",
+        },
+
+        color: {
+          type: "text",
+          label: "Color de texto HEX",
+        },
+
+        minHeight: {
+          type: "number",
+          label: "Altura mínima",
+          min: 48,
+          max: 200,
+        },
+
+        paddingX: {
+          type: "number",
+          label: "Padding horizontal",
+          min: 0,
+          max: 120,
+        },
+
+        paddingY: {
+          type: "number",
+          label: "Padding vertical",
+          min: 0,
+          max: 80,
+        },
+
+        maxWidth: {
+          type: "number",
+          label: "Ancho máximo",
+          min: 320,
+          max: 2400,
+        },
+
+        alignment: {
+          type: "select",
+          label: "Alineación",
+          options: selectOptions([
+            "start",
+            "center",
+            "end",
+          ]),
+        },
+
+        sticky: {
+          type: "radio",
+          label: "Fijo al desplazar",
+          options: [
+            { label: "No", value: false },
+            { label: "Sí", value: true },
+          ],
+        },
       },
-      defaultProps: { brandText: "Jiro", homeHref: "/", links: [{ label: "Inicio", href: "/" }, { label: "Contacto", href: "/contacto" }],
-        cta: { label: "Contacto", href: "/contacto" }, backgroundColor: "#ffffff", color: "#172033", minHeight: 72,
-        paddingX: 24, paddingY: 12, maxWidth: 1200, alignment: "end", sticky: false },
-      render: props => <Header {...props} />,
+
+      defaultProps: {
+        brandText: "Jiro",
+        homeHref: "/",
+        links: [
+          {
+            label: "Inicio",
+            href: "/",
+          },
+          {
+            label: "Contacto",
+            href: "/contacto",
+          },
+        ],
+        cta: {
+          label: "Contacto",
+          href: "/contacto",
+        },
+        backgroundColor: "#ffffff",
+        color: "#172033",
+        minHeight: 72,
+        paddingX: 24,
+        paddingY: 12,
+        maxWidth: 1200,
+        alignment: "end",
+        sticky: false,
+      },
+
+      render: (props) => (
+        <Header {...props} />
+      ),
     },
   },
 };

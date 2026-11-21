@@ -21,9 +21,9 @@ import type {
 import { jsonValueSchema } from "@repo/web-schema";
 import { z } from "zod";
 
-// ============================================
+// =====================================================
 // TIPOS DE LOS COMPONENTES PUCK
-// ============================================
+// =====================================================
 
 export type WebPuckProps = {
   Container: Omit<ContainerProps, "children"> & {
@@ -46,6 +46,7 @@ export type WebPuckProps = {
     second: Slot;
     third: Slot;
   };
+
   Header: HeaderProps;
 };
 
@@ -60,9 +61,9 @@ export type WebPuckData = Data<
 
 type WebPuckNode = ComponentDataMap<WebPuckProps>;
 
-// ============================================
+// =====================================================
 // VALIDADORES COMPARTIDOS
-// ============================================
+// =====================================================
 
 const text = z.string();
 
@@ -86,9 +87,9 @@ const readOnly = z
   .record(z.boolean())
   .optional();
 
-// ============================================
+// =====================================================
 // VALIDACIÓN DE URLS
-// ============================================
+// =====================================================
 
 function url(image: boolean) {
   return z
@@ -119,9 +120,9 @@ function url(image: boolean) {
     }, "Unsafe or unsupported URL");
 }
 
-// ============================================
+// =====================================================
 // VALIDACIÓN DE IMÁGENES
-// ============================================
+// =====================================================
 
 const imageProps = z
   .object({
@@ -152,14 +153,13 @@ const imageProps = z
   })
   .strict();
 
-// ============================================
+// =====================================================
 // VALIDACIÓN DE BOTONES
-// ============================================
+// =====================================================
 
 const buttonProps = z
   .object({
     text,
-
     href: url(false),
 
     variant: z
@@ -176,9 +176,57 @@ const buttonProps = z
   })
   .strict();
 
-// ============================================
-// VALIDACIÓN DEL ESTILO DEL CONTENEDOR
-// ============================================
+// =====================================================
+// VALIDADORES NUMÉRICOS REUTILIZABLES
+// =====================================================
+
+const dimension = z
+  .number()
+  .finite()
+  .min(0)
+  .max(4000);
+
+const spacing = z
+  .number()
+  .finite()
+  .min(0)
+  .max(200);
+
+const signedSpacing = z
+  .number()
+  .finite()
+  .min(-200)
+  .max(200);
+
+const hexColor = z
+  .string()
+  .regex(
+    /^#[0-9a-f]{6}$/i,
+    "El color debe tener formato HEX de 6 dígitos"
+  );
+
+const spacingSidesSchema = z
+  .object({
+    top: spacing.optional(),
+    right: spacing.optional(),
+    bottom: spacing.optional(),
+    left: spacing.optional(),
+  })
+  .strict();
+
+const marginSidesSchema = z
+  .object({
+    top: signedSpacing.optional(),
+    right: signedSpacing.optional(),
+    bottom: signedSpacing.optional(),
+    left: signedSpacing.optional(),
+  })
+  .strict();
+
+// =====================================================
+// ESTILOS LEGACY DEL CONTENEDOR
+// No modificar: compatibilidad con páginas anteriores.
+// =====================================================
 
 const containerStyleProps = {
   backgroundColor: z
@@ -234,24 +282,223 @@ const containerStyleProps = {
     .optional(),
 };
 
-const visualStyleSchema = z.object({
-  display: z.enum(["block", "flex"]).optional(), flexDirection: z.enum(["row", "column"]).optional(),
-  justifyContent: z.enum(["start", "center", "end", "between"]).optional(),
-  alignItems: z.enum(["start", "center", "end", "stretch"]).optional(), flexWrap: z.enum(["nowrap", "wrap"]).optional(),
-  gap: z.number().min(0).max(200).optional(), width: z.enum(["auto", "full"]).optional(),
-  maxWidth: z.number().min(0).max(2400).optional(), minHeight: z.number().min(0).max(2000).optional(),
-  padding: z.number().min(0).max(200).optional(), margin: z.number().min(0).max(200).optional(),
-  backgroundColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(), color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
-  borderWidth: z.number().min(0).max(20).optional(), borderColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
-  borderRadius: z.number().min(0).max(100).optional(), boxShadow: z.enum(["none", "small", "medium", "large"]).optional(),
-  fontSize: z.number().min(8).max(160).optional(), fontWeight: z.union([z.literal(400), z.literal(500), z.literal(600), z.literal(700)]).optional(),
-  lineHeight: z.number().min(0.8).max(3).optional(), textAlign: align.optional(),
-}).strict();
-const headerLinkSchema = z.object({ label: text, href: url(false) }).strict();
+// =====================================================
+// VISUAL STYLE V2
+// Compatible con propiedades anteriores.
+// =====================================================
 
-// ============================================
+const visualStyleSchema = z
+  .object({
+    // DISPLAY
+    display: z
+      .enum(["block", "flex", "grid", "none"])
+      .optional(),
+
+    // FLEXBOX
+    flexDirection: z
+      .enum(["row", "column"])
+      .optional(),
+
+    justifyContent: z
+      .enum([
+        "start",
+        "center",
+        "end",
+        "between",
+      ])
+      .optional(),
+
+    alignItems: z
+      .enum([
+        "start",
+        "center",
+        "end",
+        "stretch",
+      ])
+      .optional(),
+
+    flexWrap: z
+      .enum(["nowrap", "wrap"])
+      .optional(),
+
+    flexGrow: z
+      .number()
+      .finite()
+      .min(0)
+      .max(20)
+      .optional(),
+
+    flexShrink: z
+      .number()
+      .finite()
+      .min(0)
+      .max(20)
+      .optional(),
+
+    flexBasis: dimension.optional(),
+
+    order: z
+      .number()
+      .int()
+      .min(-100)
+      .max(100)
+      .optional(),
+
+    // ESPACIADO
+    gap: spacing.optional(),
+
+    // DIMENSIONES
+    width: z
+      .enum(["auto", "full"])
+      .optional(),
+
+    height: dimension.optional(),
+    minWidth: dimension.optional(),
+    maxWidth: dimension.optional(),
+    minHeight: dimension.optional(),
+    maxHeight: dimension.optional(),
+
+    // ESPACIADO ORIGINAL
+    padding: spacing.optional(),
+    margin: spacing.optional(),
+
+    // ESPACIADO POR LADO
+    paddingSides: spacingSidesSchema.optional(),
+    marginSides: marginSidesSchema.optional(),
+
+    // COLORES
+    backgroundColor: hexColor.optional(),
+    color: hexColor.optional(),
+
+    // BORDES
+    borderWidth: z
+      .number()
+      .finite()
+      .min(0)
+      .max(20)
+      .optional(),
+
+    borderColor: hexColor.optional(),
+
+    borderRadius: z
+      .number()
+      .finite()
+      .min(0)
+      .max(100)
+      .optional(),
+
+    // SOMBRAS
+    boxShadow: z
+      .enum([
+        "none",
+        "small",
+        "medium",
+        "large",
+      ])
+      .optional(),
+
+    // TIPOGRAFÍA
+    fontFamily: z
+      .enum([
+        "inherit",
+        "sans",
+        "serif",
+        "mono",
+      ])
+      .optional(),
+
+    fontSize: z
+      .number()
+      .finite()
+      .min(8)
+      .max(160)
+      .optional(),
+
+    fontWeight: z
+      .union([
+        z.literal(400),
+        z.literal(500),
+        z.literal(600),
+        z.literal(700),
+      ])
+      .optional(),
+
+    lineHeight: z
+      .number()
+      .finite()
+      .min(0.8)
+      .max(3)
+      .optional(),
+
+    letterSpacing: z
+      .number()
+      .finite()
+      .min(-10)
+      .max(30)
+      .optional(),
+
+    textAlign: align.optional(),
+
+    // COMPORTAMIENTO
+    opacity: z
+      .number()
+      .finite()
+      .min(0)
+      .max(1)
+      .optional(),
+
+    overflow: z
+      .enum([
+        "visible",
+        "hidden",
+        "auto",
+      ])
+      .optional(),
+  })
+  .strict()
+  .superRefine((style, context) => {
+    // Validación básica de coherencia dimensional.
+    if (
+      style.minWidth !== undefined &&
+      style.maxWidth !== undefined &&
+      style.minWidth > style.maxWidth
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["minWidth"],
+        message:
+          "El ancho mínimo no puede superar el máximo.",
+      });
+    }
+
+    if (
+      style.minHeight !== undefined &&
+      style.maxHeight !== undefined &&
+      style.minHeight > style.maxHeight
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["minHeight"],
+        message:
+          "El alto mínimo no puede superar el máximo.",
+      });
+    }
+  });
+
+// =====================================================
+// HEADER
+// =====================================================
+
+const headerLinkSchema = z
+  .object({
+    label: text,
+    href: url(false),
+  })
+  .strict();
+
+// =====================================================
 // ESQUEMA RECURSIVO DE COMPONENTES
-// ============================================
+// =====================================================
 
 const nodeSchema: z.ZodType<WebPuckNode> =
   z.lazy(() =>
@@ -281,11 +528,10 @@ const nodeSchema: z.ZodType<WebPuckNode> =
             .enum(["div", "main"])
             .optional(),
 
-          // Nuevas propiedades visuales
           ...containerStyleProps,
+
           style: visualStyleSchema.optional(),
 
-          // Componentes anidados
           content: z.array(nodeSchema),
         }).strict(),
       }).strict(),
@@ -313,6 +559,7 @@ const nodeSchema: z.ZodType<WebPuckNode> =
             .optional(),
 
           labelledBy: text.optional(),
+
           style: visualStyleSchema.optional(),
 
           content: z.array(nodeSchema),
@@ -385,18 +632,72 @@ const nodeSchema: z.ZodType<WebPuckNode> =
         readOnly,
 
         props: buttonProps
-          .extend({ id, style: visualStyleSchema.optional() })
+          .extend({
+            id,
+            style: visualStyleSchema.optional(),
+          })
           .strict(),
       }).strict(),
 
+      // ======================================
+      // HEADER
+      // ======================================
+
       z.object({
-        type: z.literal("Header"), readOnly,
-        props: z.object({ id, brandText: text.optional(), logoSrc: url(true).optional(), logoAlt: text.optional(),
-          homeHref: url(false).optional(), links: z.array(headerLinkSchema).max(20).optional(), cta: headerLinkSchema.optional(),
-          backgroundColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(), color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
-          minHeight: z.number().int().min(48).max(200).optional(), paddingX: z.number().int().min(0).max(120).optional(),
-          paddingY: z.number().int().min(0).max(80).optional(), maxWidth: z.number().int().min(320).max(2400).optional(),
-          alignment: z.enum(["start", "center", "end"]).optional(), sticky: z.boolean().optional(),
+        type: z.literal("Header"),
+        readOnly,
+
+        props: z.object({
+          id,
+
+          brandText: text.optional(),
+          logoSrc: url(true).optional(),
+          logoAlt: text.optional(),
+          homeHref: url(false).optional(),
+
+          links: z
+            .array(headerLinkSchema)
+            .max(20)
+            .optional(),
+
+          cta: headerLinkSchema.optional(),
+
+          backgroundColor: hexColor.optional(),
+          color: hexColor.optional(),
+
+          minHeight: z
+            .number()
+            .int()
+            .min(48)
+            .max(200)
+            .optional(),
+
+          paddingX: z
+            .number()
+            .int()
+            .min(0)
+            .max(120)
+            .optional(),
+
+          paddingY: z
+            .number()
+            .int()
+            .min(0)
+            .max(80)
+            .optional(),
+
+          maxWidth: z
+            .number()
+            .int()
+            .min(320)
+            .max(2400)
+            .optional(),
+
+          alignment: z
+            .enum(["start", "center", "end"])
+            .optional(),
+
+          sticky: z.boolean().optional(),
         }).strict(),
       }).strict(),
 
@@ -416,7 +717,6 @@ const nodeSchema: z.ZodType<WebPuckNode> =
           align: align.optional(),
 
           image: imageProps.optional(),
-
           button: buttonProps.optional(),
         }).strict(),
       }).strict(),
@@ -468,9 +768,9 @@ const nodeSchema: z.ZodType<WebPuckNode> =
     ])
   );
 
-// ============================================
+// =====================================================
 // VALIDACIÓN COMPLETA DE LA PÁGINA
-// ============================================
+// =====================================================
 
 const dataSchema = jsonValueSchema
   .pipe(
@@ -485,7 +785,6 @@ const dataSchema = jsonValueSchema
 
       content: z.array(nodeSchema),
 
-      // Los slots sustituyen las zonas antiguas.
       zones: z.object({}).strict().optional(),
     }).strict()
   )
@@ -503,7 +802,6 @@ const dataSchema = jsonValueSchema
           "props",
         ];
 
-        // Comprobar IDs duplicados
         if (ids.has(node.props.id)) {
           context.addIssue({
             code: z.ZodIssueCode.custom,
@@ -514,7 +812,6 @@ const dataSchema = jsonValueSchema
 
         ids.add(node.props.id);
 
-        // Contenedores y secciones
         if (
           node.type === "Container" ||
           node.type === "Section"
@@ -525,7 +822,6 @@ const dataSchema = jsonValueSchema
           );
         }
 
-        // Columnas
         if (node.type === "Columns") {
           visit(
             node.props.first,
@@ -560,13 +856,13 @@ const dataSchema = jsonValueSchema
     visit(data.content, ["content"]);
   });
 
-// ============================================
+// =====================================================
 // VALIDACIÓN PÚBLICA
-// ============================================
+// =====================================================
 
 /**
  * Valida todos los componentes y sus slots
- * antes de guardar o publicar la página.
+ * antes de guardar o publicar una página.
  */
 export function validateWebPuckData(
   value: unknown
