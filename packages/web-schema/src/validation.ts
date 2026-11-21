@@ -40,6 +40,25 @@ const jsonObjectSchema = jsonValueSchema.refine(
 );
 const nonEmptyString = z.string().min(1).refine((value) => value.trim().length > 0, "Must not be blank");
 const tokensSchema = z.record(nonEmptyString, nonEmptyString);
+const safeUrlSchema = z.string().trim().min(1).refine((value) => {
+  if (/[\u0000-\u0020\u007f\\]/u.test(value) || value.startsWith("//")) return false;
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(value)?.[1]?.toLowerCase();
+  return !scheme || ["http", "https", "mailto", "tel"].includes(scheme);
+}, "Unsafe or unsupported URL");
+const safeImageUrlSchema = safeUrlSchema.refine((value) => {
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(value)?.[1]?.toLowerCase();
+  return !scheme || ["http", "https"].includes(scheme);
+}, "Unsupported image URL");
+const headerLinkSchema = z.object({ label: nonEmptyString, href: safeUrlSchema }).strict();
+export const webGlobalHeaderSchema = z.object({
+  enabled: z.boolean().optional(), brandText: z.string().optional(), logoSrc: safeImageUrlSchema.optional(),
+  logoAlt: z.string().optional(), homeHref: safeUrlSchema.optional(), links: z.array(headerLinkSchema).max(20).optional(),
+  cta: headerLinkSchema.optional(), backgroundColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(), minHeight: z.number().int().min(48).max(200).optional(),
+  paddingX: z.number().int().min(0).max(120).optional(), paddingY: z.number().int().min(0).max(80).optional(),
+  maxWidth: z.number().int().min(320).max(2400).optional(), alignment: z.enum(["start", "center", "end"]).optional(),
+  sticky: z.boolean().optional(),
+}).strict();
 
 export const webPathSchema = z.string().transform((value, context) => {
   try { return normalizeWebPath(value); } catch {
@@ -75,6 +94,7 @@ export const webPublicationManifestSchema = jsonValueSchema.pipe(z.object({
   publicationId: nonEmptyString,
   publishedAt: z.string().datetime({ offset: true }).refine((value) => Number.isFinite(Date.parse(value)), "Invalid ISO timestamp"),
   theme: webThemeSchema,
+  header: webGlobalHeaderSchema.optional(),
   pages: z.array(webPageSchema),
 }).strict()).superRefine((manifest, context) => {
   const paths = new Set<string>();

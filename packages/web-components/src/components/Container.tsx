@@ -1,5 +1,6 @@
 
 import type { CSSProperties, ReactNode } from "react";
+import { visualStyle, type VisualStyle } from "../styles/visual.js";
 
 export interface ContainerProps {
   children: ReactNode;
@@ -12,6 +13,7 @@ export interface ContainerProps {
   gap?: number;
   justifyContent?: "start" | "center" | "end" | "between";
   alignItems?: "start" | "center" | "end" | "stretch";
+  style?: VisualStyle;
 }
 
 const widths = {
@@ -46,20 +48,18 @@ export function Container({
   gap,
   justifyContent,
   alignItems,
+  style: safeStyle,
 }: ContainerProps) {
   const style: CSSProperties = {
+    ...visualStyle(safeStyle),
     "--jws-container-width": widths[maxWidth],
-    backgroundColor,
-    padding,
-    borderRadius,
-    display,
-    gap,
-    justifyContent: justifyContent
-      ? justifyValues[justifyContent]
-      : undefined,
-    alignItems: alignItems
-      ? alignValues[alignItems]
-      : undefined,
+    backgroundColor: safeStyle?.backgroundColor ?? backgroundColor,
+    padding: safeStyle?.padding ?? padding,
+    borderRadius: safeStyle?.borderRadius ?? borderRadius,
+    display: safeStyle?.display ?? display,
+    gap: safeStyle?.gap ?? gap,
+    justifyContent: justifyContent ? justifyValues[justifyContent] : visualStyle(safeStyle)?.justifyContent,
+    alignItems: alignItems ? alignValues[alignItems] : visualStyle(safeStyle)?.alignItems,
   } as CSSProperties;
 
   return (

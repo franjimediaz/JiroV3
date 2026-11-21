@@ -11,6 +11,7 @@ import {
   Hero,
   Spacer,
   Columns,
+  Header,
 } from "@repo/web-components";
 
 import type { WebPuckProps, WebPuckRootProps } from "./data.js";
@@ -94,6 +95,29 @@ const buttonFields = {
     ],
   },
 } as const;
+
+const visualStyleFields = {
+  display: { type: "select", label: "Display", options: ["block", "flex"].map(value => ({ label: value, value })) },
+  flexDirection: { type: "select", label: "Dirección flex", options: ["row", "column"].map(value => ({ label: value, value })) },
+  justifyContent: { type: "select", label: "Distribución", options: ["start", "center", "end", "between"].map(value => ({ label: value, value })) },
+  alignItems: { type: "select", label: "Alineación", options: ["start", "center", "end", "stretch"].map(value => ({ label: value, value })) },
+  flexWrap: { type: "select", label: "Salto de línea", options: ["nowrap", "wrap"].map(value => ({ label: value, value })) },
+  gap: { type: "number", label: "Separación (px)", min: 0, max: 200 },
+  width: { type: "select", label: "Ancho", options: [{ label: "Automático", value: "auto" }, { label: "Completo", value: "full" }] },
+  maxWidth: { type: "number", label: "Ancho máximo (px)", min: 0, max: 2400 },
+  minHeight: { type: "number", label: "Altura mínima (px)", min: 0, max: 2000 },
+  padding: { type: "number", label: "Padding (px)", min: 0, max: 200 },
+  margin: { type: "number", label: "Margen (px)", min: 0, max: 200 },
+  backgroundColor: { type: "text", label: "Color de fondo HEX" }, color: { type: "text", label: "Color de texto HEX" },
+  borderWidth: { type: "number", label: "Grosor de borde (px)", min: 0, max: 20 }, borderColor: { type: "text", label: "Color de borde HEX" },
+  borderRadius: { type: "number", label: "Radio (px)", min: 0, max: 100 },
+  boxShadow: { type: "select", label: "Sombra", options: ["none", "small", "medium", "large"].map(value => ({ label: value, value })) },
+  fontSize: { type: "number", label: "Tamaño de fuente (px)", min: 8, max: 160 },
+  fontWeight: { type: "select", label: "Peso", options: [400, 500, 600, 700].map(value => ({ label: String(value), value })) },
+  lineHeight: { type: "number", label: "Interlineado", min: 0.8, max: 3 }, textAlign: align,
+} as const;
+const visualStyleField = { type: "object", label: "Diseño visual", objectFields: visualStyleFields } as const;
+const headerLinkFields = { label: { type: "text", label: "Texto" }, href: { type: "text", label: "URL" } } as const;
 
 // ============================================
 // CONFIGURACIÓN GENERAL DE PUCK
@@ -223,6 +247,7 @@ export const webPuckConfig: Config<
           type: "slot",
           label: "Contenido",
         },
+        style: visualStyleField,
       },
 
       defaultProps: {
@@ -249,6 +274,7 @@ export const webPuckConfig: Config<
         gap,
         justifyContent,
         alignItems,
+        style,
       }) => (
         <Container
           maxWidth={maxWidth}
@@ -260,6 +286,7 @@ export const webPuckConfig: Config<
           gap={gap}
           justifyContent={justifyContent}
           alignItems={alignItems}
+          style={style}
         >
           <Content />
         </Container>
@@ -302,6 +329,7 @@ export const webPuckConfig: Config<
           type: "slot",
           label: "Contenido",
         },
+        style: visualStyleField,
       },
 
       defaultProps: {
@@ -315,11 +343,13 @@ export const webPuckConfig: Config<
         background,
         spacing,
         labelledBy,
+        style,
       }) => (
         <Section
           background={background}
           spacing={spacing}
           labelledBy={labelledBy}
+          style={style}
         >
           <Content />
         </Section>
@@ -351,6 +381,7 @@ export const webPuckConfig: Config<
             })
           ),
         },
+        style: visualStyleField,
       },
 
       defaultProps: {
@@ -363,13 +394,16 @@ export const webPuckConfig: Config<
         text,
         level,
         align,
+        style: visualStyleField,
         id,
+        style,
       }) => (
         <Heading
           text={text}
           level={level}
           align={align}
           id={id}
+          style={style}
         />
       ),
     },
@@ -395,8 +429,8 @@ export const webPuckConfig: Config<
         align: "left",
       },
 
-      render: ({ text, align }) => (
-        <TextBlock text={text} align={align} />
+      render: ({ text, align, style }) => (
+        <TextBlock text={text} align={align} style={style} />
       ),
     },
 
@@ -439,7 +473,7 @@ export const webPuckConfig: Config<
     ButtonLink: {
       label: "Botón",
 
-      fields: buttonFields,
+      fields: { ...buttonFields, style: visualStyleField },
 
       defaultProps: {
         text: "Contacto",
@@ -453,12 +487,14 @@ export const webPuckConfig: Config<
         href,
         variant,
         newTab,
+        style,
       }) => (
         <ButtonLink
           text={text}
           href={href}
           variant={variant}
           newTab={newTab}
+          style={style}
         />
       ),
     },
@@ -604,6 +640,24 @@ export const webPuckConfig: Config<
           {columns === 3 && <Third />}
         </Columns>
       ),
+    },
+    Header: {
+      label: "Header",
+      fields: {
+        brandText: { type: "text", label: "Marca" }, logoSrc: { type: "text", label: "URL del logo" },
+        logoAlt: { type: "text", label: "Texto alternativo" }, homeHref: { type: "text", label: "Enlace de inicio" },
+        links: { type: "array", label: "Navegación", arrayFields: headerLinkFields, defaultItemProps: { label: "Enlace", href: "/" }, getItemSummary: item => item.label || "Enlace" },
+        cta: { type: "object", label: "Llamada a la acción", objectFields: headerLinkFields },
+        backgroundColor: { type: "text", label: "Color de fondo HEX" }, color: { type: "text", label: "Color de texto HEX" },
+        minHeight: { type: "number", label: "Altura mínima", min: 48, max: 200 }, paddingX: { type: "number", label: "Padding horizontal", min: 0, max: 120 },
+        paddingY: { type: "number", label: "Padding vertical", min: 0, max: 80 }, maxWidth: { type: "number", label: "Ancho máximo", min: 320, max: 2400 },
+        alignment: { type: "select", label: "Alineación", options: ["start", "center", "end"].map(value => ({ label: value, value })) },
+        sticky: { type: "radio", label: "Fijo al desplazar", options: [{ label: "No", value: false }, { label: "Sí", value: true }] },
+      },
+      defaultProps: { brandText: "Jiro", homeHref: "/", links: [{ label: "Inicio", href: "/" }, { label: "Contacto", href: "/contacto" }],
+        cta: { label: "Contacto", href: "/contacto" }, backgroundColor: "#ffffff", color: "#172033", minHeight: 72,
+        paddingX: 24, paddingY: 12, maxWidth: 1200, alignment: "end", sticky: false },
+      render: props => <Header {...props} />,
     },
   },
 };

@@ -136,6 +136,7 @@ export default function WebEditorClient({ previewCss, initialData, initialRevisi
       iframe={{ enabled: true, syncHostStyles: false }}
       viewports={[
         { width: 1280, height: 900, label: "Escritorio" },
+        { width: 768, height: 1024, label: "Tablet" },
         { width: 390, height: 844, label: "Móvil" },
       ]}
       headerTitle="Web Static"

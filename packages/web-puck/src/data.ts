@@ -15,6 +15,7 @@ import type {
   HeroProps,
   SpacerProps,
   ColumnsProps,
+  HeaderProps,
 } from "@repo/web-components";
 
 import { jsonValueSchema } from "@repo/web-schema";
@@ -45,6 +46,7 @@ export type WebPuckProps = {
     second: Slot;
     third: Slot;
   };
+  Header: HeaderProps;
 };
 
 export type WebPuckRootProps = {
@@ -232,6 +234,21 @@ const containerStyleProps = {
     .optional(),
 };
 
+const visualStyleSchema = z.object({
+  display: z.enum(["block", "flex"]).optional(), flexDirection: z.enum(["row", "column"]).optional(),
+  justifyContent: z.enum(["start", "center", "end", "between"]).optional(),
+  alignItems: z.enum(["start", "center", "end", "stretch"]).optional(), flexWrap: z.enum(["nowrap", "wrap"]).optional(),
+  gap: z.number().min(0).max(200).optional(), width: z.enum(["auto", "full"]).optional(),
+  maxWidth: z.number().min(0).max(2400).optional(), minHeight: z.number().min(0).max(2000).optional(),
+  padding: z.number().min(0).max(200).optional(), margin: z.number().min(0).max(200).optional(),
+  backgroundColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(), color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  borderWidth: z.number().min(0).max(20).optional(), borderColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+  borderRadius: z.number().min(0).max(100).optional(), boxShadow: z.enum(["none", "small", "medium", "large"]).optional(),
+  fontSize: z.number().min(8).max(160).optional(), fontWeight: z.union([z.literal(400), z.literal(500), z.literal(600), z.literal(700)]).optional(),
+  lineHeight: z.number().min(0.8).max(3).optional(), textAlign: align.optional(),
+}).strict();
+const headerLinkSchema = z.object({ label: text, href: url(false) }).strict();
+
 // ============================================
 // ESQUEMA RECURSIVO DE COMPONENTES
 // ============================================
@@ -266,6 +283,7 @@ const nodeSchema: z.ZodType<WebPuckNode> =
 
           // Nuevas propiedades visuales
           ...containerStyleProps,
+          style: visualStyleSchema.optional(),
 
           // Componentes anidados
           content: z.array(nodeSchema),
@@ -295,6 +313,7 @@ const nodeSchema: z.ZodType<WebPuckNode> =
             .optional(),
 
           labelledBy: text.optional(),
+          style: visualStyleSchema.optional(),
 
           content: z.array(nodeSchema),
         }).strict(),
@@ -324,6 +343,7 @@ const nodeSchema: z.ZodType<WebPuckNode> =
             .optional(),
 
           align: align.optional(),
+          style: visualStyleSchema.optional(),
         }).strict(),
       }).strict(),
 
@@ -339,6 +359,7 @@ const nodeSchema: z.ZodType<WebPuckNode> =
           id,
           text,
           align: align.optional(),
+          style: visualStyleSchema.optional(),
         }).strict(),
       }).strict(),
 
@@ -364,8 +385,19 @@ const nodeSchema: z.ZodType<WebPuckNode> =
         readOnly,
 
         props: buttonProps
-          .extend({ id })
+          .extend({ id, style: visualStyleSchema.optional() })
           .strict(),
+      }).strict(),
+
+      z.object({
+        type: z.literal("Header"), readOnly,
+        props: z.object({ id, brandText: text.optional(), logoSrc: url(true).optional(), logoAlt: text.optional(),
+          homeHref: url(false).optional(), links: z.array(headerLinkSchema).max(20).optional(), cta: headerLinkSchema.optional(),
+          backgroundColor: z.string().regex(/^#[0-9a-f]{6}$/i).optional(), color: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
+          minHeight: z.number().int().min(48).max(200).optional(), paddingX: z.number().int().min(0).max(120).optional(),
+          paddingY: z.number().int().min(0).max(80).optional(), maxWidth: z.number().int().min(320).max(2400).optional(),
+          alignment: z.enum(["start", "center", "end"]).optional(), sticky: z.boolean().optional(),
+        }).strict(),
       }).strict(),
 
       // ======================================

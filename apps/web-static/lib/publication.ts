@@ -23,7 +23,22 @@ export const getPublication = cache(() => {
   return { manifest, pages };
 });
 
+function hasHeader(nodes: unknown): boolean {
+  if (!Array.isArray(nodes)) return false;
+  return nodes.some((node) => {
+    if (!node || typeof node !== "object") return false;
+    const record = node as { type?: unknown; props?: Record<string, unknown> };
+    if (record.type === "Header") return true;
+    const props = record.props;
+    return !!props && [props.content, props.first, props.second, props.third].some(hasHeader);
+  });
+}
+
 export function getPublishedPage(webPath: string) {
   const normalized = normalizeWebPath(webPath);
-  return getPublication().pages.find(({ page }) => page.path === normalized);
+  const publication = getPublication();
+  const published = publication.pages.find(({ page }) => page.path === normalized);
+  if (!published) return undefined;
+  const header = publication.manifest.header && !hasHeader(published.data.content) ? publication.manifest.header : undefined;
+  return { ...published, header };
 }

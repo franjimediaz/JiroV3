@@ -29,12 +29,33 @@ export interface WebTemplate {
   page: WebPage;
 }
 
+export interface WebHeaderLink { label: string; href: string; }
+export interface WebGlobalHeader {
+  enabled?: boolean;
+  brandText?: string;
+  logoSrc?: string;
+  logoAlt?: string;
+  homeHref?: string;
+  links?: WebHeaderLink[];
+  cta?: WebHeaderLink;
+  backgroundColor?: string;
+  color?: string;
+  minHeight?: number;
+  paddingX?: number;
+  paddingY?: number;
+  maxWidth?: number;
+  alignment?: "start" | "center" | "end";
+  sticky?: boolean;
+}
+
 export interface WebPublicationManifest {
   schemaVersion: number;
   publicationId: string;
   /** ISO 8601 timestamp with an explicit timezone. */
   publishedAt: string;
   theme: WebTheme;
+  /** Optional site-wide header. Omitted manifests retain the original wire format. */
+  header?: WebGlobalHeader;
   pages: WebPage[];
 }
 

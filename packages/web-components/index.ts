@@ -7,3 +7,5 @@ export { ButtonLink, type ButtonLinkProps } from "./src/components/ButtonLink.js
 export { Hero, type HeroProps } from "./src/components/Hero.js";
 export { Columns, type ColumnsProps } from "./src/components/Columns.js";
 export { Spacer, type SpacerProps } from "./src/components/Spacer.js";
+export { Header, type HeaderProps, type HeaderLink } from "./src/components/Header.js";
+export { visualStyle, type VisualStyle } from "./src/styles/visual.js";

@@ -10,16 +10,24 @@ const data = (content = [heading()]) => ({ root: { props: { title: "Test" } }, c
 
 test("both demo pages conform to the manifest and real Puck data types", () => {
   const manifest = parsePublicationManifest(readFileSync(new URL("../../../apps/web-static/content/publication.json", import.meta.url), "utf8"));
-  assert.deepEqual(manifest.pages.map(page => page.path), ["/", "/contacto"]);
+  assert.deepEqual(manifest.pages.map(page => page.path), ["/", "/services"]);
   for (const page of manifest.pages) assert.deepEqual(validateWebPuckData(page.puckData), page.puckData);
 });
-test("all nine registered components have valid defaults", () => {
-  assert.equal(Object.keys(webPuckConfig.components).length, 9);
+test("all ten registered components have valid defaults", () => {
+  assert.equal(Object.keys(webPuckConfig.components).length, 10);
   for (const [type, config] of Object.entries(webPuckConfig.components)) {
     assert.ok(config.label);
     assert.ok(config.fields);
     assert.doesNotThrow(() => validateWebPuckData(data([node(type, type, config.defaultProps)])));
   }
+});
+test("safe visual styles and responsive header validate", () => {
+  assert.doesNotThrow(() => validateWebPuckData(data([
+    node("Heading", "styled", { text: "Styled", style: { color: "#112233", fontSize: 42, fontWeight: 700, textAlign: "center" } }),
+    node("Header", "header", { brandText: "Jiro", homeHref: "/", links: [{ label: "Servicios", href: "/services" }], sticky: true }),
+  ])));
+  assert.throws(() => validateWebPuckData(data([node("TextBlock", "unsafe-style", { text: "No", style: { css: "position:fixed" } })])));
+  assert.throws(() => validateWebPuckData(data([node("Header", "unsafe-header", { links: [{ label: "No", href: "javascript:alert(1)" }] })])));
 });
 test("unknown top-level components fail before rendering", () => {
   assert.throws(() => validateWebPuckData(data([node("Unknown", "unknown")])));
