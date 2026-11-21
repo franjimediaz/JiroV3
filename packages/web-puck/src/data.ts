@@ -22,7 +22,7 @@ import { jsonValueSchema } from "@repo/web-schema";
 import { z } from "zod";
 
 // =====================================================
-// TIPOS DE LOS COMPONENTES PUCK
+// TIPOS DE COMPONENTES PUCK
 // =====================================================
 
 export type WebPuckProps = {
@@ -62,7 +62,7 @@ export type WebPuckData = Data<
 type WebPuckNode = ComponentDataMap<WebPuckProps>;
 
 // =====================================================
-// VALIDADORES COMPARTIDOS
+// VALIDADORES GENERALES
 // =====================================================
 
 const text = z.string();
@@ -88,7 +88,7 @@ const readOnly = z
   .optional();
 
 // =====================================================
-// VALIDACIÓN DE URLS
+// URLS SEGURAS
 // =====================================================
 
 function url(image: boolean) {
@@ -96,39 +96,89 @@ function url(image: boolean) {
     .string()
     .trim()
     .min(1)
-    .refine((value) => {
-      if (
-        /[\u0000-\u0020\u007f\\]/u.test(value) ||
-        value.startsWith("//")
-      ) {
-        return false;
-      }
+    .refine(
+      (value) => {
+        if (
+          /[\u0000-\u0020\u007f\\]/u.test(value) ||
+          value.startsWith("//")
+        ) {
+          return false;
+        }
 
-      const scheme =
-        /^([a-z][a-z0-9+.-]*):/i
-          .exec(value)?.[1]
-          ?.toLowerCase();
+        const scheme =
+          /^([a-z][a-z0-9+.-]*):/i
+            .exec(value)?.[1]
+            ?.toLowerCase();
 
-      return (
-        !scheme ||
-        (
-          image
-            ? ["http", "https"]
-            : ["http", "https", "mailto", "tel"]
-        ).includes(scheme)
-      );
-    }, "Unsafe or unsupported URL");
+        return (
+          !scheme ||
+          (
+            image
+              ? ["http", "https"]
+              : ["http", "https", "mailto", "tel"]
+          ).includes(scheme)
+        );
+      },
+      "Unsafe or unsupported URL"
+    );
 }
 
 // =====================================================
-// VALIDACIÓN DE IMÁGENES
+// VALIDADORES NUMÉRICOS
+// =====================================================
+
+const dimension = z
+  .number()
+  .finite()
+  .min(0)
+  .max(4000);
+
+const positiveDimension = z
+  .number()
+  .int()
+  .min(1)
+  .max(8000);
+
+const spacing = z
+  .number()
+  .finite()
+  .min(0)
+  .max(200);
+
+const signedSpacing = z
+  .number()
+  .finite()
+  .min(-200)
+  .max(200);
+
+const opacity = z
+  .number()
+  .finite()
+  .min(0)
+  .max(1);
+
+const hexColor = z
+  .string()
+  .regex(
+    /^#[0-9a-f]{6}$/i,
+    "El color debe ser HEX de seis dígitos"
+  );
+
+// =====================================================
+// IMAGE BLOCK V2
 // =====================================================
 
 const imageProps = z
   .object({
+    // CONTENIDO
     src: url(true),
     alt: text,
 
+    // DIMENSIONES ORIGINALES
+    width: positiveDimension.optional(),
+    height: positiveDimension.optional(),
+
+    // AJUSTE ORIGINAL
     fit: z
       .enum([
         "cover",
@@ -139,27 +189,76 @@ const imageProps = z
       ])
       .optional(),
 
-    width: z
-      .number()
-      .int()
-      .positive()
+    // NUEVA PROPORCIÓN
+    aspectRatio: z
+      .enum([
+        "auto",
+        "square",
+        "landscape",
+        "portrait",
+        "wide",
+      ])
       .optional(),
 
-    height: z
+    // POSICIÓN DEL CONTENIDO
+    objectPosition: z
+      .enum([
+        "center",
+        "top",
+        "bottom",
+        "left",
+        "right",
+        "top-left",
+        "top-right",
+        "bottom-left",
+        "bottom-right",
+      ])
+      .optional(),
+
+    // APARIENCIA
+    borderRadius: z
       .number()
-      .int()
-      .positive()
+      .finite()
+      .min(0)
+      .max(200)
+      .optional(),
+
+    shadow: z
+      .enum([
+        "none",
+        "small",
+        "medium",
+        "large",
+      ])
+      .optional(),
+
+    opacity: opacity.optional(),
+
+    // ENLACES
+    href: url(false).optional(),
+
+    newTab: z
+      .boolean()
+      .optional(),
+
+    // CARGA
+    loading: z
+      .enum([
+        "lazy",
+        "eager",
+      ])
       .optional(),
   })
   .strict();
 
 // =====================================================
-// VALIDACIÓN DE BOTONES
+// BUTTON LINK
 // =====================================================
 
 const buttonProps = z
   .object({
     text,
+
     href: url(false),
 
     variant: z
@@ -177,33 +276,71 @@ const buttonProps = z
   .strict();
 
 // =====================================================
-// VALIDADORES NUMÉRICOS REUTILIZABLES
+// HERO V2
 // =====================================================
 
-const dimension = z
-  .number()
-  .finite()
-  .min(0)
-  .max(4000);
+const heroProps = z
+  .object({
+    // CONTENIDO ORIGINAL
+    title: text,
+    subtitle: text,
 
-const spacing = z
-  .number()
-  .finite()
-  .min(0)
-  .max(200);
+    image: imageProps.optional(),
+    button: buttonProps.optional(),
+    align: align.optional(),
 
-const signedSpacing = z
-  .number()
-  .finite()
-  .min(-200)
-  .max(200);
+    // DISTRIBUCIÓN
+    layout: z
+      .enum([
+        "split",
+        "stacked",
+      ])
+      .optional(),
 
-const hexColor = z
-  .string()
-  .regex(
-    /^#[0-9a-f]{6}$/i,
-    "El color debe tener formato HEX de 6 dígitos"
-  );
+    verticalAlign: z
+      .enum([
+        "start",
+        "center",
+        "end",
+      ])
+      .optional(),
+
+    // DIMENSIONES
+    minHeight: dimension.optional(),
+
+    contentMaxWidth: dimension.optional(),
+
+    padding: spacing.optional(),
+
+    // FONDO
+    backgroundColor: hexColor.optional(),
+
+    backgroundImage: url(true).optional(),
+
+    // OVERLAY
+    overlayColor: hexColor.optional(),
+    overlayOpacity: opacity.optional(),
+
+    // TIPOGRAFÍA
+    titleColor: hexColor.optional(),
+    subtitleColor: hexColor.optional(),
+
+    // SEGUNDO BOTÓN
+    secondButton: buttonProps.optional(),
+
+    // APARIENCIA
+    borderRadius: z
+      .number()
+      .finite()
+      .min(0)
+      .max(200)
+      .optional(),
+  })
+  .strict();
+
+// =====================================================
+// ESPACIADO POR LADO
+// =====================================================
 
 const spacingSidesSchema = z
   .object({
@@ -225,7 +362,6 @@ const marginSidesSchema = z
 
 // =====================================================
 // ESTILOS LEGACY DEL CONTENEDOR
-// No modificar: compatibilidad con páginas anteriores.
 // =====================================================
 
 const containerStyleProps = {
@@ -233,15 +369,11 @@ const containerStyleProps = {
     .string()
     .regex(
       /^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$/,
-      "El color debe ser HEX, por ejemplo #ffffff"
+      "El color debe ser HEX"
     )
     .optional(),
 
-  padding: z
-    .number()
-    .min(0)
-    .max(200)
-    .optional(),
+  padding: spacing.optional(),
 
   borderRadius: z
     .number()
@@ -257,11 +389,7 @@ const containerStyleProps = {
     ])
     .optional(),
 
-  gap: z
-    .number()
-    .min(0)
-    .max(200)
-    .optional(),
+  gap: spacing.optional(),
 
   justifyContent: z
     .enum([
@@ -284,7 +412,6 @@ const containerStyleProps = {
 
 // =====================================================
 // VISUAL STYLE V2
-// Compatible con propiedades anteriores.
 // =====================================================
 
 const visualStyleSchema = z
@@ -387,7 +514,6 @@ const visualStyleSchema = z
       .max(100)
       .optional(),
 
-    // SOMBRAS
     boxShadow: z
       .enum([
         "none",
@@ -440,12 +566,7 @@ const visualStyleSchema = z
     textAlign: align.optional(),
 
     // COMPORTAMIENTO
-    opacity: z
-      .number()
-      .finite()
-      .min(0)
-      .max(1)
-      .optional(),
+    opacity: opacity.optional(),
 
     overflow: z
       .enum([
@@ -457,7 +578,6 @@ const visualStyleSchema = z
   })
   .strict()
   .superRefine((style, context) => {
-    // Validación básica de coherencia dimensional.
     if (
       style.minWidth !== undefined &&
       style.maxWidth !== undefined &&
@@ -505,7 +625,7 @@ const nodeSchema: z.ZodType<WebPuckNode> =
     z.discriminatedUnion("type", [
 
       // ======================================
-      // CONTENEDOR
+      // CONTAINER
       // ======================================
 
       z.object({
@@ -537,7 +657,7 @@ const nodeSchema: z.ZodType<WebPuckNode> =
       }).strict(),
 
       // ======================================
-      // SECCIÓN
+      // SECTION
       // ======================================
 
       z.object({
@@ -567,7 +687,7 @@ const nodeSchema: z.ZodType<WebPuckNode> =
       }).strict(),
 
       // ======================================
-      // ENCABEZADO
+      // HEADING
       // ======================================
 
       z.object({
@@ -590,12 +710,13 @@ const nodeSchema: z.ZodType<WebPuckNode> =
             .optional(),
 
           align: align.optional(),
+
           style: visualStyleSchema.optional(),
         }).strict(),
       }).strict(),
 
       // ======================================
-      // TEXTO
+      // TEXT BLOCK
       // ======================================
 
       z.object({
@@ -611,7 +732,7 @@ const nodeSchema: z.ZodType<WebPuckNode> =
       }).strict(),
 
       // ======================================
-      // IMAGEN
+      // IMAGE BLOCK V2
       // ======================================
 
       z.object({
@@ -624,7 +745,7 @@ const nodeSchema: z.ZodType<WebPuckNode> =
       }).strict(),
 
       // ======================================
-      // BOTÓN
+      // BUTTON LINK
       // ======================================
 
       z.object({
@@ -694,7 +815,11 @@ const nodeSchema: z.ZodType<WebPuckNode> =
             .optional(),
 
           alignment: z
-            .enum(["start", "center", "end"])
+            .enum([
+              "start",
+              "center",
+              "end",
+            ])
             .optional(),
 
           sticky: z.boolean().optional(),
@@ -702,27 +827,20 @@ const nodeSchema: z.ZodType<WebPuckNode> =
       }).strict(),
 
       // ======================================
-      // HERO
+      // HERO V2
       // ======================================
 
       z.object({
         type: z.literal("Hero"),
         readOnly,
 
-        props: z.object({
-          id,
-          title: text,
-          subtitle: text,
-
-          align: align.optional(),
-
-          image: imageProps.optional(),
-          button: buttonProps.optional(),
-        }).strict(),
+        props: heroProps
+          .extend({ id })
+          .strict(),
       }).strict(),
 
       // ======================================
-      // ESPACIADOR
+      // SPACER
       // ======================================
 
       z.object({
@@ -745,7 +863,7 @@ const nodeSchema: z.ZodType<WebPuckNode> =
       }).strict(),
 
       // ======================================
-      // COLUMNAS
+      // COLUMNS
       // ======================================
 
       z.object({

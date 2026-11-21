@@ -20,8 +20,15 @@ import type {
 } from "./data.js";
 
 // =====================================================
-// CAMPOS REUTILIZABLES
+// UTILIDADES DE CAMPOS
 // =====================================================
+
+function selectOptions(values: readonly string[]) {
+  return values.map((value) => ({
+    label: value,
+    value,
+  }));
+}
 
 const align = {
   type: "select",
@@ -33,27 +40,49 @@ const align = {
   ],
 } satisfies Field;
 
-function selectOptions(
-  values: readonly string[]
-) {
-  return values.map((value) => ({
-    label: value,
-    value,
-  }));
-}
+// =====================================================
+// IMAGE BLOCK V2
+// =====================================================
 
 const imageFields = {
+  // GENERAL
   src: {
     type: "text",
     label: "URL de imagen",
   },
+
   alt: {
     type: "text",
     label: "Texto alternativo",
   },
+
+  href: {
+    type: "text",
+    label: "Enlace al hacer clic",
+  },
+
+  newTab: {
+    type: "radio",
+    label: "Abrir en nueva pestaña",
+    options: [
+      { label: "No", value: false },
+      { label: "Sí", value: true },
+    ],
+  },
+
+  loading: {
+    type: "select",
+    label: "Carga de imagen",
+    options: [
+      { label: "Diferida (lazy)", value: "lazy" },
+      { label: "Prioritaria (eager)", value: "eager" },
+    ],
+  },
+
+  // ESTILO
   fit: {
     type: "select",
-    label: "Ajuste",
+    label: "Ajuste de imagen",
     options: selectOptions([
       "cover",
       "contain",
@@ -62,27 +91,91 @@ const imageFields = {
       "scale-down",
     ]),
   },
+
   width: {
     type: "number",
-    label: "Ancho",
+    label: "Ancho (px)",
     min: 1,
+    max: 8000,
   },
+
   height: {
     type: "number",
-    label: "Alto",
+    label: "Alto (px)",
     min: 1,
+    max: 8000,
+  },
+
+  aspectRatio: {
+    type: "select",
+    label: "Proporción",
+    options: [
+      { label: "Automática", value: "auto" },
+      { label: "Cuadrada 1:1", value: "square" },
+      { label: "Horizontal 4:3", value: "landscape" },
+      { label: "Vertical 3:4", value: "portrait" },
+      { label: "Panorámica 16:9", value: "wide" },
+    ],
+  },
+
+  objectPosition: {
+    type: "select",
+    label: "Posición de imagen",
+    options: [
+      { label: "Centro", value: "center" },
+      { label: "Arriba", value: "top" },
+      { label: "Abajo", value: "bottom" },
+      { label: "Izquierda", value: "left" },
+      { label: "Derecha", value: "right" },
+      { label: "Superior izquierda", value: "top-left" },
+      { label: "Superior derecha", value: "top-right" },
+      { label: "Inferior izquierda", value: "bottom-left" },
+      { label: "Inferior derecha", value: "bottom-right" },
+    ],
+  },
+
+  borderRadius: {
+    type: "number",
+    label: "Radio de borde (px)",
+    min: 0,
+    max: 200,
+  },
+
+  shadow: {
+    type: "select",
+    label: "Sombra",
+    options: [
+      { label: "Ninguna", value: "none" },
+      { label: "Pequeña", value: "small" },
+      { label: "Mediana", value: "medium" },
+      { label: "Grande", value: "large" },
+    ],
+  },
+
+  opacity: {
+    type: "number",
+    label: "Opacidad",
+    min: 0,
+    max: 1,
+    step: 0.05,
   },
 } as const;
+
+// =====================================================
+// BOTONES
+// =====================================================
 
 const buttonFields = {
   text: {
     type: "text",
     label: "Texto",
   },
+
   href: {
     type: "text",
     label: "URL",
   },
+
   variant: {
     type: "select",
     label: "Variante",
@@ -92,6 +185,7 @@ const buttonFields = {
       "outline",
     ]),
   },
+
   newTab: {
     type: "radio",
     label: "Nueva pestaña",
@@ -165,7 +259,6 @@ const marginSidesFields = {
 // =====================================================
 
 const visualStyleFields = {
-  // DISPLAY
   display: {
     type: "select",
     label: "Display",
@@ -177,7 +270,6 @@ const visualStyleFields = {
     ]),
   },
 
-  // FLEXBOX
   flexDirection: {
     type: "select",
     label: "Dirección Flex",
@@ -246,7 +338,6 @@ const visualStyleFields = {
     max: 100,
   },
 
-  // DIMENSIONES
   width: {
     type: "select",
     label: "Ancho",
@@ -291,7 +382,6 @@ const visualStyleFields = {
     max: 4000,
   },
 
-  // ESPACIADO
   gap: {
     type: "number",
     label: "Separación (px)",
@@ -325,7 +415,6 @@ const visualStyleFields = {
     objectFields: marginSidesFields,
   },
 
-  // COLORES
   backgroundColor: {
     type: "text",
     label: "Color de fondo HEX",
@@ -336,7 +425,6 @@ const visualStyleFields = {
     label: "Color de texto HEX",
   },
 
-  // BORDES
   borderWidth: {
     type: "number",
     label: "Grosor del borde (px)",
@@ -356,7 +444,6 @@ const visualStyleFields = {
     max: 100,
   },
 
-  // SOMBRAS
   boxShadow: {
     type: "select",
     label: "Sombra",
@@ -368,7 +455,6 @@ const visualStyleFields = {
     ],
   },
 
-  // TIPOGRAFÍA
   fontFamily: {
     type: "select",
     label: "Familia tipográfica",
@@ -414,7 +500,6 @@ const visualStyleFields = {
 
   textAlign: align,
 
-  // COMPORTAMIENTO
   opacity: {
     type: "number",
     label: "Opacidad (0 a 1)",
@@ -440,11 +525,16 @@ const visualStyleField = {
   objectFields: visualStyleFields,
 } as const;
 
+// =====================================================
+// ENLACES HEADER
+// =====================================================
+
 const headerLinkFields = {
   label: {
     type: "text",
     label: "Texto",
   },
+
   href: {
     type: "text",
     label: "URL",
@@ -452,17 +542,13 @@ const headerLinkFields = {
 } as const;
 
 // =====================================================
-// CONFIGURACIÓN PUCK
+// CONFIGURACIÓN GENERAL PUCK
 // =====================================================
 
 export const webPuckConfig: Config<
   WebPuckProps,
   WebPuckRootProps
 > = {
-  // ===================================================
-  // PÁGINA RAÍZ
-  // ===================================================
-
   root: {
     label: "Página",
 
@@ -487,10 +573,6 @@ export const webPuckConfig: Config<
       </Container>
     ),
   },
-
-  // ===================================================
-  // COMPONENTES
-  // ===================================================
 
   components: {
     // =================================================
@@ -521,7 +603,6 @@ export const webPuckConfig: Config<
           ],
         },
 
-        // Propiedades legacy
         backgroundColor: {
           type: "text",
           label: "Color de fondo (HEX)",
@@ -777,7 +858,7 @@ export const webPuckConfig: Config<
     },
 
     // =================================================
-    // IMAGE BLOCK
+    // IMAGE BLOCK V2
     // =================================================
 
     ImageBlock: {
@@ -791,20 +872,10 @@ export const webPuckConfig: Config<
         fit: "cover",
       },
 
-      render: ({
-        src,
-        alt,
-        fit,
-        width,
-        height,
-      }) => (
-        <ImageBlock
-          src={src}
-          alt={alt}
-          fit={fit}
-          width={width}
-          height={height}
-        />
+      // Las props se pasan completas, incluidas
+      // las nuevas opciones de ImageBlock.
+      render: (props) => (
+        <ImageBlock {...props} />
       ),
     },
 
@@ -845,13 +916,14 @@ export const webPuckConfig: Config<
     },
 
     // =================================================
-    // HERO
+    // HERO V2
     // =================================================
 
     Hero: {
       label: "Hero",
 
       fields: {
+        // GENERAL
         title: {
           type: "text",
           label: "Título",
@@ -862,8 +934,6 @@ export const webPuckConfig: Config<
           label: "Subtítulo",
         },
 
-        align,
-
         image: {
           type: "object",
           label: "Imagen opcional",
@@ -872,8 +942,103 @@ export const webPuckConfig: Config<
 
         button: {
           type: "object",
-          label: "Botón opcional",
+          label: "Botón principal",
           objectFields: buttonFields,
+        },
+
+        secondButton: {
+          type: "object",
+          label: "Segundo botón",
+          objectFields: buttonFields,
+        },
+
+        // ESTILO
+        align,
+
+        layout: {
+          type: "select",
+          label: "Distribución",
+          options: [
+            {
+              label: "Texto e imagen lateral",
+              value: "split",
+            },
+            {
+              label: "Contenido apilado",
+              value: "stacked",
+            },
+          ],
+        },
+
+        verticalAlign: {
+          type: "select",
+          label: "Alineación vertical",
+          options: [
+            { label: "Arriba", value: "start" },
+            { label: "Centro", value: "center" },
+            { label: "Abajo", value: "end" },
+          ],
+        },
+
+        minHeight: {
+          type: "number",
+          label: "Altura mínima (px)",
+          min: 0,
+          max: 4000,
+        },
+
+        contentMaxWidth: {
+          type: "number",
+          label: "Ancho máximo del contenido (px)",
+          min: 0,
+          max: 4000,
+        },
+
+        padding: {
+          type: "number",
+          label: "Padding (px)",
+          min: 0,
+          max: 200,
+        },
+
+        backgroundColor: {
+          type: "text",
+          label: "Color de fondo HEX",
+        },
+
+        backgroundImage: {
+          type: "text",
+          label: "URL de imagen de fondo",
+        },
+
+        overlayColor: {
+          type: "text",
+          label: "Color de superposición HEX",
+        },
+
+        overlayOpacity: {
+          type: "number",
+          label: "Opacidad de superposición",
+          min: 0,
+          max: 1,
+          step: 0.05,
+        },
+
+        titleColor: {
+          type: "text",
+          label: "Color del título HEX",
+        },
+
+        subtitleColor: {
+          type: "text",
+          label: "Color del subtítulo HEX",
+        },
+
+        borderRadius: {
+          type: "number",
+          label: "Bordes redondeados (px)",
+          min: 0,
+          max: 200,
         },
       },
 
@@ -883,20 +1048,8 @@ export const webPuckConfig: Config<
         align: "left",
       },
 
-      render: ({
-        title,
-        subtitle,
-        image,
-        button,
-        align,
-      }) => (
-        <Hero
-          title={title}
-          subtitle={subtitle}
-          image={image}
-          button={button}
-          align={align}
-        />
+      render: (props) => (
+        <Hero {...props} />
       ),
     },
 

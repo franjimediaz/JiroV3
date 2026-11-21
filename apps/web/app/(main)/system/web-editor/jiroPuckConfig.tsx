@@ -18,7 +18,7 @@ import { webPuckConfig } from "@repo/web-puck";
 import styles from "./web-editor.module.css";
 
 // =====================================================
-// SELECTOR DE COLOR JIRO
+// SELECTORES DE COLOR JIRO
 // =====================================================
 
 const colorKeys = new Set([
@@ -26,6 +26,9 @@ const colorKeys = new Set([
   "backgroundColor",
   "color",
   "borderColor",
+  "overlayColor",
+  "titleColor",
+  "subtitleColor",
 ]);
 
 function normalizeHex(
@@ -72,7 +75,9 @@ export function jiroColorField(
               label,
               type: "color",
             }}
-            value={normalizeHex(value) ?? "#ffffff"}
+            value={
+              normalizeHex(value) ?? "#ffffff"
+            }
             readOnly={readOnly}
             onChange={(next) => {
               if (
@@ -95,7 +100,9 @@ export function jiroColorField(
             disabled={readOnly}
             onClick={() =>
               onChange(
-                transparent ? "transparent" : undefined
+                transparent
+                  ? "transparent"
+                  : undefined
               )
             }
           >
@@ -108,7 +115,7 @@ export function jiroColorField(
 }
 
 // =====================================================
-// GRUPOS INTERNOS DE ESTILO
+// GRUPOS INTERNOS DE VISUAL STYLE
 // =====================================================
 
 const styleGroups = [
@@ -199,7 +206,7 @@ function updateStyleValue(
 }
 
 // =====================================================
-// INSPECTOR DE ESTILOS
+// INSPECTOR DE ESTILOS REUTILIZABLE
 // =====================================================
 
 function StyleInspector({
@@ -220,7 +227,9 @@ function StyleInspector({
           (key) => fields[key] !== undefined
         );
 
-        if (!availableKeys.length) return null;
+        if (availableKeys.length === 0) {
+          return null;
+        }
 
         return (
           <details key={group.label} open>
@@ -229,6 +238,7 @@ function StyleInspector({
             <div className={styles.propertyGrid}>
               {availableKeys.map((name) => {
                 const field = fields[name];
+
                 if (!field) return null;
 
                 const input = (
@@ -250,7 +260,9 @@ function StyleInspector({
 
                 if (field.type === "custom") {
                   return (
-                    <div key={name}>{input}</div>
+                    <div key={name}>
+                      {input}
+                    </div>
                   );
                 }
 
@@ -277,79 +289,93 @@ function StyleInspector({
 }
 
 // =====================================================
-// ADAPTAR CAMPOS PUCK
+// ADAPTADOR DE CAMPOS PUCK
 // =====================================================
 
 function adaptFields(fields: Fields): Fields {
   return Object.fromEntries(
-    Object.entries(fields).map(([key, field]) => {
-      // Reutilizar selector de colores de Jiro.
-      if (colorKeys.has(key)) {
-        return [
-          key,
-          jiroColorField(
-            field.label || key,
-            key === "background"
-          ),
-        ];
-      }
+    Object.entries(fields).map(
+      ([key, field]) => {
+        // ---------------------------------------------
+        // COLOR
+        // ---------------------------------------------
 
-      // Objetos anidados.
-      if (field.type === "object") {
-        const children = adaptFields(
-          field.objectFields
-        );
-
-        if (key === "style") {
-          const styleField: Field = {
-            type: "custom",
-            label: field.label || "Diseño visual",
-
-            render: ({
-              value,
-              onChange,
-              readOnly,
-            }: {
-              value?: StyleValues;
-              onChange: (value: StyleValues) => void;
-              readOnly?: boolean;
-            }) => (
-              <StyleInspector
-                fields={children}
-                value={value}
-                onChange={onChange}
-                readOnly={readOnly}
-              />
+        if (colorKeys.has(key)) {
+          return [
+            key,
+            jiroColorField(
+              field.label || key,
+              key === "background"
             ),
-          };
-
-          return [key, styleField];
+          ];
         }
 
-        return [
-          key,
-          {
-            ...field,
-            objectFields: children,
-          },
-        ];
-      }
+        // ---------------------------------------------
+        // OBJETOS
+        // ---------------------------------------------
 
-      // Arrays (por ejemplo, enlaces del Header).
-      if (field.type === "array") {
-        return [
-          key,
-          {
-            ...field,
-            arrayFields: adaptFields(
-              field.arrayFields
-            ),
-          },
-        ];
-      }
+        if (field.type === "object") {
+          const children = adaptFields(
+            field.objectFields
+          );
 
-      return [key, field];
-    })
+          if (key === "style") {
+            const styleField: Field = {
+              type: "custom",
+              label:
+                field.label || "Diseño visual",
+
+              render: ({
+                value,
+                onChange,
+                readOnly,
+              }: {
+                value?: StyleValues;
+                onChange: (
+                  value: StyleValues
+                ) => void;
+                readOnly?: boolean;
+              }) => (
+                <StyleInspector
+                  fields={children}
+                  value={value}
+                  onChange={onChange}
+                  readOnly={readOnly}
+                />
+              ),
+            };
+
+            return [key, styleField];
+          }
+
+          return [
+            key,
+            {
+              ...field,
+              objectFields: children,
+            },
+          ];
+        }
+
+        // ---------------------------------------------
+        // ARRAYS
+        // ---------------------------------------------
+
+        if (field.type === "array") {
+          return [
+            key,
+            {
+              ...field,
+              arrayFields: adaptFields(
+                field.arrayFields
+              ),
+            },
+          ];
+        }
+
+        return [key, field];
+      }
+    )
   );
 }
 
@@ -357,8 +383,7 @@ function adaptFields(fields: Fields): Fields {
 // CLASIFICACIÓN GENERAL / ESTILO
 // =====================================================
 
-// Campos visuales compartidos.
-// No cambia los nombres de las propiedades guardadas.
+// Propiedades visuales compartidas entre componentes.
 const sharedStyleFields = new Set([
   "style",
   "align",
@@ -388,11 +413,16 @@ const sharedStyleFields = new Set([
   "variant",
 ]);
 
-// Clasificaciones específicas por componente.
+// Campos visuales específicos de cada componente.
+// Los campos no incluidos se muestran en General.
 const componentStyleFields: Record<
   string,
   readonly string[]
 > = {
+  // ---------------------------------------------------
+  // CONTAINER
+  // ---------------------------------------------------
+
   Container: [
     "maxWidth",
     "backgroundColor",
@@ -405,44 +435,97 @@ const componentStyleFields: Record<
     "style",
   ],
 
+  // ---------------------------------------------------
+  // SECTION
+  // ---------------------------------------------------
+
   Section: [
     "background",
     "spacing",
     "style",
   ],
 
+  // ---------------------------------------------------
+  // HEADING
+  // ---------------------------------------------------
+
   Heading: [
     "align",
     "style",
   ],
+
+  // ---------------------------------------------------
+  // TEXT BLOCK
+  // ---------------------------------------------------
 
   TextBlock: [
     "align",
     "style",
   ],
 
+  // ---------------------------------------------------
+  // IMAGE BLOCK V2
+  // ---------------------------------------------------
+
   ImageBlock: [
     "fit",
     "width",
     "height",
+    "aspectRatio",
+    "objectPosition",
+    "borderRadius",
+    "shadow",
+    "opacity",
   ],
+
+  // ---------------------------------------------------
+  // BUTTON LINK
+  // ---------------------------------------------------
 
   ButtonLink: [
     "variant",
     "style",
   ],
 
+  // ---------------------------------------------------
+  // HERO V2
+  // ---------------------------------------------------
+
   Hero: [
     "align",
+    "layout",
+    "verticalAlign",
+    "minHeight",
+    "contentMaxWidth",
+    "padding",
+    "backgroundColor",
+    "backgroundImage",
+    "overlayColor",
+    "overlayOpacity",
+    "titleColor",
+    "subtitleColor",
+    "borderRadius",
   ],
+
+  // ---------------------------------------------------
+  // SPACER
+  // ---------------------------------------------------
 
   Spacer: [
     "size",
   ],
 
+  // ---------------------------------------------------
+  // COLUMNS
+  // ---------------------------------------------------
+
   Columns: [
     "columns",
   ],
+
+  // ---------------------------------------------------
+  // HEADER
+  // ---------------------------------------------------
 
   Header: [
     "backgroundColor",
@@ -457,7 +540,7 @@ const componentStyleFields: Record<
 };
 
 // =====================================================
-// RENDERIZADOR DE LAS DOS PESTAÑAS
+// PESTAÑAS GENERAL / ESTILO
 // =====================================================
 
 type RenderedFields = Record<
@@ -469,7 +552,7 @@ function renderComponentTabs(
   componentName: string,
   fields: RenderedFields
 ) {
-  const specific = new Set(
+  const componentStyles = new Set(
     componentStyleFields[componentName] ?? []
   );
 
@@ -478,11 +561,11 @@ function renderComponentTabs(
 
   Object.entries(fields).forEach(
     ([name, element]) => {
-      // La clasificación específica tiene prioridad.
-      if (
-        specific.has(name) ||
-        sharedStyleFields.has(name)
-      ) {
+      const isStyle =
+        componentStyles.has(name) ||
+        sharedStyleFields.has(name);
+
+      if (isStyle) {
         styleFields.push(
           <div key={name}>{element}</div>
         );
@@ -501,14 +584,14 @@ function renderComponentTabs(
         value="general"
       >
         <div className={styles.propertyGroups}>
-          {generalFields.length > 0
-            ? generalFields
-            : (
-              <p className="text-muted small p-2">
-                Este componente no tiene
-                propiedades generales.
-              </p>
-            )}
+          {generalFields.length > 0 ? (
+            generalFields
+          ) : (
+            <p className="text-muted small p-2">
+              Este componente no tiene
+              propiedades generales.
+            </p>
+          )}
         </div>
       </FieldTab>
 
@@ -517,14 +600,14 @@ function renderComponentTabs(
         value="style"
       >
         <div className={styles.propertyGroups}>
-          {styleFields.length > 0
-            ? styleFields
-            : (
-              <p className="text-muted small p-2">
-                Este componente no tiene
-                propiedades visuales.
-              </p>
-            )}
+          {styleFields.length > 0 ? (
+            styleFields
+          ) : (
+            <p className="text-muted small p-2">
+              Este componente no tiene
+              propiedades visuales.
+            </p>
+          )}
         </div>
       </FieldTab>
     </>
@@ -532,7 +615,7 @@ function renderComponentTabs(
 }
 
 // =====================================================
-// CONFIGURACIÓN FINAL DE JIRO PUCK
+// CONFIGURACIÓN FINAL DE PUCK
 // =====================================================
 
 export const jiroPuckConfig: typeof webPuckConfig = {
@@ -576,18 +659,21 @@ export const jiroPuckConfig: typeof webPuckConfig = {
       {
         ...component,
 
-        // Conservar la definición y nombres originales.
+        // Adaptar los campos de forma recursiva:
+        // colores, objetos y arrays.
         fields: adaptFields(
           (component.fields || {}) as unknown as Fields
         ),
 
-        // Organizar únicamente la interfaz.
+        // Mostrar General y Estilo.
         renderFields: ({
           fields,
         }: {
           fields: RenderedFields;
-        }) =>
-          renderComponentTabs(name, fields),
+        }) => renderComponentTabs(
+          name,
+          fields
+        ),
       },
     ])
   ) as typeof webPuckConfig.components,
