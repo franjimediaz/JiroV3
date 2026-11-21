@@ -29,7 +29,7 @@ export function verifyPreparation(token:unknown,config:GithubConfig,now=Math.flo
     if(!value||typeof value!=="object"||Array.isArray(value))throw new Error();
     const p=value as Record<string,unknown>;const keys=Object.keys(p).sort().join(",");
     if(keys!=="configDigest,exp,iat,jti,localDigest,pageCount,publicationId,remoteSha,v"||p.v!==1||typeof p.jti!=="string"||typeof p.iat!=="number"||typeof p.exp!=="number"||typeof p.localDigest!=="string"||(p.remoteSha!==null&&typeof p.remoteSha!=="string")||typeof p.configDigest!=="string"||typeof p.publicationId!=="string"||typeof p.pageCount!=="number"||!Number.isInteger(p.pageCount)||p.pageCount<1||p.iat>now+30||p.exp-p.iat!==lifetimeSeconds||p.configDigest!==githubConfigDigest(config))throw new Error();
-    if(p.exp<now)throw new GithubError("PREPARATION_EXPIRED","La preparación ha caducado. Realiza una nueva comprobación.");
+    if(p.exp<=now)throw new GithubError("PREPARATION_EXPIRED","La preparación ha caducado. Realiza una nueva comprobación.");
     return p as Preparation;
   } catch(error) {
     if(error instanceof GithubError)throw error;

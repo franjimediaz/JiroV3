@@ -39,7 +39,10 @@ export async function writeGithubPublication(config: GithubConfig, json: string,
   if(!response.ok)throw new GithubError("REPOSITORY_ERROR","GitHub no pudo crear el commit de publicación.");
   const data=await readGithubJson(response,"REPOSITORY_ERROR",128*1024);
   const commit=data.commit as {sha?:unknown;html_url?:unknown}|undefined;
-  const expected="https://github.com/"+config.owner+"/"+config.repository+"/commit/";
-  if(typeof commit?.sha!=="string"||!/^[a-f0-9]{40,64}$/i.test(commit.sha)||typeof commit.html_url!=="string"||!commit.html_url.startsWith(expected)||commit.html_url!==expected+commit.sha)throw new GithubError("REPOSITORY_ERROR","GitHub devolvió un commit no válido.");
+  if(typeof commit?.sha!=="string"||!/^[a-f0-9]{40,64}$/i.test(commit.sha)||typeof commit.html_url!=="string")throw new GithubError("REPOSITORY_ERROR","GitHub devolvió un commit no válido.");
+  let commitUrl:URL;
+  try { commitUrl=new URL(commit.html_url); } catch { throw new GithubError("REPOSITORY_ERROR","GitHub devolvió una URL de commit no válida."); }
+  const expectedPath="/"+config.owner+"/"+config.repository+"/commit/"+commit.sha;
+  if(commitUrl.protocol!=="https:"||commitUrl.hostname!=="github.com"||commitUrl.username||commitUrl.password||commitUrl.port||commitUrl.search||commitUrl.hash||commitUrl.pathname.toLowerCase()!==expectedPath.toLowerCase())throw new GithubError("REPOSITORY_ERROR","GitHub devolvió una URL de commit ajena al repositorio configurado.");
   return {commitSha:commit.sha,commitUrl:commit.html_url};
 }
