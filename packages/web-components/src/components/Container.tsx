@@ -50,16 +50,21 @@ export function Container({
   alignItems,
   style: safeStyle,
 }: ContainerProps) {
+  const computedVisualStyle = visualStyle(safeStyle);
   const style: CSSProperties = {
-    ...visualStyle(safeStyle),
+    ...computedVisualStyle,
     "--jws-container-width": widths[maxWidth],
     backgroundColor: safeStyle?.backgroundColor ?? backgroundColor,
     padding: safeStyle?.padding ?? padding,
     borderRadius: safeStyle?.borderRadius ?? borderRadius,
     display: safeStyle?.display ?? display,
     gap: safeStyle?.gap ?? gap,
-    justifyContent: justifyContent ? justifyValues[justifyContent] : visualStyle(safeStyle)?.justifyContent,
-    alignItems: alignItems ? alignValues[alignItems] : visualStyle(safeStyle)?.alignItems,
+    justifyContent: safeStyle?.justifyContent !== undefined
+      ? computedVisualStyle?.justifyContent
+      : justifyContent ? justifyValues[justifyContent] : undefined,
+    alignItems: safeStyle?.alignItems !== undefined
+      ? computedVisualStyle?.alignItems
+      : alignItems ? alignValues[alignItems] : undefined,
   } as CSSProperties;
 
   return (

@@ -394,7 +394,6 @@ export const webPuckConfig: Config<
         text,
         level,
         align,
-        style: visualStyleField,
         id,
         style,
       }) => (
@@ -422,6 +421,7 @@ export const webPuckConfig: Config<
         },
 
         align,
+        style: visualStyleField,
       },
 
       defaultProps: {
